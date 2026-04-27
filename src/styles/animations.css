@@ -1,0 +1,663 @@
+/* ============================================================
+   PROMPT KOMBAT — Character Animations v3
+   Targeting model:
+     punch → face/upper body  (arm aims high)
+     kick  → legs             (leg sweeps low/horizontal)
+   Guard stance in idle — arms raised, weight forward.
+   Fighter A faces RIGHT, Fighter B is scaleX(-1).
+   All !important to beat Tailwind prefers-reduced-motion reset.
+   ============================================================ */
+
+.fighter-root {
+  display: block;
+  position: relative;
+}
+
+/* ══════════════════════════════════════════════════
+   IDLE — weight-shift bob + guard arms
+══════════════════════════════════════════════════ */
+@keyframes fighter-bob {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50%       { transform: translateY(-8px) rotate(-1deg); }
+}
+.fighter-root.anim-idle {
+  animation: fighter-bob 1.8s ease-in-out infinite !important;
+}
+
+/* Front arm held in guard (raised, bent toward face) */
+@keyframes idle-guard-front {
+  0%, 100% { transform: rotate(-32deg); }
+  50%       { transform: rotate(-38deg); }
+}
+.fighter-root.anim-idle .fighter-arm-front {
+  animation: idle-guard-front 1.8s ease-in-out infinite !important;
+}
+
+/* Back arm slightly lower guard */
+@keyframes idle-guard-back {
+  0%, 100% { transform: rotate(-18deg); }
+  50%       { transform: rotate(-12deg); }
+}
+.fighter-root.anim-idle .fighter-arm-back {
+  animation: idle-guard-back 1.8s ease-in-out infinite !important;
+}
+
+/* Legs — subtle weight shift */
+@keyframes idle-leg-front {
+  0%, 100% { transform: rotate(-3deg); }
+  50%       { transform: rotate(-6deg); }
+}
+@keyframes idle-leg-back {
+  0%, 100% { transform: rotate(5deg); }
+  50%       { transform: rotate(8deg); }
+}
+.fighter-root.anim-idle .fighter-leg-front {
+  animation: idle-leg-front 1.8s ease-in-out infinite !important;
+}
+.fighter-root.anim-idle .fighter-leg-back {
+  animation: idle-leg-back 1.8s ease-in-out infinite !important;
+}
+
+
+/* ══════════════════════════════════════════════════
+   PUNCH — targets FACE (arm extends HIGH toward head level)
+   Body lunges, arm shoots from guard up to face level
+══════════════════════════════════════════════════ */
+@keyframes punch-body {
+  0%   { transform: translateX(0px)  rotate(0deg); }
+  25%  { transform: translateX(30px) rotate(-12deg); }
+  55%  { transform: translateX(28px) rotate(-10deg); }
+  100% { transform: translateX(0px)  rotate(0deg); }
+}
+/* Arm: from guard (-32deg) winds back, then EXTENDS HIGH (-88deg = above horizontal = face level) */
+@keyframes punch-arm {
+  0%   { transform: rotate(-32deg); }   /* guard */
+  15%  { transform: rotate(15deg); }    /* wind-up — arm back */
+  30%  { transform: rotate(-88deg); }   /* EXTENDED — face/head level */
+  58%  { transform: rotate(-86deg); }   /* hold */
+  100% { transform: rotate(-32deg); }   /* return to guard */
+}
+@keyframes punch-arm-back-swing {
+  0%   { transform: rotate(-18deg); }
+  25%  { transform: rotate(25deg); }
+  100% { transform: rotate(-18deg); }
+}
+@keyframes punch-leg-step {
+  0%   { transform: rotate(-3deg); }
+  28%  { transform: rotate(-18deg); }
+  100% { transform: rotate(-3deg); }
+}
+.fighter-root.anim-punch {
+  animation: punch-body 800ms cubic-bezier(0.12, 0.6, 0.4, 1) both !important;
+}
+.fighter-root.anim-punch .fighter-arm-front {
+  animation: punch-arm 800ms cubic-bezier(0.12, 0.6, 0.4, 1) both !important;
+}
+.fighter-root.anim-punch .fighter-arm-back {
+  animation: punch-arm-back-swing 800ms ease-out both !important;
+}
+.fighter-root.anim-punch .fighter-leg-front {
+  animation: punch-leg-step 800ms ease-out both !important;
+}
+
+
+/* ══════════════════════════════════════════════════
+   KICK — targets LEGS (leg sweeps LOW, ~horizontal)
+   Body leans, front leg sweeps forward at shin height
+══════════════════════════════════════════════════ */
+@keyframes kick-body {
+  0%   { transform: translateX(0px)  rotate(0deg); }
+  30%  { transform: translateX(14px) rotate(-8deg); }
+  65%  { transform: translateX(12px) rotate(-6deg); }
+  100% { transform: translateX(0px)  rotate(0deg); }
+}
+/* Leg sweeps to -55deg — angled downward = shin/knee level */
+@keyframes kick-leg {
+  0%   { transform: rotate(-3deg); }   /* natural stance */
+  10%  { transform: rotate(12deg); }   /* coil back further for power */
+  35%  { transform: rotate(-55deg); }  /* SHIN-HIGH SWEEP — foot at opponent's knee/shin */
+  65%  { transform: rotate(-53deg); }  /* hold */
+  100% { transform: rotate(-3deg); }   /* return */
+}
+/* Opposite arm swings up for balance */
+@keyframes kick-arm-balance {
+  0%   { transform: rotate(-18deg); }
+  38%  { transform: rotate(-65deg); }
+  65%  { transform: rotate(-62deg); }
+  100% { transform: rotate(-18deg); }
+}
+/* Plant leg braces */
+@keyframes kick-leg-plant {
+  0%   { transform: rotate(5deg); }
+  35%  { transform: rotate(14deg); }
+  100% { transform: rotate(5deg); }
+}
+.fighter-root.anim-kick {
+  animation: kick-body 800ms ease-out both !important;
+}
+.fighter-root.anim-kick .fighter-leg-front {
+  animation: kick-leg 800ms cubic-bezier(0.12, 0.55, 0.4, 1) both !important;
+}
+.fighter-root.anim-kick .fighter-arm-back {
+  animation: kick-arm-balance 800ms ease-out both !important;
+}
+.fighter-root.anim-kick .fighter-leg-back {
+  animation: kick-leg-plant 800ms ease-out both !important;
+}
+/* Front arm stays in guard during kick */
+.fighter-root.anim-kick .fighter-arm-front {
+  animation: idle-guard-front 800ms ease-out both !important;
+}
+
+
+/* ══════════════════════════════════════════════════
+   JUMP — evades kick; vulnerable to punch
+   Prep dip → rise high → legs tuck → land
+══════════════════════════════════════════════════ */
+@keyframes jump-rise {
+  0%   { transform: translateY(0px)    scaleY(1); }
+  8%   { transform: translateY(10px)   scaleY(0.86); }   /* prep dip */
+  40%  { transform: translateY(-100px) scaleY(1.05); }
+  65%  { transform: translateY(-98px)  scaleY(1); }
+  100% { transform: translateY(0px)    scaleY(1); }
+}
+@keyframes jump-leg-tuck {
+  0%   { transform: rotate(-3deg); }
+  8%   { transform: rotate(6deg); }
+  40%  { transform: rotate(-50deg); }
+  65%  { transform: rotate(-48deg); }
+  100% { transform: rotate(-3deg); }
+}
+@keyframes jump-leg-back-tuck {
+  0%   { transform: rotate(5deg); }
+  40%  { transform: rotate(-30deg); }
+  65%  { transform: rotate(-28deg); }
+  100% { transform: rotate(5deg); }
+}
+@keyframes jump-arm-out {
+  0%   { transform: rotate(-32deg); }
+  40%  { transform: rotate(-68deg); }
+  65%  { transform: rotate(-66deg); }
+  100% { transform: rotate(-32deg); }
+}
+@keyframes jump-arm-back-out {
+  0%   { transform: rotate(-18deg); }
+  40%  { transform: rotate(40deg); }
+  65%  { transform: rotate(38deg); }
+  100% { transform: rotate(-18deg); }
+}
+.fighter-root.anim-jump {
+  animation: jump-rise 900ms ease-out both !important;
+}
+.fighter-root.anim-jump .fighter-leg-front {
+  animation: jump-leg-tuck 900ms ease-out both !important;
+}
+.fighter-root.anim-jump .fighter-leg-back {
+  animation: jump-leg-back-tuck 900ms ease-out both !important;
+}
+.fighter-root.anim-jump .fighter-arm-front {
+  animation: jump-arm-out 900ms ease-out both !important;
+}
+.fighter-root.anim-jump .fighter-arm-back {
+  animation: jump-arm-back-out 900ms ease-out both !important;
+}
+
+
+/* ══════════════════════════════════════════════════
+   CROUCH — evades punch; vulnerable to kick
+   Squish low + arms drop + legs splay
+══════════════════════════════════════════════════ */
+@keyframes crouch-body {
+  0%   { transform: scaleY(1)    translateY(0px); }
+  38%  { transform: scaleY(0.55) translateY(30px); }
+  68%  { transform: scaleY(0.55) translateY(30px); }
+  100% { transform: scaleY(1)    translateY(0px); }
+}
+@keyframes crouch-arm-front {
+  0%   { transform: rotate(-32deg); }
+  38%  { transform: rotate(25deg); }
+  68%  { transform: rotate(25deg); }
+  100% { transform: rotate(-32deg); }
+}
+@keyframes crouch-arm-back {
+  0%   { transform: rotate(-18deg); }
+  38%  { transform: rotate(18deg); }
+  68%  { transform: rotate(18deg); }
+  100% { transform: rotate(-18deg); }
+}
+@keyframes crouch-leg-front {
+  0%   { transform: rotate(-3deg); }
+  38%  { transform: rotate(-28deg); }
+  68%  { transform: rotate(-28deg); }
+  100% { transform: rotate(-3deg); }
+}
+@keyframes crouch-leg-back {
+  0%   { transform: rotate(5deg); }
+  38%  { transform: rotate(22deg); }
+  68%  { transform: rotate(22deg); }
+  100% { transform: rotate(5deg); }
+}
+.fighter-root.anim-crouch {
+  animation: crouch-body 700ms ease-in-out both !important;
+  transform-origin: bottom center;
+}
+.fighter-root.anim-crouch .fighter-arm-front {
+  animation: crouch-arm-front 700ms ease-in-out both !important;
+}
+.fighter-root.anim-crouch .fighter-arm-back {
+  animation: crouch-arm-back 700ms ease-in-out both !important;
+}
+.fighter-root.anim-crouch .fighter-leg-front {
+  animation: crouch-leg-front 700ms ease-in-out both !important;
+}
+.fighter-root.anim-crouch .fighter-leg-back {
+  animation: crouch-leg-back 700ms ease-in-out both !important;
+}
+
+
+/* ══════════════════════════════════════════════════
+   DEFEND — cross-guard: both arms raise high
+══════════════════════════════════════════════════ */
+@keyframes defend-body {
+  0%   { transform: translateX(0px)   rotate(0deg); }
+  35%  { transform: translateX(-26px) rotate(8deg); }
+  70%  { transform: translateX(-26px) rotate(8deg); }
+  100% { transform: translateX(0px)   rotate(0deg); }
+}
+@keyframes defend-arm-front {
+  0%   { transform: rotate(-32deg); }    /* guard */
+  35%  { transform: rotate(-122deg); }   /* HIGH guard — near face */
+  70%  { transform: rotate(-122deg); }
+  100% { transform: rotate(-32deg); }
+}
+@keyframes defend-arm-back {
+  0%   { transform: rotate(-18deg); }
+  35%  { transform: rotate(-90deg); }    /* also raised to cross-guard */
+  70%  { transform: rotate(-90deg); }
+  100% { transform: rotate(-18deg); }
+}
+@keyframes defend-leg-back-step {
+  0%   { transform: rotate(5deg); }
+  35%  { transform: rotate(-8deg); }
+  70%  { transform: rotate(-8deg); }
+  100% { transform: rotate(5deg); }
+}
+.fighter-root.anim-defend {
+  animation: defend-body 700ms ease-in-out both !important;
+}
+.fighter-root.anim-defend .fighter-arm-front {
+  animation: defend-arm-front 700ms ease-in-out both !important;
+}
+.fighter-root.anim-defend .fighter-arm-back {
+  animation: defend-arm-back 700ms ease-in-out both !important;
+}
+.fighter-root.anim-defend .fighter-leg-back {
+  animation: defend-leg-back-step 700ms ease-in-out both !important;
+}
+
+
+/* ══════════════════════════════════════════════════
+   SUPERMOVE — charge + glow + mega lunge + ki fireball
+══════════════════════════════════════════════════ */
+@keyframes super-body {
+  0%   { transform: scale(1)    translateX(0px);   filter: brightness(1) saturate(1); }
+  14%  { transform: scale(1.22) translateX(-30px); filter: brightness(2.5) saturate(2.5); }
+  22%  { transform: scale(1.2)  translateX(-32px); filter: brightness(3.5) saturate(3); }
+  55%  { transform: scale(1.08) translateX(68px);  filter: brightness(2)   saturate(2); }
+  82%  { transform: scale(1.04) translateX(62px);  filter: brightness(1.4); }
+  100% { transform: scale(1)    translateX(0px);   filter: brightness(1) saturate(1); }
+}
+/* Arm: from guard, winds WAY back, then FIRES forward at face level */
+@keyframes super-arm {
+  0%   { transform: rotate(-32deg); }   /* guard */
+  14%  { transform: rotate(65deg); }    /* WIND BACK — arm fully behind */
+  22%  { transform: rotate(68deg); }    /* fully cocked */
+  52%  { transform: rotate(-88deg); }   /* FIRED — arm extended high toward face */
+  82%  { transform: rotate(-85deg); }
+  100% { transform: rotate(-32deg); }   /* return to guard */
+}
+@keyframes super-arm-back {
+  0%   { transform: rotate(-18deg); }
+  14%  { transform: rotate(-55deg); }
+  55%  { transform: rotate(40deg); }
+  100% { transform: rotate(-18deg); }
+}
+@keyframes super-leg {
+  0%   { transform: rotate(-3deg); }
+  14%  { transform: rotate(10deg); }
+  55%  { transform: rotate(-25deg); }
+  100% { transform: rotate(-3deg); }
+}
+
+/* Charge aura — ki energy builds up before the fireball launches */
+@keyframes super-aura-build {
+  0%   {
+    opacity: 0;
+    transform: scale(0.15);
+    background: radial-gradient(circle, rgba(255,240,80,0) 0%, transparent 100%);
+    box-shadow: none;
+  }
+  10%  {
+    opacity: 0.7;
+    transform: scale(0.6);
+    background: radial-gradient(circle, rgba(255,240,100,0.7) 0%, rgba(255,160,30,0.4) 45%, transparent 75%);
+    box-shadow: 0 0 20px 8px rgba(255,200,50,0.5);
+  }
+  20%  {
+    opacity: 1;
+    transform: scale(1.05);
+    background: radial-gradient(circle, #fff 0%, rgba(255,240,80,0.9) 20%, rgba(255,140,20,0.55) 55%, transparent 80%);
+    box-shadow:
+      0 0 0 3px rgba(255,230,80,0.8),
+      0 0 28px 12px rgba(255,200,50,0.75),
+      0 0 0 22px rgba(255,170,40,0.18),
+      0 0 60px 26px rgba(255,120,30,0.4);
+    filter: brightness(1.6);
+  }
+  23%  {
+    opacity: 1;
+    transform: scale(0.92);
+    background: radial-gradient(circle, #fff 0%, rgba(255,250,100,1) 15%, rgba(255,160,30,0.7) 50%, transparent 78%);
+    box-shadow:
+      0 0 0 4px rgba(255,240,100,1),
+      0 0 40px 18px rgba(255,220,60,0.9),
+      0 0 0 30px rgba(255,180,50,0.22),
+      0 0 80px 36px rgba(255,130,30,0.5);
+    filter: brightness(2.2);
+  }
+  42%  {
+    opacity: 0.25;
+    transform: scale(1.7);
+    box-shadow: 0 0 20px 8px rgba(255,180,40,0.25);
+    filter: brightness(1);
+  }
+  58%  { opacity: 0; transform: scale(2.2); }
+  100% { opacity: 0; }
+}
+.fighter-root.anim-supermove .fighter-aura {
+  animation: super-aura-build 1200ms ease-in-out both !important;
+}
+
+/* Ki fireball — shoots from fist, travels toward opponent */
+@keyframes fireball-fly {
+  0%   {
+    opacity: 0; width: 0px; height: 0px;
+    transform: translate(0px, 0px) scale(0);
+    background: transparent; border-radius: 50%;
+    box-shadow: none;
+  }
+  18%  {
+    opacity: 1; width: 22px; height: 18px;
+    transform: translate(2px, -4px) scale(1);
+    background: radial-gradient(circle, #fff 0%, #ffee55 30%, #ff8800 65%, #ff2200 100%);
+    box-shadow: 0 0 20px 10px rgba(255,130,0,0.9), 0 0 44px 20px rgba(255,50,0,0.5);
+    border-radius: 50%;
+  }
+  52%  {
+    opacity: 1; width: 32px; height: 26px;
+    transform: translate(130px, -10px) scale(1.1);
+    background: radial-gradient(circle, #fff 0%, #ffee44 25%, #ff6600 55%, rgba(255,0,0,0.5) 100%);
+    box-shadow: 0 0 32px 14px rgba(255,120,0,0.85), 0 0 65px 30px rgba(255,50,0,0.4);
+    border-radius: 45% 55% 50% 50%;
+  }
+  82%  {
+    opacity: 0.4; width: 20px; height: 15px;
+    transform: translate(200px, -14px) scale(0.85);
+    box-shadow: 0 0 12px 5px rgba(255,100,0,0.4);
+    border-radius: 50%;
+  }
+  100% {
+    opacity: 0; width: 10px; height: 8px;
+    transform: translate(240px, -16px) scale(0.4);
+    box-shadow: none; border-radius: 50%;
+  }
+}
+.fighter-root.anim-supermove {
+  animation: super-body 1200ms ease-in-out both !important;
+}
+.fighter-root.anim-supermove .fighter-arm-front {
+  animation: super-arm 1200ms ease-in-out both !important;
+}
+.fighter-root.anim-supermove .fighter-arm-back {
+  animation: super-arm-back 1200ms ease-in-out both !important;
+}
+.fighter-root.anim-supermove .fighter-leg-front {
+  animation: super-leg 1200ms ease-in-out both !important;
+}
+.fighter-root.anim-supermove .fighter-fireball {
+  animation: fireball-fly 1200ms ease-out both !important;
+}
+
+
+/* ══════════════════════════════════════════════════
+   HIT REACTIONS — on fighter-character (separate node
+   from fighter-root so action + hit play simultaneously)
+══════════════════════════════════════════════════ */
+
+/* Normal hit (punch/kick lands) — white flash + stagger back */
+@keyframes hit-normal {
+  0%   { transform: translateX(0px);   filter: brightness(1); }
+  12%  { transform: translateX(-24px); filter: brightness(10) saturate(0); }
+  42%  { transform: translateX(-16px); filter: brightness(3.5) saturate(0.3); }
+  100% { transform: translateX(0px);   filter: brightness(1); }
+}
+.fighter-character.anim-hit-normal {
+  animation: hit-normal 550ms ease-out both !important;
+}
+
+/* Super hit — bright flash + big stagger */
+@keyframes hit-super {
+  0%   { transform: translateX(0px)   scale(1);    filter: brightness(1); }
+  8%   { transform: translateX(-28px) scale(1.08); filter: brightness(12) saturate(0); }
+  35%  { transform: translateX(-20px) scale(1.04); filter: brightness(2); }
+  100% { transform: translateX(0px)   scale(1);    filter: brightness(1); }
+}
+.fighter-character.anim-hit-super {
+  animation: hit-super 600ms ease-out 420ms both !important;
+}
+
+
+/* ══════════════════════════════════════════════════
+   KO FALL — topple forward and stay down
+══════════════════════════════════════════════════ */
+@keyframes ko-fall {
+  0%   { transform: rotate(0deg)  translateY(0px);  opacity: 1; }
+  55%  { transform: rotate(88deg) translateY(36px); opacity: 1; }
+  100% { transform: rotate(94deg) translateY(48px); opacity: 0.5; }
+}
+.fighter-root.anim-ko {
+  animation: ko-fall 800ms ease-in forwards !important;
+  transform-origin: bottom right;
+}
+
+
+/* ══════════════════════════════════════════════════
+   VICTORY — infinite jump + arm raise
+══════════════════════════════════════════════════ */
+@keyframes victory-jump {
+  0%, 100% { transform: translateY(0px); }
+  45%       { transform: translateY(-70px); }
+}
+@keyframes victory-arm-raise {
+  0%, 100% { transform: rotate(-32deg); }
+  45%       { transform: rotate(-140deg); }
+}
+.fighter-root.anim-victory {
+  animation: victory-jump 700ms ease-in-out infinite !important;
+}
+.fighter-root.anim-victory .fighter-arm-front {
+  animation: victory-arm-raise 700ms ease-in-out infinite !important;
+}
+.fighter-root.anim-victory .fighter-leg-front {
+  animation: jump-leg-tuck 700ms ease-in-out infinite !important;
+}
+.fighter-root.anim-victory .fighter-leg-back {
+  animation: jump-leg-back-tuck 700ms ease-in-out infinite !important;
+}
+
+
+/* ══════════════════════════════════════════════════
+   GLOBAL EFFECTS
+══════════════════════════════════════════════════ */
+
+@keyframes hp-danger {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+.hp-danger {
+  animation: hp-danger 0.7s ease-in-out infinite !important;
+}
+
+@keyframes ko-slam {
+  0%   { transform: scale(4) translateY(-30px); opacity: 0; }
+  60%  { transform: scale(1.05) translateY(3px); opacity: 1; }
+  100% { transform: scale(1) translateY(0px); opacity: 1; }
+}
+.ko-slam {
+  animation: ko-slam 500ms cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards !important;
+}
+
+@keyframes screen-shake {
+  0%,100% { transform: translate(0px,  0px); }
+  15%     { transform: translate(-12px, 6px); }
+  30%     { transform: translate(12px, -6px); }
+  45%     { transform: translate(-8px,  4px); }
+  60%     { transform: translate(8px,  -4px); }
+  75%     { transform: translate(-4px,  2px); }
+  90%     { transform: translate(4px,  -2px); }
+}
+.screen-shake {
+  animation: screen-shake 600ms ease-out !important;
+}
+
+@keyframes punish-flash {
+  0%   { background: transparent; }
+  15%  { background: rgba(220, 38, 38, 0.45); }
+  40%  { background: rgba(220, 38, 38, 0.2); }
+  100% { background: transparent; }
+}
+.punish-flash {
+  animation: punish-flash 600ms ease-out forwards !important;
+  pointer-events: none;
+}
+
+@keyframes tile-pulse {
+  0%, 100% { border-color: rgba(255,255,255,0.3); }
+  50%       { border-color: rgba(255,255,255,0.9); }
+}
+.tile-active {
+  animation: tile-pulse 0.6s ease-in-out infinite !important;
+}
+
+@keyframes label-pop {
+  0%   { transform: translateY(8px)  scale(0.7); opacity: 0; }
+  65%  { transform: translateY(-3px) scale(1.08); opacity: 1; }
+  100% { transform: translateY(0px)  scale(1);    opacity: 1; }
+}
+.action-label-pop {
+  animation: label-pop 220ms cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards !important;
+}
+
+
+/* ══════════════════════════════════════════════════
+   SHIELD — energy barrier while defending
+══════════════════════════════════════════════════ */
+@keyframes shield-appear {
+  0%   { opacity: 0;  transform: scaleX(0.3) scaleY(0.7); }
+  30%  { opacity: 1;  transform: scaleX(1.1)  scaleY(1.06); }
+  55%  { opacity: 1;  transform: scaleX(1)    scaleY(1); }
+  100% { opacity: 1;  transform: scaleX(1)    scaleY(1); }
+}
+@keyframes shield-pulse {
+  0%, 100% {
+    box-shadow: 0 0 22px 8px rgba(60,170,255,0.8),
+                0 0 48px 18px rgba(60,170,255,0.35),
+                inset 0 0 16px rgba(140,230,255,0.45);
+  }
+  50% {
+    box-shadow: 0 0 36px 16px rgba(60,170,255,1),
+                0 0 72px 32px rgba(60,170,255,0.55),
+                inset 0 0 28px rgba(160,240,255,0.65);
+  }
+}
+.fighter-shield {
+  border-radius: 12% 72% 72% 12% / 44% 44% 56% 56%;
+  background: linear-gradient(
+    to right,
+    rgba(60, 160, 255, 0.18) 0%,
+    rgba(100, 200, 255, 0.55) 45%,
+    rgba(180, 230, 255, 0.35) 75%,
+    rgba(220, 245, 255, 0.15) 100%
+  );
+  border: 3px solid rgba(120, 210, 255, 1);
+  box-shadow: 0 0 22px 8px rgba(60,170,255,0.8),
+              0 0 48px 18px rgba(60,170,255,0.35),
+              inset 0 0 16px rgba(140,230,255,0.45);
+  animation: shield-appear 280ms ease-out forwards, shield-pulse 800ms ease-in-out 280ms infinite !important;
+}
+
+
+/* ══════════════════════════════════════════════════
+   IMPACT BURST — sparks + ring on hit
+══════════════════════════════════════════════════ */
+@keyframes spark-fly {
+  0%   { transform: translateY(0px)   scale(1);    opacity: 1; }
+  55%  { transform: translateY(-26px) scale(0.65); opacity: 0.85; }
+  100% { transform: translateY(-42px) scale(0.1);  opacity: 0; }
+}
+@keyframes spark-fly-super {
+  0%   { transform: translateY(0px)   scale(1.2);  opacity: 1; }
+  55%  { transform: translateY(-38px) scale(0.7);  opacity: 0.9; }
+  100% { transform: translateY(-62px) scale(0.1);  opacity: 0; }
+}
+@keyframes ring-expand {
+  0%   { width: 4px;  height: 4px;  opacity: 0.9; transform: translate(-2px,  -2px); }
+  100% { width: 64px; height: 64px; opacity: 0;   transform: translate(-32px, -32px); }
+}
+@keyframes ring-expand-super {
+  0%   { width: 6px;   height: 6px;   opacity: 1;   transform: translate(-3px,  -3px); }
+  100% { width: 100px; height: 100px; opacity: 0;   transform: translate(-50px, -50px); }
+}
+
+.impact-burst {
+  width: 0;
+  height: 0;
+}
+.impact-spark-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+}
+.impact-spark {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  background: #ffee44;
+  border-radius: 50%;
+  top: -3.5px;
+  left: -3.5px;
+  box-shadow: 0 0 6px 2px rgba(255, 230, 50, 0.8);
+  animation: spark-fly 480ms ease-out both !important;
+}
+.impact-burst-super .impact-spark {
+  width: 9px;
+  height: 9px;
+  background: #ff7722;
+  top: -4.5px;
+  left: -4.5px;
+  box-shadow: 0 0 10px 4px rgba(255, 100, 30, 0.85);
+  animation: spark-fly-super 650ms ease-out both !important;
+}
+.impact-ring {
+  position: absolute;
+  border: 2.5px solid rgba(255, 235, 60, 0.85);
+  border-radius: 50%;
+  animation: ring-expand 430ms ease-out both !important;
+}
+.impact-burst-super .impact-ring {
+  border-color: rgba(255, 110, 30, 0.9);
+  border-width: 3px;
+  animation: ring-expand-super 600ms ease-out both !important;
+}
