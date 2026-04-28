@@ -3,8 +3,8 @@ import { isUltimateKey } from '../engine/damageEngine.js';
 import { playSound } from '../engine/soundEngine.js';
 
 const ANIM_DURATION = {
-  idle: 500, jump: 900, melee: 700, ranged: 800,
-  dodge: 600, hurt: 500, death: 800, none: 500, ultimate: 1200,
+  idle: 500, jump: 900, hit: 800, shoot: 800,
+  slide: 950, defend: 700, hurt: 500, death: 800, none: 500, ultimate: 1550,
 };
 
 const initialState = {

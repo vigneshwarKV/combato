@@ -9,11 +9,11 @@ const PROVIDER_DEFAULTS = {
 
 const BASE_ACTION_RULES = [
   { action: 'idle',   damage: '0',       note: 'Stand still — no damage, no meter change' },
-  { action: 'jump',   damage: '0',       note: 'Evades melee; still hit by ranged + ultimates; +3 meter on evade' },
-  { action: 'melee',  damage: '10 dmg',  note: 'Close-range; +10 meter on hit; missed by jump/dodge; blocked by defend' },
-  { action: 'ranged', damage: '8 dmg',   note: 'Projectile; +8 meter on hit; missed by dodge; blocked by defend (hits jumpers)' },
-  { action: 'dodge',  damage: '0',       note: 'Evades melee AND ranged; half damage from ultimates; +5 meter' },
-  { action: 'defend', damage: '0',       note: 'Blocks ALL melee + ranged; ultimates pierce full damage; +7 meter on block' },
+  { action: 'jump',   damage: '0',       note: 'Evades hit; still hittable by shoot + ultimates; +3 meter on evade' },
+  { action: 'hit',    damage: '10 dmg',  note: 'Close-range; +10 meter on hit; missed by jump/slide; blocked by defend' },
+  { action: 'shoot',  damage: '8 dmg',   note: 'Projectile; +8 meter on hit; missed by slide; blocked by defend (hits jumpers)' },
+  { action: 'slide',  damage: '0',       note: 'Evades hit AND shoot; half damage from ultimates; +5 meter' },
+  { action: 'defend', damage: '0',       note: 'Blocks ALL hit + shoot; ultimates pierce full damage; +7 meter on block' },
 ];
 
 const TEMPLATE_VARS = [

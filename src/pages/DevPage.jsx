@@ -146,7 +146,7 @@ export default function DevPage() {
       height: '100vh',
       display: 'flex',
       flexDirection: 'column',
-      overflow: 'hidden',
+      overflowX: 'hidden',
       backgroundColor: 'var(--arena-bg)',
     }}>
       {/* Top bar */}
@@ -193,7 +193,7 @@ export default function DevPage() {
               animKeyA={animKeyA}
               animKeyB={animKeyB}
               width={1100}
-              height={520}
+              height={700}
             />
           </div>
         </ArenaBackground>

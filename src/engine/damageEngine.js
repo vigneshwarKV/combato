@@ -1,6 +1,6 @@
 import { CHARACTERS, STATUS_EFFECTS, METER, BASE_DAMAGE, getUltimate } from '../data/characters.js';
 
-export const BASE_ACTIONS = ['idle', 'jump', 'melee', 'ranged', 'dodge', 'defend'];
+export const BASE_ACTIONS = ['idle', 'jump', 'hit', 'shoot', 'slide', 'defend'];
 
 export function isUltimateKey(action) {
   return typeof action === 'string' && action.startsWith('ultimate_');
@@ -108,20 +108,20 @@ export function resolveActions(
 
   // 6. Meter gains from this turn's outcomes
   newMeterA = applyMeterGains(newMeterA, {
-    landedMelee: actualA === 'melee' && aHit,
-    landedRanged: actualA === 'ranged' && aHit,
+    landedHit: actualA === 'hit' && aHit,
+    landedShot: actualA === 'shoot' && aHit,
     tookDamage: damageToA > 0,
-    dodgedAttack: actualA === 'dodge' && !aHit && (actualB === 'melee' || actualB === 'ranged'),
-    blockedAttack: actualA === 'defend' && (actualB === 'melee' || actualB === 'ranged') && !bHit,
-    evadedByJump: actualA === 'jump' && actualB === 'melee' && !bHit,
+    slidPast: actualA === 'slide' && !aHit && (actualB === 'hit' || actualB === 'shoot'),
+    blockedAttack: actualA === 'defend' && (actualB === 'hit' || actualB === 'shoot') && !bHit,
+    evadedByJump: actualA === 'jump' && actualB === 'hit' && !bHit,
   });
   newMeterB = applyMeterGains(newMeterB, {
-    landedMelee: actualB === 'melee' && bHit,
-    landedRanged: actualB === 'ranged' && bHit,
+    landedHit: actualB === 'hit' && bHit,
+    landedShot: actualB === 'shoot' && bHit,
     tookDamage: damageToB > 0,
-    dodgedAttack: actualB === 'dodge' && !bHit && (actualA === 'melee' || actualA === 'ranged'),
-    blockedAttack: actualB === 'defend' && (actualA === 'melee' || actualA === 'ranged') && !aHit,
-    evadedByJump: actualB === 'jump' && actualA === 'melee' && !aHit,
+    slidPast: actualB === 'slide' && !bHit && (actualA === 'hit' || actualA === 'shoot'),
+    blockedAttack: actualB === 'defend' && (actualA === 'hit' || actualA === 'shoot') && !aHit,
+    evadedByJump: actualB === 'jump' && actualA === 'hit' && !aHit,
   });
 
   return {
@@ -145,8 +145,8 @@ function coerceAction(requested, charId, meter, status) {
   }
   if (isUltimateKey(requested)) {
     const ult = getUltimate(charId, requested);
-    if (!ult) return { action: 'melee', reason: 'unknown_ultimate' };
-    if (meter < ult.meterCost) return { action: 'melee', reason: 'insufficient_meter' };
+    if (!ult) return { action: 'hit', reason: 'unknown_ultimate' };
+    if (meter < ult.meterCost) return { action: 'hit', reason: 'insufficient_meter' };
     return { action: requested, reason: null };
   }
   if (!BASE_ACTIONS.includes(requested) && requested !== 'none') {
@@ -157,23 +157,23 @@ function coerceAction(requested, charId, meter, status) {
 
 function computeAttack(attacker, defender, attackerCharId, events, attackerLabel, defenderLabel) {
   // Non-offensive actions
-  if (['idle', 'jump', 'dodge', 'defend', 'none'].includes(attacker)) {
+  if (['idle', 'jump', 'slide', 'defend', 'none'].includes(attacker)) {
     return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: false } };
   }
 
-  if (attacker === 'melee') {
+  if (attacker === 'hit') {
     if (defender === 'jump')   { events.push({ type: 'miss', attacker: attackerLabel, reason: 'jumped' }); return hit(0, false); }
-    if (defender === 'dodge')  { events.push({ type: 'miss', attacker: attackerLabel, reason: 'dodged' }); return hit(0, false); }
-    if (defender === 'defend') { events.push({ type: 'blocked', defender: defenderLabel, kind: 'melee' }); return hit(0, false); }
-    events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: BASE_DAMAGE.melee, kind: 'melee' });
-    return hit(BASE_DAMAGE.melee, true);
+    if (defender === 'slide')  { events.push({ type: 'miss', attacker: attackerLabel, reason: 'slid' }); return hit(0, false); }
+    if (defender === 'defend') { events.push({ type: 'blocked', defender: defenderLabel, kind: 'hit' }); return hit(0, false); }
+    events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: BASE_DAMAGE.hit, kind: 'hit' });
+    return hit(BASE_DAMAGE.hit, true);
   }
 
-  if (attacker === 'ranged') {
-    if (defender === 'dodge')  { events.push({ type: 'miss', attacker: attackerLabel, reason: 'dodged' }); return hit(0, false); }
-    if (defender === 'defend') { events.push({ type: 'blocked', defender: defenderLabel, kind: 'ranged' }); return hit(0, false); }
-    events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: BASE_DAMAGE.ranged, kind: 'ranged' });
-    return hit(BASE_DAMAGE.ranged, true);
+  if (attacker === 'shoot') {
+    if (defender === 'slide')  { events.push({ type: 'miss', attacker: attackerLabel, reason: 'slid' }); return hit(0, false); }
+    if (defender === 'defend') { events.push({ type: 'blocked', defender: defenderLabel, kind: 'shoot' }); return hit(0, false); }
+    events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: BASE_DAMAGE.shoot, kind: 'shoot' });
+    return hit(BASE_DAMAGE.shoot, true);
   }
 
   if (isUltimateKey(attacker)) {
@@ -184,7 +184,7 @@ function computeAttack(attacker, defender, attackerCharId, events, attackerLabel
     let dmg = ult.damage ?? 0;
 
     // Dodge still provides partial protection against Ultimates unless the Ultimate ignores it
-    if (defender === 'dodge' && !ult.ignoresDodge) {
+    if (defender === 'slide' && !ult.ignoresDodge) {
       dmg = Math.floor(dmg / 2);
       events.push({ type: 'partial_dodge', attacker: attackerLabel, victim: defenderLabel, damage: dmg });
     }
@@ -194,7 +194,7 @@ function computeAttack(attacker, defender, attackerCharId, events, attackerLabel
       dmg = Math.floor(dmg * ult.hits / ult.hits) * ult.hits;
       // Already `dmg * hits` conceptually — but we'll scale: treat ult.damage as per-hit
       dmg = (ult.damage ?? 0) * ult.hits;
-      if (defender === 'dodge' && !ult.ignoresDodge) dmg = Math.floor(dmg / 2);
+      if (defender === 'slide' && !ult.ignoresDodge) dmg = Math.floor(dmg / 2);
     }
 
     events.push({ type: 'ultimate', attacker: attackerLabel, victim: defenderLabel, name: ult.name, damage: dmg });
@@ -231,12 +231,12 @@ function hasSkipStatus(statusList) {
   return statusList.some(s => STATUS_EFFECTS[s.type]?.skipsAction);
 }
 
-function applyMeterGains(currentMeter, { landedMelee, landedRanged, tookDamage, dodgedAttack, blockedAttack, evadedByJump }) {
+function applyMeterGains(currentMeter, { landedHit, landedShot, tookDamage, slidPast, blockedAttack, evadedByJump }) {
   let m = currentMeter;
-  if (landedMelee)   m += METER.GAIN_ON_MELEE_HIT;
-  if (landedRanged)  m += METER.GAIN_ON_RANGED_HIT;
+  if (landedHit)     m += METER.GAIN_ON_MELEE_HIT;
+  if (landedShot)    m += METER.GAIN_ON_RANGED_HIT;
   if (tookDamage)    m += METER.GAIN_ON_TAKING_DAMAGE;
-  if (dodgedAttack)  m += METER.GAIN_ON_DODGE;
+  if (slidPast)      m += METER.GAIN_ON_DODGE;
   if (blockedAttack) m += METER.GAIN_ON_BLOCK;
   if (evadedByJump)  m += METER.GAIN_ON_JUMP_EVADE;
   return Math.min(METER.MAX, m);

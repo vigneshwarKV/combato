@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ArenaStage from './ArenaStage.jsx';
 import StatusBars from './StatusBars.jsx';
 import ArenaBackground from './ArenaBackground.jsx';
@@ -15,6 +15,18 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
   // value without needing it in useCallback deps (avoids stale-closure issues).
   const broadcastRef = useRef(null);
   broadcastRef.current = fightConfig.onBroadcastEvent ?? null;
+
+  const stageContainerRef = useRef(null);
+  const [stageWidth, setStageWidth] = useState(1100);
+  useEffect(() => {
+    if (!stageContainerRef.current) return;
+    const ro = new ResizeObserver(entries => {
+      const w = Math.floor(entries[0].contentRect.width);
+      if (w > 0) setStageWidth(w);
+    });
+    ro.observe(stageContainerRef.current);
+    return () => ro.disconnect();
+  }, []);
 
   const host = useFight(fighterA, fighterB, fightConfig, broadcastRef);
   const spectator = useFightRenderer();
@@ -89,7 +101,7 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
   const bgSeed = `${fighterA?.id || fighterA?.name}-${fighterB?.id || fighterB?.name}`;
 
   return (
-    <div className={`h-screen flex flex-col overflow-hidden ${shakeScreen ? 'screen-shake' : ''}`}
+    <div className={`h-screen flex flex-col overflow-x-hidden ${shakeScreen ? 'screen-shake' : ''}`}
          style={{ backgroundColor: 'var(--arena-bg)' }}>
 
       {/* Controls bar */}
@@ -131,7 +143,7 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
       </div>
 
       {/* Stage */}
-      <div className="flex-1 relative min-h-0 overflow-hidden">
+      <div className="flex-1 relative min-h-0 overflow-visible">
         <ArenaBackground seed={bgSeed} parallax>
 
           {/* Status bars */}
@@ -160,7 +172,7 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
           )}
 
           {/* Fighters */}
-          <div style={{
+          <div ref={stageContainerRef} style={{
             position: 'absolute', inset: 0,
             display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
             paddingBottom: '4vh', zIndex: 10,
@@ -172,7 +184,7 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
                 animClassA={animClassA} animClassB={animClassB}
                 animKeyA={animKeyA} animKeyB={animKeyB}
                 hpA={hpA} hpB={hpB}
-                width={1100} height={520}
+                width={stageWidth} height={520}
               />
             ) : (
               <div style={{ display: 'flex', gap: 'min(8vw, 100px)', alignItems: 'flex-end' }}>

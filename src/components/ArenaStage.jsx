@@ -79,11 +79,13 @@ export default function ArenaStage({
         const baseScaleA = (charA.displayScale ?? 1) * (charA.renderMode === 'spine' ? 1 : 1);
         const baseScaleB = (charB.displayScale ?? 1) * (charB.renderMode === 'spine' ? 1 : 1);
 
-        spriteA.x = width / 2 - 110;
+        // Keep at least 80px from each canvas edge so sprites never start outside bounds
+        const sep = Math.min(240, width / 2 - 80);
+        spriteA.x = width / 2 - sep;
         spriteA.y = groundY;
         applyScale(spriteA, baseScaleA, /* mirrored */ false);
 
-        spriteB.x = width / 2 + 110;
+        spriteB.x = width / 2 + sep;
         spriteB.y = groundY;
         applyScale(spriteB, baseScaleB, /* mirrored */ true);
 
@@ -92,16 +94,12 @@ export default function ArenaStage({
         app.stage.addChild(spriteB);
         app.stage.addChild(spriteA);
 
-        // Position shields just in front of each fighter (screen-relative)
-        shieldA.x = spriteA.x + 50;
-        shieldA.y = spriteA.y - 90;
-        shieldB.x = spriteB.x - 50;
-        shieldB.y = spriteB.y - 90;
+        // Shields are created but never shown (removed per design decision)
         app.stage.addChild(shieldA);
         app.stage.addChild(shieldB);
 
-        fighterARef.current = { sprite: spriteA, character: charA, shield: shieldA };
-        fighterBRef.current = { sprite: spriteB, character: charB, shield: shieldB };
+        fighterARef.current = { sprite: spriteA, character: charA, shield: shieldA, baseX: spriteA.x, baseY: spriteA.y, side: 'A', activeTween: null };
+        fighterBRef.current = { sprite: spriteB, character: charB, shield: shieldB, baseX: spriteB.x, baseY: spriteB.y, side: 'B', activeTween: null };
 
         playAnimation(spriteA, charA, 'idle');
         playAnimation(spriteB, charB, 'idle');
@@ -129,10 +127,9 @@ export default function ArenaStage({
     const fa = fighterARef.current;
     if (!fa) return;
     const action = (animClassA || 'anim-idle').replace(/^anim-/, '');
-    playAnimation(fa.sprite, fa.character, action);
+    playAction(fa, fighterBRef.current, action, appRef.current);
     raiseAttacker(fa.sprite, action);
-    if (fa.shield) fa.shield.visible = action === 'defend';
-    if (isProjectileAction(action)) spawnProjectile(appRef.current, fa.sprite, fighterBRef.current?.sprite, action, 'A');
+    if (isProjectileAction(action)) spawnProjectile(appRef.current, fa.sprite, fighterBRef.current?.sprite, action, 'A', charA);
   }, [animClassA, animKeyA]);
 
   // Drive Fighter B animation
@@ -140,10 +137,9 @@ export default function ArenaStage({
     const fb = fighterBRef.current;
     if (!fb) return;
     const action = (animClassB || 'anim-idle').replace(/^anim-/, '');
-    playAnimation(fb.sprite, fb.character, action);
+    playAction(fb, fighterARef.current, action, appRef.current);
     raiseAttacker(fb.sprite, action);
-    if (fb.shield) fb.shield.visible = action === 'defend';
-    if (isProjectileAction(action)) spawnProjectile(appRef.current, fb.sprite, fighterARef.current?.sprite, action, 'B');
+    if (isProjectileAction(action)) spawnProjectile(appRef.current, fb.sprite, fighterARef.current?.sprite, action, 'B', charB);
   }, [animClassB, animKeyB]);
 
   if (!charA || !charB) {
@@ -172,39 +168,53 @@ function makeShield() {
 }
 
 // Pick the projectile sprite for a given action. Ultimate shoots use elemental
-// arrows when the character has them; everything else uses the generic bullet.
-function projectileTexture(action) {
+// arrows when the character has them; otherwise the character's own projectile
+// override (if any), or the generic bullet.
+function projectileTexture(action, character) {
   if (action === 'ultimate_fire')   return '/assets/effects/FireArrow.png';
   if (action === 'ultimate_ice')    return '/assets/effects/IceArrow.png';
   if (action === 'ultimate_poison') return '/assets/effects/IceArrow.png'; // tinted later
+  if (character?.projectile) return character.projectile;
   return '/assets/effects/Bullets.png';
 }
 
 function isProjectileAction(action) {
-  return action === 'ranged'
+  return action === 'shoot'
       || action === 'ultimate_fire'
       || action === 'ultimate_ice'
       || action === 'ultimate_poison';
 }
 
-function spawnProjectile(app, fromSprite, toSprite, action, side) {
+function spawnProjectile(app, fromSprite, toSprite, action, side, character) {
   if (!app || !fromSprite || !toSprite) return;
-  const texUrl = projectileTexture(action);
-  const isArrow = action.startsWith('ultimate_');
+  const delayMs = character?.projectileDelayMs ?? 0;
+  if (delayMs > 0) {
+    setTimeout(() => fireProjectile(app, fromSprite, toSprite, action, side, character), delayMs);
+  } else {
+    fireProjectile(app, fromSprite, toSprite, action, side, character);
+  }
+}
 
-  // Spawn ~gun height of attacker, target chest of opponent.
-  const startX = fromSprite.x + (side === 'A' ? 30 : -30);
-  const startY = fromSprite.y - 110;
-  const endX = toSprite.x + (side === 'A' ? -30 : 30);
-  const endY = toSprite.y - 110;
+function fireProjectile(app, fromSprite, toSprite, action, side, character) {
+  if (!app || !fromSprite || !toSprite) return;
+  const texUrl = projectileTexture(action, character);
+  const isArrow = action.startsWith('ultimate_');
+  const scale = isArrow ? 0.9 : (character?.projectileScale ?? 1.0);
+
+  // Spawn at gun barrel tip (far side of attacker), target chest of opponent.
+  const startX = fromSprite.x + (side === 'A' ? 160 : -160);
+  const startY = fromSprite.y - 80;
+  const endX = toSprite.x + (side === 'A' ? -40 : 40);
+  const endY = toSprite.y - 80;
 
   // Muzzle flash + smoke puff at the gun barrel — only for bullets, not arrows
-  if (!isArrow) spawnMuzzleEffect(app, startX, startY, side);
+  // or thrown weapons (custom projectile means non-gun weapon).
+  if (!isArrow && !character?.projectile) spawnMuzzleEffect(app, startX, startY, side);
 
   PIXI.Assets.load(texUrl).then(texture => {
     const bullet = new PIXI.Sprite(texture);
     bullet.anchor.set(0.5);
-    bullet.scale.set(isArrow ? 0.9 : 1.0);
+    bullet.scale.set(scale);
     if (action === 'ultimate_poison') bullet.tint = 0x84cc16;
 
     bullet.x = startX;
@@ -325,7 +335,7 @@ function applyScale(sprite, base, mirrored) {
 // When a fighter starts attacking, raise their z-index so they render in front
 // during a lunge. Reverts on idle.
 function raiseAttacker(sprite, action) {
-  const isAttacking = action === 'melee' || action === 'ranged' || action.startsWith('ultimate');
+  const isAttacking = action === 'hit' || action === 'shoot' || action.startsWith('ultimate');
   if (sprite.parent) {
     if (isAttacking) sprite.parent.setChildIndex(sprite, sprite.parent.children.length - 1);
   }
@@ -389,13 +399,23 @@ async function loadFrames(character, folder, files) {
 }
 
 function playAnimation(sprite, character, actionKey) {
-  const animationName = character.animations[actionKey] || character.animations.idle;
+  // Accept either a known action key (looked up in animations) or a raw
+  // animation name — useful for phase2 of multi-phase moves.
+  const animationName = character.animations[actionKey] || actionKey || character.animations.idle;
   if (!animationName) return;
 
   if (character.renderMode === 'spine' && sprite.state) {
     const loop = actionKey === 'idle' || actionKey === 'celebrate';
     try {
-      sprite.state.setAnimation(0, animationName, loop);
+      const track = sprite.state.setAnimation(0, animationName, loop);
+      if (track) {
+        if (actionKey === 'defend') {
+          track.trackTime = 0;     // freeze on first frame (matches idle position)
+          track.timeScale = 0;     // freeze on that pose
+        } else {
+          track.timeScale = character.actionTimeScales?.[actionKey] ?? 1;
+        }
+      }
     } catch {
       try { sprite.state.setAnimation(0, character.animations.idle, true); } catch { /* ignore */ }
     }
@@ -411,10 +431,230 @@ function playAnimation(sprite, character, actionKey) {
       sprite.textures = textures;
       sprite.loop = loop;
       sprite.gotoAndPlay(0);
+      // Die frames are taller than idle — push sprite down so the fallen
+      // character lands on the ground rather than floating at mid-height.
+      if (actionKey === 'death' && textures.length > 0) {
+        const idleFiles = sprite._manifest.animations[character.animations.idle];
+        const idleH = sprite._loadedAnims.get(character.animations.idle)?.[0]?.height ?? textures[0].height;
+        const extraH = textures[0].height - idleH;
+        if (extraH > 0) sprite.y += extraH * (character.displayScale ?? 1);
+      }
     };
     if (cached) apply(cached);
     else loadFrames(sprite._character, animationName, files)
       .then(textures => { sprite._loadedAnims.set(animationName, textures); apply(textures); })
       .catch(e => console.warn('[ArenaStage] frame load failed:', e));
   }
+}
+
+// Stop the PNG sprite on a specific frame number (for static defend pose).
+function playStaticFrame(sprite, character, actionKey) {
+  if (character.renderMode !== 'png' || !sprite._manifest) return;
+  const folder = character.animations[actionKey];
+  if (!folder) return;
+  const files = sprite._manifest.animations[folder];
+  if (!files) return;
+  const frameIdx = character.defendStaticFrame ?? 0;
+  const cached = sprite._loadedAnims.get(folder);
+  const apply = (textures) => {
+    sprite.textures = textures;
+    sprite.gotoAndStop(Math.min(frameIdx, textures.length - 1));
+  };
+  if (cached) apply(cached);
+  else loadFrames(character, folder, files)
+    .then(t => { sprite._loadedAnims.set(folder, t); apply(t); })
+    .catch(e => console.warn('[ArenaStage] static frame load failed:', e));
+}
+
+// ── PNG character motion system ──────────────────────────────────────────────
+// Applies to all renderMode:'png' characters. Spine characters skip this path
+// entirely and use playAnimation directly (they handle motion internally).
+
+const PNG_MOTION = {
+  hit:             { kind: 'lunge',  gap: 150, fwdMs: 220, holdMs: 320, retMs: 200 },
+  shoot:           { kind: 'none' },
+  jump:            { kind: 'arc',    peakY: 130, ms: 850 },
+  slide:           { kind: 'glide',  gap: 130, fwdMs: 320, holdMs: 220, retMs: 360 },
+  defend:          { kind: 'static' },
+  ultimate_rocket: { kind: 'flyHit', gap: 160, fwdMs: 900, holdMs: 500, retMs: 300, peakY: 400, phase2: 'hit' },
+  ultimate_roll:   { kind: 'flyHit', gap: 160, fwdMs: 900, holdMs: 500, retMs: 300, peakY: 400, phase2: 'slide' },
+  idle:            { kind: 'none' },
+  hurt:            { kind: 'none' },
+  death:           { kind: 'none' },
+  celebrate:       { kind: 'none' },
+};
+
+function cancelActiveTween(fighter) {
+  if (fighter.activeTween) {
+    try { fighter.activeTween(); } catch { /* ignore */ }
+    fighter.activeTween = null;
+  }
+  // Snap back to base position immediately
+  if (fighter.sprite) {
+    fighter.sprite.x = fighter.baseX;
+    fighter.sprite.y = fighter.baseY;
+  }
+}
+
+function tweenLunge(fighter, opponent, motion, app) {
+  if (!app || !opponent) return;
+  const dir = fighter.side === 'A' ? 1 : -1;
+  const targetX = opponent.baseX - dir * motion.gap;
+  const startX = fighter.baseX;
+  const startTime = performance.now();
+  const totalMs = motion.fwdMs + motion.holdMs + motion.retMs;
+
+  const tick = () => {
+    const elapsed = performance.now() - startTime;
+    if (elapsed <= motion.fwdMs) {
+      const t = elapsed / motion.fwdMs;
+      fighter.sprite.x = startX + (targetX - startX) * easeOut(t);
+    } else if (elapsed <= motion.fwdMs + motion.holdMs) {
+      fighter.sprite.x = targetX;
+    } else if (elapsed <= totalMs) {
+      const t = (elapsed - motion.fwdMs - motion.holdMs) / motion.retMs;
+      fighter.sprite.x = targetX + (startX - targetX) * easeOut(t);
+    } else {
+      fighter.sprite.x = startX;
+      app.ticker.remove(tick);
+      fighter.activeTween = null;
+    }
+  };
+  app.ticker.add(tick);
+  fighter.activeTween = () => app.ticker.remove(tick);
+}
+
+function tweenGlide(fighter, opponent, motion, app) {
+  // Same shape as lunge but with glide easing
+  tweenLunge(fighter, opponent, motion, app);
+}
+
+function tweenArcY(fighter, motion, app) {
+  if (!app) return;
+  const startY = fighter.baseY;
+  const peakY = startY - motion.peakY;
+  const startTime = performance.now();
+
+  const tick = () => {
+    const elapsed = performance.now() - startTime;
+    const t = Math.min(elapsed / motion.ms, 1);
+    // Parabola: peaks at t=0.5
+    const arc = 4 * t * (1 - t);
+    fighter.sprite.y = startY + (peakY - startY) * arc;
+    if (t >= 1) {
+      fighter.sprite.y = startY;
+      app.ticker.remove(tick);
+      fighter.activeTween = null;
+    }
+  };
+  app.ticker.add(tick);
+  fighter.activeTween = () => app.ticker.remove(tick);
+}
+
+function tweenFlyHit(fighter, opponent, motion, app) {
+  if (!app || !opponent) return;
+  const dir = fighter.side === 'A' ? 1 : -1;
+  const targetX = opponent.baseX - dir * motion.gap;
+  const startX = fighter.baseX;
+  const startY = fighter.baseY;
+  const peakY = startY - (motion.peakY ?? 80);
+  // endY: where phase 1 lands (and where hold + return-from happen).
+  // endYOffset > 0 means land above the ground (e.g., at opponent's head).
+  const endY = startY - (motion.endYOffset ?? 0);
+  const startTime = performance.now();
+  const totalMs = motion.fwdMs + motion.holdMs + motion.retMs;
+  let phase2Triggered = false;
+
+  const tick = () => {
+    const elapsed = performance.now() - startTime;
+    if (elapsed <= motion.fwdMs) {
+      const t = elapsed / motion.fwdMs;
+      fighter.sprite.x = startX + (targetX - startX) * t;
+      // Linear from startY → endY, plus a sin arc above the line that peaks at t=0.5.
+      const linearY = startY + (endY - startY) * t;
+      const arcOffset = (peakY - startY) * Math.sin(Math.PI * t);
+      fighter.sprite.y = linearY + arcOffset;
+      // Switch to Hit animation on the descent, just before landing
+      if (!phase2Triggered && t >= 0.78 && motion.phase2) {
+        phase2Triggered = true;
+        playAnimation(fighter.sprite, fighter.character, motion.phase2);
+      }
+    } else if (elapsed <= motion.fwdMs + motion.holdMs) {
+      fighter.sprite.x = targetX;
+      fighter.sprite.y = endY;
+    } else if (elapsed <= totalMs) {
+      const t = (elapsed - motion.fwdMs - motion.holdMs) / motion.retMs;
+      fighter.sprite.x = targetX + (startX - targetX) * easeOut(t);
+      fighter.sprite.y = endY + (startY - endY) * easeOut(t);
+    } else {
+      fighter.sprite.x = startX;
+      fighter.sprite.y = startY;
+      app.ticker.remove(tick);
+      fighter.activeTween = null;
+    }
+  };
+  app.ticker.add(tick);
+  fighter.activeTween = () => app.ticker.remove(tick);
+}
+
+function easeOut(t) {
+  return 1 - Math.pow(1 - t, 2);
+}
+
+function playAction(fighter, opponent, action, app) {
+  if (!fighter) return;
+  // Skip motion system for characters without a motionProfile and not PNG.
+  if (fighter.character.renderMode !== 'png' && !fighter.character.motionProfile) {
+    playAnimation(fighter.sprite, fighter.character, action);
+    return;
+  }
+
+  const DEFAULT_ULTIMATE_MOTION = { kind: 'flyHit', gap: 160, fwdMs: 900, holdMs: 500, retMs: 300, peakY: 400, phase2: 'hit' };
+  const baseMotion = PNG_MOTION[action] ?? (action.startsWith('ultimate_') ? DEFAULT_ULTIMATE_MOTION : PNG_MOTION.idle);
+  const override = fighter.character.motionOverrides?.[action];
+  const motion = override ? { ...baseMotion, ...override } : baseMotion;
+  cancelActiveTween(fighter);
+
+  switch (motion.kind) {
+    case 'lunge':
+      playAnimation(fighter.sprite, fighter.character, action);
+      tweenLunge(fighter, opponent, motion, app);
+      break;
+    case 'glide':
+      playAnimation(fighter.sprite, fighter.character, action);
+      tweenGlide(fighter, opponent, motion, app);
+      break;
+    case 'arc':
+      playAnimation(fighter.sprite, fighter.character, action);
+      tweenArcY(fighter, motion, app);
+      break;
+    case 'static':
+      if (fighter.character.animations[action]) {
+        if (fighter.character.renderMode === 'png') {
+          playStaticFrame(fighter.sprite, fighter.character, action);
+        } else {
+          playAnimation(fighter.sprite, fighter.character, action);
+          const offset = fighter.character.defendOffsetX;
+          if (offset) {
+            const dir = fighter.side === 'A' ? 1 : -1;
+            fighter.sprite.x = fighter.baseX + dir * offset;
+          }
+        }
+      } else {
+        playAnimation(fighter.sprite, fighter.character, 'idle');
+      }
+      break;
+    case 'flyHit':
+      playAnimation(fighter.sprite, fighter.character, action);
+      tweenFlyHit(fighter, opponent, motion, app);
+      break;
+    case 'none':
+    default:
+      playAnimation(fighter.sprite, fighter.character, action);
+      break;
+  }
+  // Per-action Y offset (e.g., for Spine animations that displace the body
+  // outside the canvas — push the sprite up to compensate).
+  const yOffset = fighter.character.actionYOffsets?.[action];
+  if (yOffset) fighter.sprite.y = fighter.baseY + yOffset;
 }

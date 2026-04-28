@@ -6,18 +6,18 @@ const MOCK_AI = false;
 // Human-readable rules block included in every LLM prompt.
 export const GAME_RULES = `ACTION SYSTEM:
   idle    → stand still, 0 dmg, no meter change
-  jump    → evades melee only; still hittable by ranged and Ultimates; +${METER.GAIN_ON_JUMP_EVADE} meter on melee evade
-  melee   → ${BASE_DAMAGE.melee} dmg close-range hit; +${METER.GAIN_ON_MELEE_HIT} meter on landed hit; MISSED by jump or dodge; BLOCKED by defend
-  ranged  → ${BASE_DAMAGE.ranged} dmg projectile; +${METER.GAIN_ON_RANGED_HIT} meter on landed hit; MISSED by dodge (still hits jumpers); BLOCKED by defend
-  dodge   → evades both melee AND ranged; does not evade Ultimates (takes half damage unless Ultimate ignores dodge); +${METER.GAIN_ON_DODGE} meter on successful dodge
-  defend  → blocks ALL melee and ranged damage (0 dmg); does NOT block Ultimates (full damage passes through); +${METER.GAIN_ON_BLOCK} meter on successful block
+  jump    → evades hit only; still hittable by shoot and Ultimates; +${METER.GAIN_ON_JUMP_EVADE} meter on hit evade
+  hit     → ${BASE_DAMAGE.hit} dmg close-range attack; +${METER.GAIN_ON_MELEE_HIT} meter on landed hit; MISSED by jump or slide; BLOCKED by defend
+  shoot   → ${BASE_DAMAGE.shoot} dmg projectile; +${METER.GAIN_ON_RANGED_HIT} meter on landed hit; MISSED by slide (still hits jumpers); BLOCKED by defend
+  slide   → evades both hit AND shoot; does not evade Ultimates (takes half damage unless Ultimate ignores slide); +${METER.GAIN_ON_DODGE} meter on successful slide
+  defend  → blocks ALL hit and shoot damage (0 dmg); does NOT block Ultimates (full damage passes through); +${METER.GAIN_ON_BLOCK} meter on successful block
   Ultimates → character-specific; cost meter; effects vary (damage, status, heal, reflect); pierce defend
 
 SUPER METER:
   Meter fills from 0→${METER.MAX} during the fight.
-  Gain meter by landing hits, dodging, jumping, or TAKING DAMAGE (+${METER.GAIN_ON_TAKING_DAMAGE} comeback bonus).
+  Gain meter by landing hits, sliding, jumping, or TAKING DAMAGE (+${METER.GAIN_ON_TAKING_DAMAGE} comeback bonus).
   Spend meter on Ultimates.
-  If you choose an Ultimate but lack the meter cost, it falls back to 'melee' (you waste the turn).
+  If you choose an Ultimate but lack the meter cost, it falls back to 'hit' (you waste the turn).
 
 STATUS EFFECTS:
   burn   → -5 HP/turn for 3 turns
@@ -69,7 +69,7 @@ function describeCharacterMoveset(charId) {
   if (!c) return '';
   const ultsText = c.ultimates.map(describeUltimate).join('\n  ');
   return `You are playing ${c.name} (${c.archetype}). ${c.description}
-  Base actions: idle, jump, melee, ranged, dodge
+  Base actions: idle, jump, hit, shoot, slide
   Ultimates:
   ${ultsText}`;
 }
@@ -265,7 +265,7 @@ export const DEMO_FIGHTERS = [
     provider: 'groq',
     model: '',
     character: 'madScientist',
-    prompt: `You are an aggressive striker. Alternate melee and ranged to build meter fast, then spend on your most damaging Ultimate.
+    prompt: `You are an aggressive striker. Alternate hit and shoot to build meter fast, then spend on your most damaging Ultimate.
 Current meter: {meter}. Your moveset: {moveset}
 
 Return ONLY a JSON array of exactly {N} actions.`,
@@ -276,7 +276,7 @@ Return ONLY a JSON array of exactly {N} actions.`,
     provider: 'groq',
     model: '',
     character: 'turtle',
-    prompt: `You are defensive. Open with dodge to bait attacks, use Shell Spin to reflect, heal via Fortress Mode when low HP.
+    prompt: `You are defensive. Open with slide to bait attacks, use Shell Spin to reflect, heal via Fortress Mode when low HP.
 Current meter: {meter}. Your moveset: {moveset}
 
 Return ONLY a JSON array of exactly {N} actions.`,
@@ -287,7 +287,7 @@ Return ONLY a JSON array of exactly {N} actions.`,
     provider: 'groq',
     model: '',
     character: 'womanHero',
-    prompt: `You are a mage. Chip with ranged to build meter, apply poison with Venom Burst (50 meter), save Fire Storm for finishing.
+    prompt: `You are a mage. Chip with shoot to build meter, apply poison with Venom Burst (50 meter), save Fire Storm for finishing.
 Current meter: {meter}. Your moveset: {moveset}
 
 Return ONLY a JSON array of exactly {N} actions.`,

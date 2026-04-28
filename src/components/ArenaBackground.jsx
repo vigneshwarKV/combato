@@ -36,7 +36,7 @@ export default function ArenaBackground({ seed = 'default', parallax = true, chi
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'visible' }}>
       {parallax ? (
         <>
           <div style={{ ...layerStyle, backgroundImage: `url(${base}/layers/back_land.png)` }} />
