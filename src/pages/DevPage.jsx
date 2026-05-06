@@ -39,7 +39,7 @@ function ActionButton({ label, active, isUltimate, onClick }) {
   );
 }
 
-function FighterPanel({ side, charId, onCharChange, onAction, activeAction }) {
+function FighterPanel({ side, charId, onCharChange, onSelect, selectedAction }) {
   const character = CHARACTERS[charId];
   if (!character) return null;
 
@@ -91,9 +91,9 @@ function FighterPanel({ side, charId, onCharChange, onAction, activeAction }) {
           <ActionButton
             key={key}
             label={actionLabel(key, character)}
-            active={activeAction === key}
+            active={selectedAction === key}
             isUltimate={false}
-            onClick={() => onAction(key)}
+            onClick={() => onSelect(key)}
           />
         ))}
       </div>
@@ -105,9 +105,9 @@ function FighterPanel({ side, charId, onCharChange, onAction, activeAction }) {
             <ActionButton
               key={key}
               label={actionLabel(key, character)}
-              active={activeAction === key}
+              active={selectedAction === key}
               isUltimate
-              onClick={() => onAction(key)}
+              onClick={() => onSelect(key)}
             />
           ))}
         </div>
@@ -124,19 +124,28 @@ export default function DevPage() {
   const [animClassB, setAnimClassB] = useState('anim-idle');
   const [animKeyA, setAnimKeyA] = useState(0);
   const [animKeyB, setAnimKeyB] = useState(0);
-  const [activeA, setActiveA] = useState('idle');
-  const [activeB, setActiveB] = useState('idle');
+  const [selectedA, setSelectedA] = useState('idle');
+  const [selectedB, setSelectedB] = useState('idle');
 
-  const fireA = useCallback((key) => {
-    setAnimClassA(`anim-${key}`);
+  const fireBoth = useCallback(() => {
+    setAnimClassA(`anim-${selectedA}`);
     setAnimKeyA(k => k + 1);
-    setActiveA(key);
+    setAnimClassB(`anim-${selectedB}`);
+    setAnimKeyB(k => k + 1);
+  }, [selectedA, selectedB]);
+
+  const resetA = useCallback((id) => {
+    setCharAId(id);
+    setSelectedA('idle');
+    setAnimClassA('anim-idle');
+    setAnimKeyA(k => k + 1);
   }, []);
 
-  const fireB = useCallback((key) => {
-    setAnimClassB(`anim-${key}`);
+  const resetB = useCallback((id) => {
+    setCharBId(id);
+    setSelectedB('idle');
+    setAnimClassB('anim-idle');
     setAnimKeyB(k => k + 1);
-    setActiveB(key);
   }, []);
 
   const bgSeed = `${charAId}-${charBId}`;
@@ -204,24 +213,72 @@ export default function DevPage() {
         display: 'flex',
         flexShrink: 0,
         borderTop: '2px solid rgba(255,215,0,0.2)',
-        maxHeight: 140,
+        maxHeight: 180,
         overflow: 'auto',
       }}>
         <FighterPanel
           side="A"
           charId={charAId}
-          onCharChange={id => { setCharAId(id); fireA('idle'); }}
-          onAction={fireA}
-          activeAction={activeA}
+          onCharChange={resetA}
+          onSelect={setSelectedA}
+          selectedAction={selectedA}
         />
         <div style={{ width: 1, background: 'rgba(255,215,0,0.15)', flexShrink: 0 }} />
         <FighterPanel
           side="B"
           charId={charBId}
-          onCharChange={id => { setCharBId(id); fireB('idle'); }}
-          onAction={fireB}
-          activeAction={activeB}
+          onCharChange={resetB}
+          onSelect={setSelectedB}
+          selectedAction={selectedB}
         />
+      </div>
+
+      {/* Attack bar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 16,
+        padding: '10px 16px',
+        background: 'rgba(8,0,13,0.95)',
+        borderTop: '1px solid rgba(255,215,0,0.2)',
+        flexShrink: 0,
+      }}>
+        <span style={{
+          fontFamily: 'var(--font-arena)',
+          fontSize: 11,
+          color: 'rgba(255,215,0,0.7)',
+          letterSpacing: '0.1em',
+        }}>
+          A: <span style={{ color: 'var(--neon-gold)' }}>{actionLabel(selectedA, CHARACTERS[charAId])}</span>
+        </span>
+        <button
+          onClick={fireBoth}
+          style={{
+            padding: '8px 28px',
+            fontFamily: 'var(--font-arena)',
+            fontSize: 14,
+            letterSpacing: '0.2em',
+            textTransform: 'uppercase',
+            border: '2px solid #ef4444',
+            background: 'linear-gradient(180deg, rgba(239,68,68,0.3), rgba(127,29,29,0.5))',
+            color: '#fecaca',
+            cursor: 'pointer',
+            borderRadius: 4,
+            boxShadow: '0 0 12px rgba(239,68,68,0.5)',
+            fontWeight: 'bold',
+          }}
+        >
+          ⚔ Attack
+        </button>
+        <span style={{
+          fontFamily: 'var(--font-arena)',
+          fontSize: 11,
+          color: 'rgba(255,215,0,0.7)',
+          letterSpacing: '0.1em',
+        }}>
+          B: <span style={{ color: 'var(--neon-gold)' }}>{actionLabel(selectedB, CHARACTERS[charBId])}</span>
+        </span>
       </div>
     </div>
   );
