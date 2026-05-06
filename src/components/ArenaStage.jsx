@@ -98,6 +98,11 @@ export default function ArenaStage({
         app.stage.addChild(shieldA);
         app.stage.addChild(shieldB);
 
+        // Stash app on sprites so per-frame helpers (e.g., slot-tint enforcer)
+        // can access app.ticker without threading it through every callsite.
+        spriteA._pixiApp = app;
+        spriteB._pixiApp = app;
+
         fighterARef.current = { sprite: spriteA, character: charA, shield: shieldA, baseX: spriteA.x, baseY: spriteA.y, side: 'A', activeTween: null };
         fighterBRef.current = { sprite: spriteB, character: charB, shield: shieldB, baseX: spriteB.x, baseY: spriteB.y, side: 'B', activeTween: null };
 
@@ -129,7 +134,7 @@ export default function ArenaStage({
     const action = (animClassA || 'anim-idle').replace(/^anim-/, '');
     playAction(fa, fighterBRef.current, action, appRef.current);
     raiseAttacker(fa.sprite, action);
-    if (isProjectileAction(action)) spawnProjectile(appRef.current, fa.sprite, fighterBRef.current?.sprite, action, 'A', charA);
+    if (isProjectileAction(action, charA)) spawnProjectile(appRef.current, fa.sprite, fighterBRef.current?.sprite, action, 'A', charA);
   }, [animClassA, animKeyA]);
 
   // Drive Fighter B animation
@@ -139,7 +144,7 @@ export default function ArenaStage({
     const action = (animClassB || 'anim-idle').replace(/^anim-/, '');
     playAction(fb, fighterARef.current, action, appRef.current);
     raiseAttacker(fb.sprite, action);
-    if (isProjectileAction(action)) spawnProjectile(appRef.current, fb.sprite, fighterARef.current?.sprite, action, 'B', charB);
+    if (isProjectileAction(action, charB)) spawnProjectile(appRef.current, fb.sprite, fighterARef.current?.sprite, action, 'B', charB);
   }, [animClassB, animKeyB]);
 
   if (!charA || !charB) {
@@ -171,44 +176,81 @@ function makeShield() {
 // arrows when the character has them; otherwise the character's own projectile
 // override (if any), or the generic bullet.
 function projectileTexture(action, character) {
+  if (action === 'hit' && character?.hitProjectile) return character.hitProjectile;
   if (action === 'ultimate_fire')   return '/assets/effects/FireArrow.png';
   if (action === 'ultimate_ice')    return '/assets/effects/IceArrow.png';
   if (action === 'ultimate_poison') return '/assets/effects/IceArrow.png'; // tinted later
+  if (action === 'ultimate_arrow')  return '/assets/effects/FireArrow.png'; // tinted green later
   if (character?.projectile) return character.projectile;
   return '/assets/effects/Bullets.png';
 }
 
-function isProjectileAction(action) {
-  return action === 'shoot'
+function isProjectileAction(action, character) {
+  if (action === 'shoot'
       || action === 'ultimate_fire'
       || action === 'ultimate_ice'
-      || action === 'ultimate_poison';
+      || action === 'ultimate_poison'
+      || action === 'ultimate_arrow') return true;
+  return character?.extraProjectileActions?.includes(action) ?? false;
 }
 
 function spawnProjectile(app, fromSprite, toSprite, action, side, character) {
   if (!app || !fromSprite || !toSprite) return;
-  const delayMs = character?.projectileDelayMs ?? 0;
+  const delayMs = character?.projectileDelayByAction?.[action]
+    ?? character?.projectileDelayMs ?? 0;
+  const motionOverride = character?.motionOverrides?.[action];
+  const spreadShot = motionOverride?.spreadShot;
+
+  if (spreadShot) {
+    const stagger = motionOverride?.spreadStagger ?? 100;
+    const releaseDelay = motionOverride?.releaseDelay ?? 0;
+    // Each entry: { endYOff, rotation }. The character tilts to "aim" each
+    // direction before releasing, then re-triggers the shoot animation.
+    const sequence = motionOverride?.spread ?? [
+      { endYOff: -80, rotation: 0 },
+      { endYOff:  80, rotation: 0 },
+      { endYOff:   0, rotation: 0 },
+    ];
+    sequence.forEach((step, i) => {
+      const animAt = delayMs + i * stagger;
+      const startAnim = () => {
+        // Tilt the sprite to aim. Anchor is at the feet so the head/bow rotates.
+        if (step.rotation !== undefined) fromSprite.rotation = step.rotation;
+        playAnimation(fromSprite, character, action);
+        const releaseFn = () => fireProjectile(app, fromSprite, toSprite, action, side, character, step.endYOff ?? 0);
+        if (releaseDelay > 0) setTimeout(releaseFn, releaseDelay);
+        else releaseFn();
+      };
+      if (animAt > 0) setTimeout(startAnim, animAt);
+      else startAnim();
+    });
+    return;
+  }
+
   if (delayMs > 0) {
-    setTimeout(() => fireProjectile(app, fromSprite, toSprite, action, side, character), delayMs);
+    setTimeout(() => fireProjectile(app, fromSprite, toSprite, action, side, character, 0), delayMs);
   } else {
-    fireProjectile(app, fromSprite, toSprite, action, side, character);
+    fireProjectile(app, fromSprite, toSprite, action, side, character, 0);
   }
 }
 
-function fireProjectile(app, fromSprite, toSprite, action, side, character) {
+// endYOffset shifts the TARGET Y on the opponent (positive = lower). For spread
+// shots each arrow fans to a different vertical position on the opponent.
+function fireProjectile(app, fromSprite, toSprite, action, side, character, endYOffset = 0) {
   if (!app || !fromSprite || !toSprite) return;
   const texUrl = projectileTexture(action, character);
-  const isArrow = action.startsWith('ultimate_');
-  const scale = isArrow ? 0.9 : (character?.projectileScale ?? 1.0);
+  const isArrow = action.startsWith('ultimate_') || (action === 'hit' && !!character?.hitProjectile);
+  const scale = character?.projectileScale ?? (isArrow ? 0.9 : 1.0);
 
-  // Spawn at gun barrel tip (far side of attacker), target chest of opponent.
-  const startX = fromSprite.x + (side === 'A' ? 160 : -160);
-  const startY = fromSprite.y - 80;
+  // Start at attacker's current Y (correct when firing mid-jump), target opponent chest ± offset.
+  const startXOff = character?.projectileStartXByAction?.[action] ?? 160;
+  const startX = fromSprite.x + (side === 'A' ? startXOff : -startXOff);
+  const startYOff = character?.projectileStartYByAction?.[action] ?? -80;
+  const startY = fromSprite.y + startYOff;
   const endX = toSprite.x + (side === 'A' ? -40 : 40);
-  const endY = toSprite.y - 80;
+  const endY = toSprite.y - 80 + endYOffset;
 
-  // Muzzle flash + smoke puff at the gun barrel — only for bullets, not arrows
-  // or thrown weapons (custom projectile means non-gun weapon).
+  // Muzzle flash only for bullets (no custom projectile, no arrow).
   if (!isArrow && !character?.projectile) spawnMuzzleEffect(app, startX, startY, side);
 
   PIXI.Assets.load(texUrl).then(texture => {
@@ -219,9 +261,6 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character) {
 
     bullet.x = startX;
     bullet.y = startY;
-    // Rotation alone aligns the bullet with the firing direction. Don't also
-    // flip scale.x — that would double-mirror it for fighter B and the bullet
-    // would face the wrong way.
     bullet.rotation = Math.atan2(endY - startY, endX - startX);
     app.stage.addChild(bullet);
 
@@ -416,6 +455,7 @@ function playAnimation(sprite, character, actionKey) {
           track.timeScale = character.actionTimeScales?.[actionKey] ?? 1;
         }
       }
+      applySlotTints(sprite, character, actionKey);
     } catch {
       try { sprite.state.setAnimation(0, character.animations.idle, true); } catch { /* ignore */ }
     }
@@ -445,6 +485,74 @@ function playAnimation(sprite, character, actionKey) {
       .then(textures => { sprite._loadedAnims.set(animationName, textures); apply(textures); })
       .catch(e => console.warn('[ArenaStage] frame load failed:', e));
   }
+}
+
+// Per-action slot color tinting + attachment swapping for Spine characters.
+// Shoot animations have BOTH rgba and attachment timelines that overwrite our
+// edits every frame, so a per-frame ticker is needed to keep the override on.
+// Tears down on action change.
+function applySlotTints(sprite, character, actionKey) {
+  if (!sprite?.skeleton?.findSlot) return;
+  const app = sprite._pixiApp;
+
+  if (sprite._tintTicker && app) {
+    app.ticker.remove(sprite._tintTicker);
+    sprite._tintTicker = null;
+  }
+
+  const tints = character.slotTints?.[actionKey] ?? {};
+  const swaps = character.attachmentSwaps?.[actionKey] ?? {};
+
+  // Reset any slot this character ever tints back to white. Animation
+  // attachment timelines naturally re-set on the next setAnimation, so
+  // attachment swap doesn't need a manual reset path.
+  const allTintSlots = new Set();
+  for (const map of Object.values(character.slotTints ?? {})) {
+    for (const name of Object.keys(map)) allTintSlots.add(name);
+  }
+  for (const name of allTintSlots) {
+    const slot = sprite.skeleton.findSlot(name);
+    if (slot?.color) { slot.color.r = 1; slot.color.g = 1; slot.color.b = 1; }
+  }
+
+  const tintEntries = Object.entries(tints);
+  const swapEntries = Object.entries(swaps);
+  if ((tintEntries.length === 0 && swapEntries.length === 0) || !app) return;
+
+  const rgb = tintEntries.map(([name, c]) => ({
+    name,
+    r: ((c >> 16) & 0xff) / 255,
+    g: ((c >> 8) & 0xff) / 255,
+    b: (c & 0xff) / 255,
+  }));
+
+  const tickerFn = () => {
+    for (const t of rgb) {
+      const slot = sprite.skeleton.findSlot(t.name);
+      if (slot?.color) { slot.color.r = t.r; slot.color.g = t.g; slot.color.b = t.b; }
+    }
+    for (const [slotName, attachmentName] of swapEntries) {
+      try {
+        const slot = sprite.skeleton.findSlot(slotName);
+        if (!slot) continue;
+        // Try the modern setAttachment API first; fall back to looking up the
+        // attachment via the skin and assigning directly.
+        if (typeof sprite.skeleton.setAttachment === 'function') {
+          sprite.skeleton.setAttachment(slotName, attachmentName);
+        } else {
+          const skin = sprite.skeleton.skin ?? sprite.skeleton.data?.defaultSkin;
+          const att = skin?.getAttachment?.(slot.data.index, attachmentName)
+                   ?? skin?.attachments?.[slotName]?.[attachmentName];
+          if (att) slot.setAttachment ? slot.setAttachment(att) : (slot.attachment = att);
+        }
+      } catch { /* ignore */ }
+    }
+  };
+  // LOW priority so this fires AFTER the Spine state.apply() that runs each
+  // frame — otherwise our overrides are immediately overwritten by the
+  // animation's rgba and attachment timelines.
+  app.ticker.add(tickerFn, null, PIXI.UPDATE_PRIORITY.LOW);
+  sprite._tintTicker = tickerFn;
 }
 
 // Stop the PNG sprite on a specific frame number (for static defend pose).
@@ -493,6 +601,7 @@ function cancelActiveTween(fighter) {
   if (fighter.sprite) {
     fighter.sprite.x = fighter.baseX;
     fighter.sprite.y = fighter.baseY;
+    fighter.sprite.rotation = 0;
   }
 }
 
@@ -542,6 +651,37 @@ function tweenArcY(fighter, motion, app) {
     const arc = 4 * t * (1 - t);
     fighter.sprite.y = startY + (peakY - startY) * arc;
     if (t >= 1) {
+      fighter.sprite.y = startY;
+      app.ticker.remove(tick);
+      fighter.activeTween = null;
+    }
+  };
+  app.ticker.add(tick);
+  fighter.activeTween = () => app.ticker.remove(tick);
+}
+
+// Jump straight up, hold at peak (firing phase), arc back down. No X movement.
+function tweenJumpShoot(fighter, motion, app) {
+  if (!app) return;
+  const startY = fighter.baseY;
+  const peakY = startY - (motion.peakY ?? 200);
+  const startTime = performance.now();
+  const upMs = motion.upMs ?? 400;
+  const holdMs = motion.holdMs ?? 150;
+  const downMs = motion.downMs ?? 400;
+  const totalMs = upMs + holdMs + downMs;
+
+  const tick = () => {
+    const elapsed = performance.now() - startTime;
+    if (elapsed <= upMs) {
+      const t = elapsed / upMs;
+      fighter.sprite.y = startY + (peakY - startY) * easeOut(t);
+    } else if (elapsed <= upMs + holdMs) {
+      fighter.sprite.y = peakY;
+    } else if (elapsed <= totalMs) {
+      const t = (elapsed - upMs - holdMs) / downMs;
+      fighter.sprite.y = peakY + (startY - peakY) * easeOut(t);
+    } else {
       fighter.sprite.y = startY;
       app.ticker.remove(tick);
       fighter.activeTween = null;
@@ -628,10 +768,18 @@ function playAction(fighter, opponent, action, app) {
       playAnimation(fighter.sprite, fighter.character, action);
       tweenArcY(fighter, motion, app);
       break;
+    case 'jumpShoot':
+      playAnimation(fighter.sprite, fighter.character, action);
+      tweenJumpShoot(fighter, motion, app);
+      break;
     case 'static':
       if (fighter.character.animations[action]) {
         if (fighter.character.renderMode === 'png') {
           playStaticFrame(fighter.sprite, fighter.character, action);
+        } else if (motion.spreadShot) {
+          // spawnProjectile triggers playAnimation once per arrow; skip the
+          // initial play here so we don't see an extra empty draw/release
+          // before the first arrow fires.
         } else {
           playAnimation(fighter.sprite, fighter.character, action);
           const offset = fighter.character.defendOffsetX;
