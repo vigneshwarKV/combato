@@ -26,15 +26,14 @@ const initialState = {
 };
 
 // Returns the ms delay at which the impact sound should fire, or null when
-// nothing landed this turn. Picks the earliest impact among damaging attacks
-// so audio aligns with the first visual reaction.
+// nothing landed this turn. Aligns audio with the visible "ouch" — i.e. when
+// the victim swaps to hurt/death, which is normally the visual impact but is
+// deferred to landing time for projectile-hit-vs-jumper.
 function soundImpactDelay(timing) {
-  const { reactionA, reactionB, impactA, impactB } = timing;
-  // impactA = when A's attack hits B; impactB = when B's attack hits A.
-  // reactionA fires when A took damage (i.e. B's attack landed at impactB).
+  const { reactionA, reactionB, reactionAtA, reactionAtB } = timing;
   const hits = [];
-  if (reactionA) hits.push(impactB);
-  if (reactionB) hits.push(impactA);
+  if (reactionA) hits.push(reactionAtA);
+  if (reactionB) hits.push(reactionAtB);
   if (hits.length === 0) return null;
   return Math.min(...hits);
 }
@@ -183,12 +182,14 @@ export function useFightRenderer() {
         if (timing.launchAnimB) {
           setTimeout(() => dispatch({ type: 'LAUNCH_ACTION_B', anim: timing.launchAnimB }), timing.launchAtB);
         }
-        // Victim reactions land when the attacker's blow visually connects.
+        // Victim reactions fire at `reactionAt*` — the attacker's visual
+        // impact for melee/ult, or the jumper's landing time when a projectile
+        // hit (e.g., womanHero's ice arrow) catches an airborne defender.
         if (timing.reactionA) {
-          setTimeout(() => dispatch({ type: 'VICTIM_REACTION_A', reaction: timing.reactionA }), timing.impactB);
+          setTimeout(() => dispatch({ type: 'VICTIM_REACTION_A', reaction: timing.reactionA }), timing.reactionAtA);
         }
         if (timing.reactionB) {
-          setTimeout(() => dispatch({ type: 'VICTIM_REACTION_B', reaction: timing.reactionB }), timing.impactA);
+          setTimeout(() => dispatch({ type: 'VICTIM_REACTION_B', reaction: timing.reactionB }), timing.reactionAtB);
         }
         // Skip the idle-clear for a fighter that just got KO'd — the KO
         // event sets them to anim-death; an interim idle flash would jar.

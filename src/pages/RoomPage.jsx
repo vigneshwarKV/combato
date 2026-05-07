@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useMatchHost } from '../hooks/useMatchHost.js';
 import { useMatchClient } from '../hooks/useMatchClient.js';
-import { CHARACTER_LIST, CHARACTERS } from '../data/characters.js';
+import { CHARACTER_LIST, CHARACTERS, BASE_DAMAGE } from '../data/characters.js';
 import { getCharacterTemplate, DEFAULT_PROMPT } from '../data/promptTemplates.js';
 import PromptEditor from '../components/PromptEditor.jsx';
 import PromptEditorSimple from '../components/PromptEditorSimple.jsx';
@@ -10,53 +10,105 @@ import Arena from '../components/Arena.jsx';
 import BracketView from '../components/BracketView.jsx';
 import ChampionView from '../components/ChampionView.jsx';
 import CharImage from '../components/CharImage.jsx';
+import CharacterPreview from '../components/CharacterPreview.jsx';
 
-// ── Character detail panel ────────────────────────────────────────────────────
+// First letter of archetype, used as a small corner badge on each tile.
+const ARCHETYPE_GLYPH = { tank: 'T', striker: 'S', mage: 'M', acrobat: 'A', ranger: 'R' };
 
-function CharacterDetail({ char }) {
-  if (!char) {
-    return (
-      <div className="flex items-center justify-center p-6" style={{ color: 'var(--text-muted)' }}>
-        <div className="text-center">
-          <div className="font-arena text-base mb-1" style={{ letterSpacing: '0.15em' }}>Select a Character</div>
-          <div className="text-xs">to see their abilities</div>
-        </div>
-      </div>
-    );
-  }
+function StatStars({ label, value, tone, max = 5 }) {
   return (
-    <div className="flex flex-col gap-3 p-3">
-      <div className="flex items-center gap-3">
-        <div style={{ width: 56, height: 56, flexShrink: 0, background: 'rgba(255,215,0,0.05)', border: '1px solid var(--arena-panel-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-          <CharImage char={char} size={54} />
-        </div>
-        <div>
-          <div className="font-arena" style={{ color: 'var(--neon-gold)', letterSpacing: '0.06em', lineHeight: 1.1 }}>{char.name}</div>
-          <div className="text-xs uppercase tracking-widest" style={{ color: 'var(--neon-red)', fontFamily: 'var(--font-arena)' }}>{char.archetype}</div>
-          <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)', lineHeight: 1.3 }}>{char.description}</div>
+    <span className={`tile-stat tile-stat-${tone}`} aria-label={`${label} ${value} of ${max}`}>
+      <span className="tile-stat-label">{label}</span>
+      <span className="tile-stat-pips">
+        {'★'.repeat(value)}{'☆'.repeat(Math.max(0, max - value))}
+      </span>
+    </span>
+  );
+}
+
+// ── Stats panel — per-action damage + ultimate breakdown (used in modal) ─────
+
+function CharacterStatPanel({ char }) {
+  const stats = char.stats ?? { attack: 3, defense: 3 };
+  return (
+    <div className="char-stat-panel">
+      <div className="char-stat-panel-stars">
+        <StatStars label="ATK" tone="atk" value={stats.attack} />
+        <StatStars label="DEF" tone="def" value={stats.defense} />
+      </div>
+      <div className="char-stat-panel-section">
+        <div className="char-stat-panel-heading">DAMAGE</div>
+        <div className="char-stat-panel-rows">
+          <div className="char-stat-panel-row"><span>HIT</span><span>{BASE_DAMAGE.hit}</span></div>
+          <div className="char-stat-panel-row"><span>SHOOT</span><span>{BASE_DAMAGE.shoot}</span></div>
+          <div className="char-stat-panel-row"><span>SLIDE</span><span>{BASE_DAMAGE.slide}</span></div>
         </div>
       </div>
-      <div>
-        <div className="section-label mb-1.5">Ultimates</div>
-        <div className="flex flex-col gap-1.5">
-          {char.ultimates.map(u => (
-            <div key={u.key} className="arena-panel p-2" style={{ borderColor: 'rgba(255,215,0,0.2)' }}>
-              <div className="flex items-center justify-between gap-2 mb-0.5">
-                <span className="font-arena text-xs" style={{ color: 'var(--neon-gold)' }}>{u.name}</span>
-                <span className="text-xs font-mono" style={{ color: '#00bfff', flexShrink: 0 }}>{u.meterCost}m</span>
-              </div>
-              <div className="flex flex-wrap gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
-                {u.damage > 0 && <span style={{ color: 'var(--neon-red)' }}>{u.damage} dmg</span>}
-                {u.statusApplied && <span style={{ color: '#22cc66' }}>+{u.statusApplied}</span>}
-                {u.heals && <span style={{ color: '#22cc66' }}>heal {u.heals}</span>}
-                {u.selfDamage && <span style={{ color: '#ff8844' }}>self-{u.selfDamage}</span>}
-                {u.unblockable && <span style={{ color: '#ff8844' }}>unblockable</span>}
-                {u.reflectsNext && <span style={{ color: '#aaaaff' }}>reflect</span>}
-                {u.gainMeter && <span style={{ color: '#00bfff' }}>+{u.gainMeter}m back</span>}
-                {u.hits > 1 && <span>×{u.hits} hits</span>}
-              </div>
+      <div className="char-stat-panel-section">
+        <div className="char-stat-panel-heading">ULTIMATES</div>
+        {char.ultimates.map(u => (
+          <div key={u.key} className="char-stat-panel-ult">
+            <div className="char-stat-panel-ult-head">
+              <span className="char-stat-panel-ult-name">{u.name}</span>
+              <span className="tag-meter">{u.meterCost}m</span>
             </div>
-          ))}
+            <div className="char-stat-panel-ult-tags">
+              {u.damage > 0 && <span className="tag-dmg">{u.damage} dmg</span>}
+              {u.statusApplied && <span className="tag-status">+{u.statusApplied}</span>}
+              {u.heals && <span className="tag-status">heal {u.heals}</span>}
+              {u.selfDamage && <span className="tag-warn">self-{u.selfDamage}</span>}
+              {u.unblockable && <span className="tag-warn">unblockable</span>}
+              {u.reflectsNext && <span className="tag-status">reflect</span>}
+              {u.gainMeter && <span className="tag-meter">+{u.gainMeter}m back</span>}
+              {u.hits > 1 && <span className="tag-mute">×{u.hits} hits</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Character info modal ─────────────────────────────────────────────────────
+
+const FALLBACK_LORE_BY_ARCHETYPE = {
+  tank:    'Slow but unkillable. Trades movement speed for raw damage absorption — every hit lands harder when it does.',
+  striker: 'A close-range brawler. Fast hits, glass jaw — wins by closing the gap before the opponent gets their bearings.',
+  mage:    'Aerial caster. Rains projectiles from above; weak in the clinch but devastating at range.',
+  acrobat: 'Mobility specialist. Lives off jumps and slides — hard to pin down, but can\'t hold a line.',
+  ranger:  'Ranged precision. Picks targets from afar. Crits scale with distance kept.',
+};
+
+function CharacterInfoModal({ char, onClose }) {
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') onClose(); }
+    window.addEventListener('keydown', onKey);
+    // Lock body scroll while modal is open
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  if (!char) return null;
+  const lore = char.lore || FALLBACK_LORE_BY_ARCHETYPE[char.archetype] || char.description;
+
+  return (
+    <div className="char-modal-backdrop" onClick={onClose}>
+      <div className="char-modal arena-panel" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="char-modal-close" onClick={onClose} aria-label="Close">×</button>
+        <div className="char-modal-body">
+          <div className="char-modal-story">
+            <div className="char-modal-name">{char.name}</div>
+            <div className="char-modal-archetype">{char.archetype}</div>
+            <p className="char-modal-lore">{lore}</p>
+            <p className="char-modal-desc">{char.description}</p>
+          </div>
+          <div className="char-modal-stats">
+            <CharacterStatPanel char={char} />
+          </div>
         </div>
       </div>
     </div>
@@ -66,36 +118,88 @@ function CharacterDetail({ char }) {
 // ── Character picker grid ─────────────────────────────────────────────────────
 
 function CharacterPicker({ selected, onSelect }) {
+  // Two interactions per tile:
+  //   - hover (desktop) or selection drives the in-tile PIXI preview
+  //   - chevron button opens an info modal (story + stats) — does not select
   const [hoveredId, setHoveredId] = useState(null);
-  const activeId = selected || hoveredId;
-  const activeChar = activeId ? CHARACTERS[activeId] : null;
+  const [infoCharId, setInfoCharId] = useState(null);
+  const hoverTimerRef = useRef(null);
+  const animatingId = hoveredId || selected;
+
+  function scheduleHover(e, id) {
+    if (e.pointerType && e.pointerType !== 'mouse') return;
+    clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => setHoveredId(id), 150);
+  }
+  function clearHover(e) {
+    if (e.pointerType && e.pointerType !== 'mouse') return;
+    clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => setHoveredId(null), 80);
+  }
+
+  function openInfo(e, id) {
+    e.stopPropagation();
+    setInfoCharId(id);
+  }
+
+  useEffect(() => () => clearTimeout(hoverTimerRef.current), []);
 
   return (
-    <div className="char-picker-layout">
+    <>
       <div className="char-grid-large">
         {CHARACTER_LIST.map(char => {
           const isSelected = selected === char.id;
+          const isAnimating = animatingId === char.id;
+          const stats = char.stats ?? { attack: 3, defense: 3 };
           return (
-            <button
+            <div
               key={char.id}
               className={`char-card-large ${isSelected ? 'selected' : ''}`}
+              role="button"
+              tabIndex={0}
               onClick={() => onSelect(char.id)}
-              onMouseEnter={() => setHoveredId(char.id)}
-              onMouseLeave={() => setHoveredId(null)}
-              title={char.description}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(char.id); }}
+              onPointerEnter={(e) => scheduleHover(e, char.id)}
+              onPointerLeave={clearHover}
+              aria-label={char.name}
             >
+              <span className="char-card-badge">{ARCHETYPE_GLYPH[char.archetype] ?? '?'}</span>
               <div className="char-card-img-wrap">
-                <CharImage char={char} size={70} />
+                <div className="char-card-preview-overlay">
+                  <CharacterPreview
+                    characterId={char.id}
+                    width={200}
+                    height={170}
+                    mode={isAnimating ? 'actions' : 'idle'}
+                  />
+                </div>
               </div>
-              <span className="char-card-name">{char.name}</span>
-            </button>
+              <div className="char-card-strip">
+                <div className="char-card-strip-text">
+                  <span className="char-card-name">{char.name}</span>
+                  <div className="char-card-stars">
+                    <StatStars label="ATK" tone="atk" value={stats.attack} />
+                    <StatStars label="DEF" tone="def" value={stats.defense} />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="char-card-info-btn"
+                  onClick={(e) => openInfo(e, char.id)}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  aria-label={`More about ${char.name}`}
+                >
+                  ›
+                </button>
+              </div>
+            </div>
           );
         })}
       </div>
-      <div className="char-detail-panel arena-panel">
-        <CharacterDetail char={activeChar} />
-      </div>
-    </div>
+      {infoCharId && (
+        <CharacterInfoModal char={CHARACTERS[infoCharId]} onClose={() => setInfoCharId(null)} />
+      )}
+    </>
   );
 }
 

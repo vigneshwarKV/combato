@@ -190,7 +190,11 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
   }
 
   if (attacker === 'hit') {
-    if (defender === 'jump')   { events.push({ type: 'miss', attacker: attackerLabel, reason: 'jumped' }); return hit(0, false); }
+    // All hit variants land on a jumper. For melee hits (hammer/fist/kick) the
+    // jumper is clipped out of the air — animResolution plays death+knockdown.
+    // For projectile-based hits (e.g., womanHero's ice arrow) the engine still
+    // counts damage, but the reaction is deferred to AFTER landing (handled
+    // visually in animResolution.computeAttackTiming).
     if (defender === 'slide')  { events.push({ type: 'miss', attacker: attackerLabel, reason: 'slid' }); return hit(0, false); }
     if (defender === 'defend') { events.push({ type: 'blocked', defender: defenderLabel, kind: 'hit' }); return hit(0, false); }
     events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: BASE_DAMAGE.hit, kind: 'hit' });

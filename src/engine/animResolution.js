@@ -32,10 +32,24 @@ export function hasUltimateHit(events, victim) {
 
 // Pick the reaction animation a victim should play when they take damage.
 // Returns null when the fighter took no damage (no override needed).
-export function reactionAnim(damage, gotUltHit) {
+//   ultimate damage                → 'death' (fall+die)
+//   melee hit while jumping        → 'death' (knocked out of the air; the
+//                                      death anim's collapse reads as a fall)
+//   projectile hit while jumping   → 'hurt'  (no knockdown — jumper completes
+//                                      arc and hurt fires after landing; the
+//                                      caller controls when it fires)
+//   any other damage               → 'hurt'
+export function reactionAnim(damage, gotUltHit, victimAction, knockdownFromAir = true) {
+  if (damage <= 0) return null;
   if (gotUltHit) return 'death';
-  if (damage > 0) return 'hurt';
-  return null;
+  if (victimAction === 'jump' && knockdownFromAir) return 'death';
+  return 'hurt';
+}
+
+// True when this character's `hit` is projectile-based (e.g., womanHero
+// fires an ice arrow on her IceShoot3) rather than a melee swing.
+export function isProjectileHit(character) {
+  return !!character?.extraProjectileActions?.includes('hit');
 }
 
 // Visual ms from action start until the attacker's blow lands on its target.
@@ -47,7 +61,13 @@ export function impactDelayFor(action, character) {
     const spawn = character?.projectileDelayByAction?.shoot ?? character?.projectileDelayMs ?? 0;
     return spawn + IMPACT_DELAY.shoot;
   }
-  if (action === 'hit')   return IMPACT_DELAY.hit;
+  if (action === 'hit') {
+    if (isProjectileHit(character)) {
+      const spawn = character?.projectileDelayByAction?.hit ?? character?.projectileDelayMs ?? 0;
+      return spawn + IMPACT_DELAY.shoot;
+    }
+    return IMPACT_DELAY.hit;
+  }
   if (action === 'slide') return IMPACT_DELAY.slide;
   if (isUltimateKey(action)) {
     // flyHit phase2 triggers at 0.78 × fwdMs — read the override if present
@@ -79,20 +99,23 @@ function jumpHoldFor(ownAction, opponentImpact) {
 
 // Given a resolveActions() result and (optionally) the two characters,
 // produce the timeline the renderers need to schedule the turn.
-//   initialAnim*  → what plays at t=0 (becomes 'idle' when a launch is delayed)
-//   launchAnim*   → the deferred action to swap to (null when not delayed)
-//   launchAt*     → when to swap initialAnim → launchAnim (0 when not delayed)
-//   reaction*     → 'hurt' / 'death' / null — what the victim swaps to at impact
-//   impactA       → ms until A's attack lands on B (schedules B's reaction)
-//   impactB       → ms until B's attack lands on A (schedules A's reaction)
-//   clearA/B      → ms until each fighter returns to idle (or no clear if KO'd)
+//   initialAnim*   → what plays at t=0 (becomes 'idle' when a launch is delayed)
+//   launchAnim*    → the deferred action to swap to (null when not delayed)
+//   launchAt*      → when to swap initialAnim → launchAnim (0 when not delayed)
+//   reaction*      → 'hurt' / 'death' / null — what the victim swaps to
+//   reactionAtA/B  → ms when each victim's reaction fires (impact for melee /
+//                    ult; jumper-landing for projectile-hit-vs-jumper so the
+//                    hurt reads as "they came down, then hurt").
+//   impactA        → ms until A's attack visually lands (sound/fx alignment)
+//   impactB        → ms until B's attack visually lands
+//   clearA/B       → ms until each fighter returns to idle (or no clear if KO'd)
 export function computeAttackTiming(result, characterA, characterB) {
   const aGotUltHit = hasUltimateHit(result.events, 'A');
   const bGotUltHit = hasUltimateHit(result.events, 'B');
   const actionA = result.actualActionA || 'idle';
   const actionB = result.actualActionB || 'idle';
-  const reactionA = reactionAnim(result.damageToA, aGotUltHit);
-  const reactionB = reactionAnim(result.damageToB, bGotUltHit);
+  const damageToA = result.damageToA;
+  const damageToB = result.damageToB;
   const impactA = impactDelayFor(actionA, characterA);
   const impactB = impactDelayFor(actionB, characterB);
   // Slow-attack jump-sync: hold the jumper in idle until just before peak.
@@ -102,17 +125,33 @@ export function computeAttackTiming(result, characterA, characterB) {
   const initialAnimB = launchAtB > 0 ? 'idle' : actionB;
   const launchAnimA = launchAtA > 0 ? actionA : null;
   const launchAnimB = launchAtB > 0 ? actionB : null;
+  // Projectile-hit landing on a jumper: damage applies, but the hurt anim is
+  // deferred until the jumper has finished their arc (no knockdown, just
+  // "they landed, then hurt"). For everyone else (melee hit, ult, etc.) the
+  // reaction fires at the visual impact and uses 'death' if mid-air.
+  const aLandedHurt = actionA === 'jump' && damageToA > 0 && !aGotUltHit && actionB === 'hit' && isProjectileHit(characterB);
+  const bLandedHurt = actionB === 'jump' && damageToB > 0 && !bGotUltHit && actionA === 'hit' && isProjectileHit(characterA);
+  const reactionA = aLandedHurt
+    ? reactionAnim(damageToA, aGotUltHit, actionA, /* knockdownFromAir */ false)
+    : reactionAnim(damageToA, aGotUltHit, actionA);
+  const reactionB = bLandedHurt
+    ? reactionAnim(damageToB, bGotUltHit, actionB, /* knockdownFromAir */ false)
+    : reactionAnim(damageToB, bGotUltHit, actionB);
+  const reactionAtA = aLandedHurt ? launchAtA + ANIM_DURATION.jump : impactB;
+  const reactionAtB = bLandedHurt ? launchAtB + ANIM_DURATION.jump : impactA;
   // Each fighter's "natural" anim duration accounts for the launch delay.
   const ownAnimEndA = launchAnimA ? launchAtA + durationFor(launchAnimA) : durationFor(initialAnimA);
   const ownAnimEndB = launchAnimB ? launchAtB + durationFor(launchAnimB) : durationFor(initialAnimB);
-  // Victim clears at impact + reaction; non-victim clears at the natural end.
-  const clearA = reactionA ? impactB + durationFor(reactionA) : ownAnimEndA;
-  const clearB = reactionB ? impactA + durationFor(reactionB) : ownAnimEndB;
+  // Victim clears at reaction + reaction-anim duration; non-victim clears at
+  // the natural anim end.
+  const clearA = reactionA ? reactionAtA + durationFor(reactionA) : ownAnimEndA;
+  const clearB = reactionB ? reactionAtB + durationFor(reactionB) : ownAnimEndB;
   return {
     initialAnimA, initialAnimB,
     launchAnimA, launchAnimB,
     launchAtA, launchAtB,
     reactionA, reactionB,
+    reactionAtA, reactionAtB,
     impactA, impactB,
     clearA, clearB,
     aGotUltHit, bGotUltHit,

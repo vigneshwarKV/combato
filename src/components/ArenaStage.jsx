@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import * as PIXI from 'pixi.js';
-import { Spine } from '@pixi/spine-pixi';
 import { CHARACTERS } from '../data/characters.js';
-
-// Caches keyed by character.assetBase so loaders only fire once per character
-// across mounts. The actual PIXI display objects are NOT cached — only the
-// asset URLs and parsed manifest data — because each fight needs its own
-// instance attached to its own stage.
-const spineLoaded = new Set();      // assetBase strings
-const manifestCache = new Map();    // assetBase → manifest
-const frameCache = new Map();       // `${assetBase}/${animName}` → PIXI.Texture[]
+import {
+  loadFighterSprite,
+  loadFrames,
+  playAnimation,
+  applyScale,
+} from '../engine/spritePlayer.js';
 
 /**
  * One Pixi.js Application that hosts BOTH fighters in a single canvas.
@@ -102,9 +99,15 @@ export default function ArenaStage({
         // can access app.ticker without threading it through every callsite.
         spriteA._pixiApp = app;
         spriteB._pixiApp = app;
-        // Resting (ground) Y — used by fireProjectile so straight-line shots
-        // aim at the defender's base position, not their mid-jump position.
+        // Resting (ground) X/Y — used by fireProjectile so straight-line shots
+        // aim at the defender's visual base position, not their tweened or
+        // rig-compensated sprite position. (Spine `defendOffsetX` for monkey/
+        // turtle/womanHero shifts sprite.x by hundreds of pixels to keep the
+        // rendered body in place; reading sprite.x then would target the wrong
+        // side of the canvas and the bullet would fly backwards.)
+        spriteA._baseX = spriteA.x;
         spriteA._baseY = spriteA.y;
+        spriteB._baseX = spriteB.x;
         spriteB._baseY = spriteB.y;
 
         fighterARef.current = { sprite: spriteA, character: charA, shield: shieldA, baseX: spriteA.x, baseY: spriteA.y, side: 'A', activeTween: null };
@@ -251,11 +254,13 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
   const startX = fromSprite.x + (side === 'A' ? startXOff : -startXOff);
   const startYOff = character?.projectileStartYByAction?.[action] ?? -80;
   const startY = fromSprite.y + startYOff;
-  const endX = toSprite.x + (side === 'A' ? -40 : 40);
-  // Aim at the defender's RESTING chest height — a straight-line shot must
-  // not track a jumping defender (jump is supposed to evade shoot, so the
-  // arrow/spear should pass under them visually).
+  // Aim at the defender's VISUAL base position — sprite.x can be shifted by
+  // defendOffsetX (Spine rig compensation) and sprite.y by jump/lunge tweens.
+  // Reading either directly would point the projectile to the wrong place
+  // (e.g., backwards when monkey defends with offset 387 on side A).
+  const targetBaseX = toSprite._baseX ?? toSprite.x;
   const targetBaseY = toSprite._baseY ?? toSprite.y;
+  const endX = targetBaseX + (side === 'A' ? -40 : 40);
   const endY = targetBaseY - 80 + endYOffset;
 
   // Muzzle flash only for bullets (no custom projectile, no arrow).
@@ -366,19 +371,6 @@ function spawnMuzzleEffect(app, x, y, side) {
   });
 }
 
-function applyScale(sprite, base, mirrored) {
-  const sx = mirrored ? -base : base;
-  if (sprite.scale && typeof sprite.scale.set === 'function') {
-    sprite.scale.set(sx, base);
-  } else {
-    sprite.scale.x = sx;
-    sprite.scale.y = base;
-  }
-  if (sprite.anchor && typeof sprite.anchor.set === 'function') {
-    sprite.anchor.set(0.5, 1);
-  }
-}
-
 // When a fighter starts attacking, raise their z-index so they render in front
 // during a lunge. Reverts on idle.
 function raiseAttacker(sprite, action) {
@@ -388,180 +380,6 @@ function raiseAttacker(sprite, action) {
   }
 }
 
-async function loadFighterSprite(character) {
-  if (character.renderMode === 'spine') return loadSpine(character);
-  return loadPng(character);
-}
-
-async function loadSpine(character) {
-  if (!spineLoaded.has(character.assetBase)) {
-    const skelUrl = `${character.assetBase}/${character.skeletonJson}`;
-    const atlasUrl = `${character.assetBase}/${character.atlasFile}`;
-    await PIXI.Assets.load([skelUrl, atlasUrl]);
-    spineLoaded.add(character.assetBase);
-  }
-  const skelUrl = `${character.assetBase}/${character.skeletonJson}`;
-  const atlasUrl = `${character.assetBase}/${character.atlasFile}`;
-  // spine.scale: Craftpix Spine atlases are sized for high-res — base 0.5
-  // brings them to a comfortable arena size. Per-character displayScale
-  // stacks on top of the View's scale (set by applyScale).
-  const spine = Spine.from({ skeleton: skelUrl, atlas: atlasUrl, scale: 0.5 });
-  spine.state.setAnimation(0, character.animations.idle, true);
-  return spine;
-}
-
-async function loadPng(character) {
-  let manifest = manifestCache.get(character.assetBase);
-  if (!manifest) {
-    const res = await fetch(`${character.assetBase}/manifest.json`);
-    if (!res.ok) throw new Error(`manifest fetch ${res.status}`);
-    manifest = await res.json();
-    manifestCache.set(character.assetBase, manifest);
-  }
-  const idleFolder = character.animations.idle;
-  const idleFiles = manifest.animations[idleFolder];
-  if (!idleFiles) throw new Error(`No idle animation: ${idleFolder}`);
-
-  const sprite = new PIXI.AnimatedSprite([PIXI.Texture.EMPTY]);
-  sprite._character = character;
-  sprite._manifest = manifest;
-  sprite._loadedAnims = new Map();
-
-  const idleTextures = await loadFrames(character, idleFolder, idleFiles);
-  sprite._loadedAnims.set(idleFolder, idleTextures);
-  sprite.textures = idleTextures;
-  sprite.animationSpeed = 0.35;
-  sprite.loop = true;
-  sprite.play();
-  return sprite;
-}
-
-async function loadFrames(character, folder, files) {
-  const key = `${character.assetBase}/${folder}`;
-  if (frameCache.has(key)) return frameCache.get(key);
-  const urls = files.map(f => `${character.assetBase}/frames/${folder}/${f}`);
-  const textures = await Promise.all(urls.map(u => PIXI.Assets.load(u)));
-  frameCache.set(key, textures);
-  return textures;
-}
-
-function playAnimation(sprite, character, actionKey) {
-  // Accept either a known action key (looked up in animations) or a raw
-  // animation name — useful for phase2 of multi-phase moves.
-  const animationName = character.animations[actionKey] || actionKey || character.animations.idle;
-  if (!animationName) return;
-
-  if (character.renderMode === 'spine' && sprite.state) {
-    const loop = actionKey === 'idle' || actionKey === 'celebrate';
-    try {
-      const track = sprite.state.setAnimation(0, animationName, loop);
-      if (track) {
-        if (actionKey === 'defend') {
-          track.trackTime = 0;     // freeze on first frame (matches idle position)
-          track.timeScale = 0;     // freeze on that pose
-        } else {
-          track.timeScale = character.actionTimeScales?.[actionKey] ?? 1;
-        }
-      }
-      applySlotTints(sprite, character, actionKey);
-    } catch {
-      try { sprite.state.setAnimation(0, character.animations.idle, true); } catch { /* ignore */ }
-    }
-    return;
-  }
-
-  if (character.renderMode === 'png' && sprite._manifest) {
-    const files = sprite._manifest.animations[animationName];
-    if (!files) return;
-    const loop = actionKey === 'idle' || actionKey === 'celebrate';
-    const cached = sprite._loadedAnims.get(animationName);
-    const apply = (textures) => {
-      sprite.textures = textures;
-      sprite.loop = loop;
-      sprite.gotoAndPlay(0);
-      // Die frames are taller than idle — push sprite down so the fallen
-      // character lands on the ground rather than floating at mid-height.
-      if (actionKey === 'death' && textures.length > 0) {
-        const idleFiles = sprite._manifest.animations[character.animations.idle];
-        const idleH = sprite._loadedAnims.get(character.animations.idle)?.[0]?.height ?? textures[0].height;
-        const extraH = textures[0].height - idleH;
-        if (extraH > 0) sprite.y += extraH * (character.displayScale ?? 1);
-      }
-    };
-    if (cached) apply(cached);
-    else loadFrames(sprite._character, animationName, files)
-      .then(textures => { sprite._loadedAnims.set(animationName, textures); apply(textures); })
-      .catch(e => console.warn('[ArenaStage] frame load failed:', e));
-  }
-}
-
-// Per-action slot color tinting + attachment swapping for Spine characters.
-// Shoot animations have BOTH rgba and attachment timelines that overwrite our
-// edits every frame, so a per-frame ticker is needed to keep the override on.
-// Tears down on action change.
-function applySlotTints(sprite, character, actionKey) {
-  if (!sprite?.skeleton?.findSlot) return;
-  const app = sprite._pixiApp;
-
-  if (sprite._tintTicker && app) {
-    app.ticker.remove(sprite._tintTicker);
-    sprite._tintTicker = null;
-  }
-
-  const tints = character.slotTints?.[actionKey] ?? {};
-  const swaps = character.attachmentSwaps?.[actionKey] ?? {};
-
-  // Reset any slot this character ever tints back to white. Animation
-  // attachment timelines naturally re-set on the next setAnimation, so
-  // attachment swap doesn't need a manual reset path.
-  const allTintSlots = new Set();
-  for (const map of Object.values(character.slotTints ?? {})) {
-    for (const name of Object.keys(map)) allTintSlots.add(name);
-  }
-  for (const name of allTintSlots) {
-    const slot = sprite.skeleton.findSlot(name);
-    if (slot?.color) { slot.color.r = 1; slot.color.g = 1; slot.color.b = 1; }
-  }
-
-  const tintEntries = Object.entries(tints);
-  const swapEntries = Object.entries(swaps);
-  if ((tintEntries.length === 0 && swapEntries.length === 0) || !app) return;
-
-  const rgb = tintEntries.map(([name, c]) => ({
-    name,
-    r: ((c >> 16) & 0xff) / 255,
-    g: ((c >> 8) & 0xff) / 255,
-    b: (c & 0xff) / 255,
-  }));
-
-  const tickerFn = () => {
-    for (const t of rgb) {
-      const slot = sprite.skeleton.findSlot(t.name);
-      if (slot?.color) { slot.color.r = t.r; slot.color.g = t.g; slot.color.b = t.b; }
-    }
-    for (const [slotName, attachmentName] of swapEntries) {
-      try {
-        const slot = sprite.skeleton.findSlot(slotName);
-        if (!slot) continue;
-        // Try the modern setAttachment API first; fall back to looking up the
-        // attachment via the skin and assigning directly.
-        if (typeof sprite.skeleton.setAttachment === 'function') {
-          sprite.skeleton.setAttachment(slotName, attachmentName);
-        } else {
-          const skin = sprite.skeleton.skin ?? sprite.skeleton.data?.defaultSkin;
-          const att = skin?.getAttachment?.(slot.data.index, attachmentName)
-                   ?? skin?.attachments?.[slotName]?.[attachmentName];
-          if (att) slot.setAttachment ? slot.setAttachment(att) : (slot.attachment = att);
-        }
-      } catch { /* ignore */ }
-    }
-  };
-  // LOW priority so this fires AFTER the Spine state.apply() that runs each
-  // frame — otherwise our overrides are immediately overwritten by the
-  // animation's rgba and attachment timelines.
-  app.ticker.add(tickerFn, null, PIXI.UPDATE_PRIORITY.LOW);
-  sprite._tintTicker = tickerFn;
-}
 
 // Stop the PNG sprite on a specific frame number (for static defend pose).
 function playStaticFrame(sprite, character, actionKey) {
@@ -600,17 +418,48 @@ const PNG_MOTION = {
   celebrate:       { kind: 'none' },
 };
 
-function cancelActiveTween(fighter) {
+function cancelActiveTween(fighter, { resetPosition = true } = {}) {
   if (fighter.activeTween) {
     try { fighter.activeTween(); } catch { /* ignore */ }
     fighter.activeTween = null;
   }
-  // Snap back to base position immediately
-  if (fighter.sprite) {
+  if (resetPosition && fighter.sprite) {
+    // Snap back to base position immediately
     fighter.sprite.x = fighter.baseX;
     fighter.sprite.y = fighter.baseY;
     fighter.sprite.rotation = 0;
   }
+}
+
+// Gravity-style drop from current Y to baseY. Used when a jumping defender
+// gets clipped out of the air by a melee hit / ultimate — instead of snapping
+// to ground and then playing the death/hurt anim, we let the body fall first
+// so the impact reads as "knocked down" rather than "teleported and collapsed".
+function tweenKnockdown(fighter, app) {
+  if (!app || !fighter?.sprite) return;
+  const startY = fighter.sprite.y;
+  const endY = fighter.baseY;
+  if (endY - startY < 20) { // already grounded — no tween needed
+    fighter.sprite.y = endY;
+    return;
+  }
+  // Snap X back; only the Y descent is animated.
+  fighter.sprite.x = fighter.baseX;
+  fighter.sprite.rotation = 0;
+  const startTime = performance.now();
+  const ms = 350;
+  const tick = () => {
+    const t = Math.min((performance.now() - startTime) / ms, 1);
+    const eased = t * t; // gravity ease-in
+    fighter.sprite.y = startY + (endY - startY) * eased;
+    if (t >= 1) {
+      fighter.sprite.y = endY;
+      app.ticker.remove(tick);
+      fighter.activeTween = null;
+    }
+  };
+  app.ticker.add(tick);
+  fighter.activeTween = () => app.ticker.remove(tick);
 }
 
 function tweenLunge(fighter, opponent, motion, app) {
@@ -761,7 +610,13 @@ function playAction(fighter, opponent, action, app) {
   const baseMotion = PNG_MOTION[action] ?? (action.startsWith('ultimate_') ? DEFAULT_ULTIMATE_MOTION : PNG_MOTION.idle);
   const override = fighter.character.motionOverrides?.[action];
   const motion = override ? { ...baseMotion, ...override } : baseMotion;
-  cancelActiveTween(fighter);
+  // If we're transitioning to a knockdown anim (death / hurt) while the sprite
+  // is still mid-air (jumper just got clipped), skip the snap-to-base so the
+  // gravity tween can fall from the current height. Otherwise reset normally.
+  const isAirborneTransition = (action === 'death' || action === 'hurt')
+    && fighter.sprite && fighter.sprite.y < fighter.baseY - 20;
+  cancelActiveTween(fighter, { resetPosition: !isAirborneTransition });
+  if (isAirborneTransition) tweenKnockdown(fighter, app);
 
   switch (motion.kind) {
     case 'lunge':

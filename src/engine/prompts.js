@@ -6,8 +6,8 @@ const MOCK_AI = false;
 // Human-readable rules block included in every LLM prompt.
 export const GAME_RULES = `ACTION SYSTEM:
   idle    → stand still, 0 dmg, no meter change
-  jump    → evades hit AND shoot (both miss the jumper); still hittable by Ultimates; +${METER.GAIN_ON_JUMP_EVADE} meter on each evade
-  hit     → ${BASE_DAMAGE.hit} dmg close-range attack; +${METER.GAIN_ON_MELEE_HIT} meter on landed hit; MISSED by jump or slide; BLOCKED by defend; CLASHES with opposing hit (both whiff)
+  jump    → evades shoot only; ALL hit variants land on a jumper (melee hit knocks them out of the air immediately; projectile-based hits like Woman Hero's Ice Arrow still register damage and the hurt fires after the jumper has landed); still hittable by Ultimates; +${METER.GAIN_ON_JUMP_EVADE} meter on each successful evade
+  hit     → ${BASE_DAMAGE.hit} dmg close-range attack; +${METER.GAIN_ON_MELEE_HIT} meter on landed hit; MISSED by slide; LANDS on jumpers (melee hit knocks down mid-air; projectile hit triggers a delayed hurt after landing); BLOCKED by defend; CLASHES with opposing hit (both whiff)
   shoot   → ${BASE_DAMAGE.shoot} dmg straight-line projectile; +${METER.GAIN_ON_RANGED_HIT} meter on landed hit; MISSED by jump, slide, or airborne Ultimates (jet-pack/flyHit ults lift the user out of the bullet's path); defend does NOT block shoot
   slide   → ${BASE_DAMAGE.slide} dmg low tackle; evades hit AND shoot; deals damage to defenders/idle/shoot; MISSED by jump; SLIDE-vs-SLIDE collides (both take ${BASE_DAMAGE.slide} dmg); slide CANNOT damage an opponent who is mid-Ultimate; +${METER.GAIN_ON_MELEE_HIT} meter on landed slide, +${METER.GAIN_ON_DODGE} on successful evade
   defend  → blocks hit AND Ultimates only (0 dmg); does NOT block shoot or slide (defender gets HURT through); +${METER.GAIN_ON_BLOCK} meter on successful block

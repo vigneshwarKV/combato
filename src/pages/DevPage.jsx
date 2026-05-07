@@ -199,18 +199,19 @@ export default function DevPage() {
         setAnimKeyB(k => k + 1);
       }, timing.launchAtB);
     }
-    // t=impact: victims swap to hurt/death (only when they took damage).
+    // t=reactionAt*: victims swap to hurt/death (only when they took damage).
+    // For projectile-hit-vs-jumper this is deferred to the jumper's landing.
     if (timing.reactionA) {
       schedule(() => {
         setAnimClassA(`anim-${timing.reactionA}`);
         setAnimKeyA(k => k + 1);
-      }, timing.impactB);
+      }, timing.reactionAtA);
     }
     if (timing.reactionB) {
       schedule(() => {
         setAnimClassB(`anim-${timing.reactionB}`);
         setAnimKeyB(k => k + 1);
-      }, timing.impactA);
+      }, timing.reactionAtB);
     }
     // t=clear: each fighter back to idle independently.
     schedule(() => {

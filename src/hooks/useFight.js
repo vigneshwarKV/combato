@@ -81,17 +81,18 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
               if (fightGenRef.current === thisGen) dispatch({ type: 'LAUNCH_ACTION_B', anim: timing.launchAnimB });
             }, timing.launchAtB);
           }
-          // Victim reactions land at the attacker's impact moment; victim's
-          // own action plays from t=0 and gets clipped on impact.
+          // Victim reactions land at `reactionAt*` — typically the attacker's
+          // visual impact, but deferred to landing time when a projectile hit
+          // (e.g., womanHero) catches a jumping defender.
           if (timing.reactionA) {
             setTimeout(() => {
               if (fightGenRef.current === thisGen) dispatch({ type: 'VICTIM_REACTION_A', reaction: timing.reactionA });
-            }, timing.impactB);
+            }, timing.reactionAtA);
           }
           if (timing.reactionB) {
             setTimeout(() => {
               if (fightGenRef.current === thisGen) dispatch({ type: 'VICTIM_REACTION_B', reaction: timing.reactionB });
-            }, timing.impactA);
+            }, timing.reactionAtB);
           }
           // Skip the idle-clear for a fighter that just got KO'd — the KO
           // event will set them to anim-death, and we don't want a brief
@@ -104,11 +105,12 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
           }
           const hasUlt = event.events?.some(e => e.type === 'ultimate');
           setTimeout(() => { if (fightGenRef.current === thisGen) dispatch({ type: 'CLEAR_HIT' }); }, hasUlt ? 1250 : 600);
-          // Sound at earliest impact (matches the visual reaction stagger).
+          // Sound at the earliest reaction moment — aligns the thump with the
+          // visible "ouch" (which is the landing for projectile-vs-jumper).
           const impactSoundDelay = (() => {
             const hits = [];
-            if (timing.reactionA) hits.push(timing.impactB);
-            if (timing.reactionB) hits.push(timing.impactA);
+            if (timing.reactionA) hits.push(timing.reactionAtA);
+            if (timing.reactionB) hits.push(timing.reactionAtB);
             return hits.length ? Math.min(...hits) : null;
           })();
           if (impactSoundDelay != null) {
