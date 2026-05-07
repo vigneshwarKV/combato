@@ -3,12 +3,9 @@ import { flushSync } from 'react-dom';
 import { runFight } from '../engine/fightEngine.js';
 import { playSound } from '../engine/soundEngine.js';
 import { isUltimateKey } from '../engine/damageEngine.js';
+import { CHARACTERS } from '../data/characters.js';
+import { computeAttackTiming } from '../engine/animResolution.js';
 import { reducer, initialState } from './useFightRenderer.js';
-
-const ANIM_DURATION = {
-  idle: 500, jump: 900, hit: 800, shoot: 800,
-  slide: 950, defend: 700, hurt: 500, death: 800, none: 500, ultimate: 1550,
-};
 
 export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = null) {
   const [fightState, dispatch] = useReducer(reducer, initialState);
@@ -43,9 +40,13 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
       defaults: fightConfig.defaults || {},
     }, (event) => {
       if (fightGenRef.current !== thisGen) return;
-      // Broadcast to P2P clients — use ref so it's always current, no stale closure
-      broadcastRef?.current?.(event);
-      const { type: _evType, ...rest } = event;
+      // Tag character IDs onto every event so spectators (and our own
+      // dispatcher) can read per-character timing without extra plumbing.
+      const tagged = (event.type === 'action_result' || event.type === 'batch_start')
+        ? { ...event, characterAId: fA.character, characterBId: fB.character }
+        : event;
+      broadcastRef?.current?.(tagged);
+      const { type: _evType, ...rest } = tagged;
       switch (event.type) {
         case 'batch_start':
           flushSync(() => dispatch({ type: 'BATCH_START', ...rest }));
@@ -54,17 +55,69 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
           if (isUltimateKey(event.actionA) || isUltimateKey(event.actionB)) {
             playSound('supermove_charge');
           }
-          flushSync(() => dispatch({ type: 'ACTION_RESULT', ...rest }));
-          const durFor = (a) => isUltimateKey(a) ? ANIM_DURATION.ultimate : (ANIM_DURATION[a] || 500);
-          const dur = Math.max(durFor(event.actionA), durFor(event.actionB));
-          setTimeout(() => { if (fightGenRef.current === thisGen) dispatch({ type: 'CLEAR_ANIM' }); }, dur);
+          const charA = CHARACTERS[fA.character];
+          const charB = CHARACTERS[fB.character];
+          const timing = computeAttackTiming({
+            events: event.events,
+            actualActionA: event.actionA,
+            actualActionB: event.actionB,
+            damageToA: event.damageToA,
+            damageToB: event.damageToB,
+          }, charA, charB);
+          flushSync(() => dispatch({
+            type: 'ACTION_RESULT',
+            ...rest,
+            initialAnimA: timing.initialAnimA,
+            initialAnimB: timing.initialAnimB,
+          }));
+          // Deferred launches (e.g., jumper synced to incoming projectile peak).
+          if (timing.launchAnimA) {
+            setTimeout(() => {
+              if (fightGenRef.current === thisGen) dispatch({ type: 'LAUNCH_ACTION_A', anim: timing.launchAnimA });
+            }, timing.launchAtA);
+          }
+          if (timing.launchAnimB) {
+            setTimeout(() => {
+              if (fightGenRef.current === thisGen) dispatch({ type: 'LAUNCH_ACTION_B', anim: timing.launchAnimB });
+            }, timing.launchAtB);
+          }
+          // Victim reactions land at the attacker's impact moment; victim's
+          // own action plays from t=0 and gets clipped on impact.
+          if (timing.reactionA) {
+            setTimeout(() => {
+              if (fightGenRef.current === thisGen) dispatch({ type: 'VICTIM_REACTION_A', reaction: timing.reactionA });
+            }, timing.impactB);
+          }
+          if (timing.reactionB) {
+            setTimeout(() => {
+              if (fightGenRef.current === thisGen) dispatch({ type: 'VICTIM_REACTION_B', reaction: timing.reactionB });
+            }, timing.impactA);
+          }
+          // Skip the idle-clear for a fighter that just got KO'd — the KO
+          // event will set them to anim-death, and we don't want a brief
+          // idle flash between death anim and KO dispatch.
+          if (event.hpA > 0) {
+            setTimeout(() => { if (fightGenRef.current === thisGen) dispatch({ type: 'CLEAR_ANIM_A' }); }, timing.clearA);
+          }
+          if (event.hpB > 0) {
+            setTimeout(() => { if (fightGenRef.current === thisGen) dispatch({ type: 'CLEAR_ANIM_B' }); }, timing.clearB);
+          }
           const hasUlt = event.events?.some(e => e.type === 'ultimate');
           setTimeout(() => { if (fightGenRef.current === thisGen) dispatch({ type: 'CLEAR_HIT' }); }, hasUlt ? 1250 : 600);
-          setTimeout(() => {
-            if (fightGenRef.current !== thisGen) return;
-            if (hasUlt) playSound('super_hit');
-            else if (event.damageToA > 0 || event.damageToB > 0) playSound('hit');
-          }, hasUlt ? 380 : 180);
+          // Sound at earliest impact (matches the visual reaction stagger).
+          const impactSoundDelay = (() => {
+            const hits = [];
+            if (timing.reactionA) hits.push(timing.impactB);
+            if (timing.reactionB) hits.push(timing.impactA);
+            return hits.length ? Math.min(...hits) : null;
+          })();
+          if (impactSoundDelay != null) {
+            setTimeout(() => {
+              if (fightGenRef.current !== thisGen) return;
+              if (hasUlt) playSound('super_hit');
+              else playSound('hit');
+            }, impactSoundDelay);
+          }
           break;
         }
         case 'ko':

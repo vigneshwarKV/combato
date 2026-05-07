@@ -1,11 +1,8 @@
 import { useReducer, useCallback } from 'react';
 import { isUltimateKey } from '../engine/damageEngine.js';
+import { CHARACTERS } from '../data/characters.js';
+import { hasUltimateHit, computeAttackTiming } from '../engine/animResolution.js';
 import { playSound } from '../engine/soundEngine.js';
-
-const ANIM_DURATION = {
-  idle: 500, jump: 900, hit: 800, shoot: 800,
-  slide: 950, defend: 700, hurt: 500, death: 800, none: 500, ultimate: 1550,
-};
 
 const initialState = {
   status: 'idle',
@@ -28,8 +25,18 @@ const initialState = {
   speedMultiplier: 1,
 };
 
-function hasUltimateHit(events, victim) {
-  return events?.some(e => e.type === 'ultimate' && e.victim === victim) || false;
+// Returns the ms delay at which the impact sound should fire, or null when
+// nothing landed this turn. Picks the earliest impact among damaging attacks
+// so audio aligns with the first visual reaction.
+function soundImpactDelay(timing) {
+  const { reactionA, reactionB, impactA, impactB } = timing;
+  // impactA = when A's attack hits B; impactB = when B's attack hits A.
+  // reactionA fires when A took damage (i.e. B's attack landed at impactB).
+  const hits = [];
+  if (reactionA) hits.push(impactB);
+  if (reactionB) hits.push(impactA);
+  if (hits.length === 0) return null;
+  return Math.min(...hits);
 }
 
 function buildFeedEntries(turn, actionA, actionB, damageToA, damageToB, events) {
@@ -83,11 +90,18 @@ function reducer(state, action) {
         ],
       };
     case 'ACTION_RESULT': {
-      const { turn, batchTurn, actionA, actionB, damageToA, damageToB, events, hpA, hpB, meterA, meterB, statusA, statusB } = action;
+      const { turn, batchTurn, actionA, actionB, damageToA, damageToB, events, hpA, hpB, meterA, meterB, statusA, statusB, initialAnimA, initialAnimB } = action;
       const newEntries = buildFeedEntries(turn, actionA, actionB, damageToA, damageToB, events);
       const hasKO = hpA <= 0 || hpB <= 0;
-      const newHitClassA = damageToA > 0 ? (hasUltimateHit(events, 'A') ? 'anim-hit-super' : 'anim-hit-normal') : '';
-      const newHitClassB = damageToB > 0 ? (hasUltimateHit(events, 'B') ? 'anim-hit-super' : 'anim-hit-normal') : '';
+      const aGotUltHit = hasUltimateHit(events, 'A');
+      const bGotUltHit = hasUltimateHit(events, 'B');
+      const newHitClassA = damageToA > 0 ? (aGotUltHit ? 'anim-hit-super' : 'anim-hit-normal') : '';
+      const newHitClassB = damageToB > 0 ? (bGotUltHit ? 'anim-hit-super' : 'anim-hit-normal') : '';
+      // The dispatcher passes `initialAnim*` so it can hold a jumper in idle
+      // until they should launch (sync jump peak with a slow projectile).
+      // Falls back to the requested action when no deferral is needed.
+      const animA = initialAnimA ?? actionA ?? 'idle';
+      const animB = initialAnimB ?? actionB ?? 'idle';
       return {
         ...state, status: 'animating',
         currentTurnIndex: batchTurn,
@@ -95,7 +109,7 @@ function reducer(state, action) {
         statusA: statusA || state.statusA, statusB: statusB || state.statusB,
         completedTurns: [...state.completedTurns, { index: batchTurn, actionA, actionB, damageToA, damageToB, events }],
         feedEntries: [...state.feedEntries, ...newEntries],
-        animClassA: `anim-${actionA || 'idle'}`, animClassB: `anim-${actionB || 'idle'}`,
+        animClassA: `anim-${animA}`, animClassB: `anim-${animB}`,
         animKeyA: state.animKeyA + 1, animKeyB: state.animKeyB + 1,
         hitClassA: newHitClassA, hitClassB: newHitClassB,
         hitKeyA: newHitClassA ? state.hitKeyA + 1 : state.hitKeyA,
@@ -103,7 +117,12 @@ function reducer(state, action) {
         shakeScreen: hasKO,
       };
     }
-    case 'CLEAR_ANIM': return { ...state, animClassA: 'anim-idle', animClassB: 'anim-idle' };
+    case 'LAUNCH_ACTION_A': return { ...state, animClassA: `anim-${action.anim}`, animKeyA: state.animKeyA + 1 };
+    case 'LAUNCH_ACTION_B': return { ...state, animClassB: `anim-${action.anim}`, animKeyB: state.animKeyB + 1 };
+    case 'VICTIM_REACTION_A': return { ...state, animClassA: `anim-${action.reaction}`, animKeyA: state.animKeyA + 1 };
+    case 'VICTIM_REACTION_B': return { ...state, animClassB: `anim-${action.reaction}`, animKeyB: state.animKeyB + 1 };
+    case 'CLEAR_ANIM_A': return { ...state, animClassA: 'anim-idle', animKeyA: state.animKeyA + 1 };
+    case 'CLEAR_ANIM_B': return { ...state, animClassB: 'anim-idle', animKeyB: state.animKeyB + 1 };
     case 'CLEAR_HIT': return { ...state, hitClassA: '', hitClassB: '' };
     case 'CLEAR_SHAKE': return { ...state, shakeScreen: false };
     case 'KO':
@@ -142,16 +161,50 @@ export function useFightRenderer() {
         if (isUltimateKey(event.actionA) || isUltimateKey(event.actionB)) {
           playSound('supermove_charge');
         }
-        dispatch({ type: 'ACTION_RESULT', ...rest });
-        const durFor = (a) => isUltimateKey(a) ? ANIM_DURATION.ultimate : (ANIM_DURATION[a] || 500);
-        const dur = Math.max(durFor(event.actionA), durFor(event.actionB));
-        setTimeout(() => dispatch({ type: 'CLEAR_ANIM' }), dur);
+        const charA = event.characterAId ? CHARACTERS[event.characterAId] : undefined;
+        const charB = event.characterBId ? CHARACTERS[event.characterBId] : undefined;
+        const timing = computeAttackTiming({
+          events: event.events,
+          actualActionA: event.actionA,
+          actualActionB: event.actionB,
+          damageToA: event.damageToA,
+          damageToB: event.damageToB,
+        }, charA, charB);
+        dispatch({
+          type: 'ACTION_RESULT',
+          ...rest,
+          initialAnimA: timing.initialAnimA,
+          initialAnimB: timing.initialAnimB,
+        });
+        // Deferred launches (e.g., jumper synced to incoming projectile peak).
+        if (timing.launchAnimA) {
+          setTimeout(() => dispatch({ type: 'LAUNCH_ACTION_A', anim: timing.launchAnimA }), timing.launchAtA);
+        }
+        if (timing.launchAnimB) {
+          setTimeout(() => dispatch({ type: 'LAUNCH_ACTION_B', anim: timing.launchAnimB }), timing.launchAtB);
+        }
+        // Victim reactions land when the attacker's blow visually connects.
+        if (timing.reactionA) {
+          setTimeout(() => dispatch({ type: 'VICTIM_REACTION_A', reaction: timing.reactionA }), timing.impactB);
+        }
+        if (timing.reactionB) {
+          setTimeout(() => dispatch({ type: 'VICTIM_REACTION_B', reaction: timing.reactionB }), timing.impactA);
+        }
+        // Skip the idle-clear for a fighter that just got KO'd — the KO
+        // event sets them to anim-death; an interim idle flash would jar.
+        if (event.hpA > 0) setTimeout(() => dispatch({ type: 'CLEAR_ANIM_A' }), timing.clearA);
+        if (event.hpB > 0) setTimeout(() => dispatch({ type: 'CLEAR_ANIM_B' }), timing.clearB);
         const hasUlt = event.events?.some(e => e.type === 'ultimate');
         setTimeout(() => dispatch({ type: 'CLEAR_HIT' }), hasUlt ? 1250 : 600);
-        setTimeout(() => {
-          if (hasUlt) playSound('super_hit');
-          else if (event.damageToA > 0 || event.damageToB > 0) playSound('hit');
-        }, hasUlt ? 380 : 180);
+        // Sound fires at the earliest impact among damaging attacks (so it
+        // matches the visual reaction stagger).
+        const impactSound = soundImpactDelay(timing);
+        if (impactSound != null) {
+          setTimeout(() => {
+            if (hasUlt) playSound('super_hit');
+            else playSound('hit');
+          }, impactSound);
+        }
         break;
       }
       case 'ko':

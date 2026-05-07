@@ -1,7 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import ArenaStage from '../components/ArenaStage.jsx';
 import ArenaBackground from '../components/ArenaBackground.jsx';
-import { CHARACTERS } from '../data/characters.js';
+import { CHARACTERS, METER } from '../data/characters.js';
+import { resolveActions } from '../engine/damageEngine.js';
+import { computeAttackTiming } from '../engine/animResolution.js';
 
 const CHARACTER_LIST = Object.values(CHARACTERS);
 
@@ -11,6 +13,20 @@ function actionLabel(key, character) {
     return u ? u.name : key.replace('ultimate_', '').replace(/_/g, ' ');
   }
   return key.replace(/_/g, ' ');
+}
+
+function summariseOutcome({ actionA, actionB, damageToA, damageToB, events }) {
+  const clash = events?.find(e => e.type === 'clash');
+  if (clash) return `CLASH (${clash.kind})${clash.damage ? ` — ${clash.damage} dmg each` : ''}`;
+  const blocked = events?.filter(e => e.type === 'blocked') ?? [];
+  const missed = events?.filter(e => e.type === 'miss') ?? [];
+  const parts = [];
+  if (damageToB > 0) parts.push(`A→B ${damageToB}`);
+  if (damageToA > 0) parts.push(`B→A ${damageToA}`);
+  for (const b of blocked) parts.push(`${b.defender} blocked ${b.kind}`);
+  for (const m of missed) parts.push(`${m.attacker} miss (${m.reason})`);
+  if (parts.length === 0) parts.push(`${actionA} vs ${actionB} — no contact`);
+  return parts.join(' · ');
 }
 
 function ActionButton({ label, active, isUltimate, onClick }) {
@@ -126,26 +142,103 @@ export default function DevPage() {
   const [animKeyB, setAnimKeyB] = useState(0);
   const [selectedA, setSelectedA] = useState('idle');
   const [selectedB, setSelectedB] = useState('idle');
+  const [lastOutcome, setLastOutcome] = useState(null);
+  // All scheduled timers for the current sequence (reactions + clears). Any
+  // re-fire or character change cancels every pending entry so animations
+  // never cross-fade from a previous sequence.
+  const timersRef = useRef([]);
+  const cancelTimers = () => {
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+  };
+  const schedule = (fn, ms) => {
+    const id = setTimeout(fn, ms);
+    timersRef.current.push(id);
+    return id;
+  };
 
+  // Run the selected actions through the real fight engine so DevPage exhibits
+  // the same clash matrix, mid-action hurt/death reactions, and per-fighter
+  // idle reset as an actual fight. Meter is pinned at MAX so ultimates fire.
   const fireBoth = useCallback(() => {
-    setAnimClassA(`anim-${selectedA}`);
+    cancelTimers();
+
+    const result = resolveActions(
+      selectedA, selectedB,
+      charAId, charBId,
+      METER.MAX, METER.MAX,
+      [], [],
+    );
+    const charA = CHARACTERS[charAId];
+    const charB = CHARACTERS[charBId];
+    const timing = computeAttackTiming(result, charA, charB);
+
+    // t=0: both fighters play their initial anim (idle if launch is deferred).
+    setAnimClassA(`anim-${timing.initialAnimA}`);
     setAnimKeyA(k => k + 1);
-    setAnimClassB(`anim-${selectedB}`);
+    setAnimClassB(`anim-${timing.initialAnimB}`);
     setAnimKeyB(k => k + 1);
-  }, [selectedA, selectedB]);
+    setLastOutcome({
+      actionA: result.actualActionA,
+      actionB: result.actualActionB,
+      damageToA: result.damageToA,
+      damageToB: result.damageToB,
+      events: result.events,
+    });
+
+    // t=launchAt: deferred launches (jumper synced to slow projectile arrival).
+    if (timing.launchAnimA) {
+      schedule(() => {
+        setAnimClassA(`anim-${timing.launchAnimA}`);
+        setAnimKeyA(k => k + 1);
+      }, timing.launchAtA);
+    }
+    if (timing.launchAnimB) {
+      schedule(() => {
+        setAnimClassB(`anim-${timing.launchAnimB}`);
+        setAnimKeyB(k => k + 1);
+      }, timing.launchAtB);
+    }
+    // t=impact: victims swap to hurt/death (only when they took damage).
+    if (timing.reactionA) {
+      schedule(() => {
+        setAnimClassA(`anim-${timing.reactionA}`);
+        setAnimKeyA(k => k + 1);
+      }, timing.impactB);
+    }
+    if (timing.reactionB) {
+      schedule(() => {
+        setAnimClassB(`anim-${timing.reactionB}`);
+        setAnimKeyB(k => k + 1);
+      }, timing.impactA);
+    }
+    // t=clear: each fighter back to idle independently.
+    schedule(() => {
+      setAnimClassA('anim-idle');
+      setAnimKeyA(k => k + 1);
+    }, timing.clearA);
+    schedule(() => {
+      setAnimClassB('anim-idle');
+      setAnimKeyB(k => k + 1);
+    }, timing.clearB);
+  }, [selectedA, selectedB, charAId, charBId]);
 
   const resetA = useCallback((id) => {
+    cancelTimers();
     setCharAId(id);
     setSelectedA('idle');
     setAnimClassA('anim-idle');
     setAnimKeyA(k => k + 1);
+    setLastOutcome(null);
   }, []);
 
   const resetB = useCallback((id) => {
+    cancelTimers();
     setCharBId(id);
     setSelectedB('idle');
     setAnimClassB('anim-idle');
     setAnimKeyB(k => k + 1);
+    setLastOutcome(null);
   }, []);
 
   const bgSeed = `${charAId}-${charBId}`;
@@ -252,6 +345,18 @@ export default function DevPage() {
         }}>
           A: <span style={{ color: 'var(--neon-gold)' }}>{actionLabel(selectedA, CHARACTERS[charAId])}</span>
         </span>
+        {lastOutcome && (
+          <span style={{
+            fontFamily: 'monospace', fontSize: 10,
+            color: 'rgba(255,255,255,0.55)',
+            padding: '2px 8px',
+            border: '1px solid rgba(255,215,0,0.2)',
+            borderRadius: 3,
+            whiteSpace: 'nowrap',
+          }}>
+            {summariseOutcome(lastOutcome)}
+          </span>
+        )}
         <button
           onClick={fireBoth}
           style={{

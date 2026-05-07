@@ -102,6 +102,10 @@ export default function ArenaStage({
         // can access app.ticker without threading it through every callsite.
         spriteA._pixiApp = app;
         spriteB._pixiApp = app;
+        // Resting (ground) Y — used by fireProjectile so straight-line shots
+        // aim at the defender's base position, not their mid-jump position.
+        spriteA._baseY = spriteA.y;
+        spriteB._baseY = spriteB.y;
 
         fighterARef.current = { sprite: spriteA, character: charA, shield: shieldA, baseX: spriteA.x, baseY: spriteA.y, side: 'A', activeTween: null };
         fighterBRef.current = { sprite: spriteB, character: charB, shield: shieldB, baseX: spriteB.x, baseY: spriteB.y, side: 'B', activeTween: null };
@@ -248,7 +252,11 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
   const startYOff = character?.projectileStartYByAction?.[action] ?? -80;
   const startY = fromSprite.y + startYOff;
   const endX = toSprite.x + (side === 'A' ? -40 : 40);
-  const endY = toSprite.y - 80 + endYOffset;
+  // Aim at the defender's RESTING chest height — a straight-line shot must
+  // not track a jumping defender (jump is supposed to evade shoot, so the
+  // arrow/spear should pass under them visually).
+  const targetBaseY = toSprite._baseY ?? toSprite.y;
+  const endY = targetBaseY - 80 + endYOffset;
 
   // Muzzle flash only for bullets (no custom projectile, no arrow).
   if (!isArrow && !character?.projectile) spawnMuzzleEffect(app, startX, startY, side);

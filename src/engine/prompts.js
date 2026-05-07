@@ -6,12 +6,12 @@ const MOCK_AI = false;
 // Human-readable rules block included in every LLM prompt.
 export const GAME_RULES = `ACTION SYSTEM:
   idle    → stand still, 0 dmg, no meter change
-  jump    → evades hit only; still hittable by shoot and Ultimates; +${METER.GAIN_ON_JUMP_EVADE} meter on hit evade
-  hit     → ${BASE_DAMAGE.hit} dmg close-range attack; +${METER.GAIN_ON_MELEE_HIT} meter on landed hit; MISSED by jump or slide; BLOCKED by defend
-  shoot   → ${BASE_DAMAGE.shoot} dmg projectile; +${METER.GAIN_ON_RANGED_HIT} meter on landed hit; MISSED by slide (still hits jumpers); BLOCKED by defend
-  slide   → evades both hit AND shoot; does not evade Ultimates (takes half damage unless Ultimate ignores slide); +${METER.GAIN_ON_DODGE} meter on successful slide
-  defend  → blocks ALL hit and shoot damage (0 dmg); does NOT block Ultimates (full damage passes through); +${METER.GAIN_ON_BLOCK} meter on successful block
-  Ultimates → character-specific; cost meter; effects vary (damage, status, heal, reflect); pierce defend
+  jump    → evades hit AND shoot (both miss the jumper); still hittable by Ultimates; +${METER.GAIN_ON_JUMP_EVADE} meter on each evade
+  hit     → ${BASE_DAMAGE.hit} dmg close-range attack; +${METER.GAIN_ON_MELEE_HIT} meter on landed hit; MISSED by jump or slide; BLOCKED by defend; CLASHES with opposing hit (both whiff)
+  shoot   → ${BASE_DAMAGE.shoot} dmg straight-line projectile; +${METER.GAIN_ON_RANGED_HIT} meter on landed hit; MISSED by jump, slide, or airborne Ultimates (jet-pack/flyHit ults lift the user out of the bullet's path); defend does NOT block shoot
+  slide   → ${BASE_DAMAGE.slide} dmg low tackle; evades hit AND shoot; deals damage to defenders/idle/shoot; MISSED by jump; SLIDE-vs-SLIDE collides (both take ${BASE_DAMAGE.slide} dmg); slide CANNOT damage an opponent who is mid-Ultimate; +${METER.GAIN_ON_MELEE_HIT} meter on landed slide, +${METER.GAIN_ON_DODGE} on successful evade
+  defend  → blocks hit AND Ultimates only (0 dmg); does NOT block shoot or slide (defender gets HURT through); +${METER.GAIN_ON_BLOCK} meter on successful block
+  Ultimates → character-specific; cost meter; effects vary (damage, status, heal, reflect); BLOCKED by defend (unless 'unblockable'); CLASH with opposing Ultimate (both whiff, meter still spent); airborne Ultimates (jet-pack/flyHit) WHIFF entirely vs a sliding defender (slider passes underneath, neither lands); grounded Ultimates (e.g., spread-shot) hit a slider in FULL — no partial dodge
 
 SUPER METER:
   Meter fills from 0→${METER.MAX} during the fight.

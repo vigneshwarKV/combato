@@ -1,4 +1,4 @@
-import { CHARACTERS, STATUS_EFFECTS, METER, BASE_DAMAGE, getUltimate } from '../data/characters.js';
+import { CHARACTERS, STATUS_EFFECTS, METER, BASE_DAMAGE, getUltimate, isAirborneUltimate } from '../data/characters.js';
 
 export const BASE_ACTIONS = ['idle', 'jump', 'hit', 'shoot', 'slide', 'defend'];
 
@@ -56,11 +56,39 @@ export function resolveActions(
   if (coerceReasonA) events.push({ type: 'coerced', fighter: 'A', from: requestedA, to: actualA, reason: coerceReasonA });
   if (coerceReasonB) events.push({ type: 'coerced', fighter: 'B', from: requestedB, to: actualB, reason: coerceReasonB });
 
-  // 3. Damage matrix
-  const { attackerDamage: dmgFromB, attackerHit: bHit, attackResult: resultB } =
-    computeAttack(actualB, actualA, characterB, events, 'B', 'A');
-  const { attackerDamage: dmgFromA, attackerHit: aHit, attackResult: resultA } =
-    computeAttack(actualA, actualB, characterA, events, 'A', 'B');
+  // 3. Damage matrix — handle simultaneous-action clashes first, then per-side
+  // attack resolution. Clash rules:
+  //   hit  vs hit  → both whiff (weapons cancel)
+  //   ult  vs ult  → both whiff (energies cancel; meter still spent)
+  //   slide vs slide → both collide and take slide damage
+  const isUltA = isUltimateKey(actualA);
+  const isUltB = isUltimateKey(actualB);
+  const clashHit   = actualA === 'hit'   && actualB === 'hit';
+  const clashUlt   = isUltA && isUltB;
+  const clashSlide = actualA === 'slide' && actualB === 'slide';
+
+  let dmgFromA, dmgFromB, aHit, bHit, resultA, resultB;
+  if (clashHit) {
+    events.push({ type: 'clash', kind: 'hit' });
+    dmgFromA = 0; dmgFromB = 0; aHit = false; bHit = false;
+    resultA = { ultimate: false }; resultB = { ultimate: false };
+  } else if (clashUlt) {
+    events.push({ type: 'clash', kind: 'ultimate' });
+    dmgFromA = 0; dmgFromB = 0; aHit = false; bHit = false;
+    // Mark ultimate=false so per-side side-effects (heal/status/etc.) skip;
+    // meter is still spent in step 5 because isUltimateKey(actual) is true.
+    resultA = { ultimate: false }; resultB = { ultimate: false };
+  } else if (clashSlide) {
+    const d = BASE_DAMAGE.slide ?? 6;
+    events.push({ type: 'clash', kind: 'slide', damage: d });
+    dmgFromA = d; dmgFromB = d; aHit = true; bHit = true;
+    resultA = { ultimate: false }; resultB = { ultimate: false };
+  } else {
+    ({ attackerDamage: dmgFromB, attackerHit: bHit, attackResult: resultB } =
+      computeAttack(actualB, actualA, characterB, characterA, events, 'B', 'A'));
+    ({ attackerDamage: dmgFromA, attackerHit: aHit, attackResult: resultA } =
+      computeAttack(actualA, actualB, characterA, characterB, events, 'A', 'B'));
+  }
 
   let damageToA = dmgFromB;
   let damageToB = dmgFromA;
@@ -108,20 +136,20 @@ export function resolveActions(
 
   // 6. Meter gains from this turn's outcomes
   newMeterA = applyMeterGains(newMeterA, {
-    landedHit: actualA === 'hit' && aHit,
+    landedHit: (actualA === 'hit' || actualA === 'slide') && aHit,
     landedShot: actualA === 'shoot' && aHit,
     tookDamage: damageToA > 0,
     slidPast: actualA === 'slide' && !aHit && (actualB === 'hit' || actualB === 'shoot'),
-    blockedAttack: actualA === 'defend' && (actualB === 'hit' || actualB === 'shoot') && !bHit,
-    evadedByJump: actualA === 'jump' && actualB === 'hit' && !bHit,
+    blockedAttack: actualA === 'defend' && (actualB === 'hit' || isUltimateKey(actualB)) && !bHit,
+    evadedByJump: actualA === 'jump' && (actualB === 'hit' || actualB === 'shoot') && !bHit,
   });
   newMeterB = applyMeterGains(newMeterB, {
-    landedHit: actualB === 'hit' && bHit,
+    landedHit: (actualB === 'hit' || actualB === 'slide') && bHit,
     landedShot: actualB === 'shoot' && bHit,
     tookDamage: damageToB > 0,
     slidPast: actualB === 'slide' && !bHit && (actualA === 'hit' || actualA === 'shoot'),
-    blockedAttack: actualB === 'defend' && (actualA === 'hit' || actualA === 'shoot') && !aHit,
-    evadedByJump: actualB === 'jump' && actualA === 'hit' && !aHit,
+    blockedAttack: actualB === 'defend' && (actualA === 'hit' || isUltimateKey(actualA)) && !aHit,
+    evadedByJump: actualB === 'jump' && (actualA === 'hit' || actualA === 'shoot') && !aHit,
   });
 
   return {
@@ -155,9 +183,9 @@ function coerceAction(requested, charId, meter, status) {
   return { action: requested, reason: null };
 }
 
-function computeAttack(attacker, defender, attackerCharId, events, attackerLabel, defenderLabel) {
-  // Non-offensive actions
-  if (['idle', 'jump', 'slide', 'defend', 'none'].includes(attacker)) {
+function computeAttack(attacker, defender, attackerCharId, defenderCharId, events, attackerLabel, defenderLabel) {
+  // Non-offensive actions (slide is offensive in the new matrix; handled below)
+  if (['idle', 'jump', 'defend', 'none'].includes(attacker)) {
     return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: false } };
   }
 
@@ -170,32 +198,62 @@ function computeAttack(attacker, defender, attackerCharId, events, attackerLabel
   }
 
   if (attacker === 'shoot') {
-    if (defender === 'slide')  { events.push({ type: 'miss', attacker: attackerLabel, reason: 'slid' }); return hit(0, false); }
-    if (defender === 'defend') { events.push({ type: 'blocked', defender: defenderLabel, kind: 'shoot' }); return hit(0, false); }
+    // Shoot travels straight — jump and slide both evade. Defend does NOT block shoot
+    // (a shield is for melee/ultimate impact, not stopping projectiles).
+    if (defender === 'jump')  { events.push({ type: 'miss', attacker: attackerLabel, reason: 'jumped' }); return hit(0, false); }
+    if (defender === 'slide') { events.push({ type: 'miss', attacker: attackerLabel, reason: 'slid' }); return hit(0, false); }
+    // An airborne ultimate (flyHit / jet-pack lift) takes the defender out of
+    // the projectile's path the same way a jump does. Grounded ultimates
+    // (e.g., womanHero's Triple Shot) still get hit.
+    if (isAirborneUltimate(defenderCharId, defender)) {
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'ult_airborne' });
+      return hit(0, false);
+    }
     events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: BASE_DAMAGE.shoot, kind: 'shoot' });
     return hit(BASE_DAMAGE.shoot, true);
+  }
+
+  if (attacker === 'slide') {
+    // Slide is a low-line tackle — passes under hit/shoot, can't reach a jumper.
+    // It collides with a slide (handled as clash in resolveActions) and damages
+    // anyone standing (idle / defend / shoot — defend doesn't help vs slide).
+    // It also can't reach an opponent who is mid-Ultimate: airborne ults clear
+    // the slider entirely, and grounded ults (e.g., womanHero's spread shot)
+    // create an arrow rain the slider can't slide through.
+    if (defender === 'jump') { events.push({ type: 'miss', attacker: attackerLabel, reason: 'jumped' }); return hit(0, false); }
+    if (defender === 'hit')  { events.push({ type: 'miss', attacker: attackerLabel, reason: 'attack_whiffed' }); return hit(0, false); }
+    if (isUltimateKey(defender)) {
+      const reason = isAirborneUltimate(defenderCharId, defender) ? 'ult_airborne' : 'ult_active';
+      events.push({ type: 'miss', attacker: attackerLabel, reason });
+      return hit(0, false);
+    }
+    const dmg = BASE_DAMAGE.slide ?? 6;
+    events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: dmg, kind: 'slide' });
+    return hit(dmg, true);
   }
 
   if (isUltimateKey(attacker)) {
     const ult = getUltimate(attackerCharId, attacker);
     if (!ult) return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: false } };
 
-    // Ultimate base damage
+    // Defend blocks Ultimates (only hit + ultimate are blockable per the matrix).
+    if (defender === 'defend' && !ult.unblockable) {
+      events.push({ type: 'blocked', defender: defenderLabel, kind: 'ultimate', name: ult.name });
+      return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: true, ult, blocked: true } };
+    }
+
+    // An airborne ult (jet-pack/flyHit) skips clean over a sliding defender —
+    // they pass each other in different vertical lanes, neither connects.
+    // Grounded ults (e.g., womanHero's spread shot) still hit a slider in full
+    // because at least one arrow is angled to the lower lane.
+    if (defender === 'slide' && isAirborneUltimate(attackerCharId, attacker) && !ult.ignoresDodge) {
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'slid_under', name: ult.name });
+      return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: true, ult, missed: true } };
+    }
+
+    // Ultimate base damage (multi-hit scaling if applicable)
     let dmg = ult.damage ?? 0;
-
-    // Dodge still provides partial protection against Ultimates unless the Ultimate ignores it
-    if (defender === 'slide' && !ult.ignoresDodge) {
-      dmg = Math.floor(dmg / 2);
-      events.push({ type: 'partial_dodge', attacker: attackerLabel, victim: defenderLabel, damage: dmg });
-    }
-
-    // Multi-hit
-    if (ult.hits && ult.hits > 1) {
-      dmg = Math.floor(dmg * ult.hits / ult.hits) * ult.hits;
-      // Already `dmg * hits` conceptually — but we'll scale: treat ult.damage as per-hit
-      dmg = (ult.damage ?? 0) * ult.hits;
-      if (defender === 'slide' && !ult.ignoresDodge) dmg = Math.floor(dmg / 2);
-    }
+    if (ult.hits && ult.hits > 1) dmg = (ult.damage ?? 0) * ult.hits;
 
     events.push({ type: 'ultimate', attacker: attackerLabel, victim: defenderLabel, name: ult.name, damage: dmg });
     return { attackerDamage: dmg, attackerHit: dmg > 0, attackResult: { ultimate: true, ult } };
