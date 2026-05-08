@@ -16,9 +16,29 @@ export const ANIM_DURATION = {
 export const IMPACT_DELAY = {
   hit:    380,   // mid-lunge hold
   shoot:  600,   // projectile travel time (spawn delay added on top)
-  slide:  320,   // end of forward glide
+  slide:  320,   // end of forward glide (vs a stationary defender)
   ultimate: 750, // ~0.78 × 900 fwdMs default for flyHit
 };
+
+// When two converging tweens (slide ↔ slide, hit ↔ slide) approach each other,
+// they meet near the centre well BEFORE either reaches the end of their fwdMs.
+// Both lunge and glide use easeOut(t/fwd), so each side has covered ~half the
+// forward distance at t/fwd ≈ 0.44 — that's roughly when their paths cross.
+// Firing the impact at this moment keeps the hit landing BEFORE the sprites
+// pass through each other. Stage-width-dependent corrections are minor; the
+// 0.44 ratio is accurate to within a frame or two for the default sep.
+const CONVERGE_MEET_RATIO = 0.44;
+const DEFAULT_FWD_MS = { hit: 220, slide: 320 };
+function fwdMsFor(action, character) {
+  if (action !== 'hit' && action !== 'slide') return null;
+  return character?.motionOverrides?.[action]?.fwdMs ?? DEFAULT_FWD_MS[action];
+}
+function convergeMeetMs(actionA, characterA, actionB, characterB) {
+  const fwdA = fwdMsFor(actionA, characterA);
+  const fwdB = fwdMsFor(actionB, characterB);
+  if (!fwdA || !fwdB) return null;
+  return Math.round(((fwdA + fwdB) / 2) * CONVERGE_MEET_RATIO);
+}
 
 export function durationFor(actionKey) {
   if (isUltimateKey(actionKey)) return ANIM_DURATION.ultimate;
@@ -30,19 +50,37 @@ export function hasUltimateHit(events, victim) {
   return events?.some(e => e.type === 'ultimate' && e.victim === victim && (e.damage ?? 0) > 0) || false;
 }
 
+// resolveActions adds `ult.selfDamage` (e.g. Beast's Rocket Charge -5 HP) onto
+// the attacker's `damageTo*` total, but that's a status cost — NOT a hit from
+// the opponent. Reaction anims should only fire on opponent-inflicted damage,
+// otherwise Beast swaps to `hurt` mid-rocket-charge and clips its own ult.
+function selfDamageFor(events, fighter) {
+  if (!events?.length) return 0;
+  let total = 0;
+  for (const e of events) {
+    if (e.type === 'self_damage' && e.fighter === fighter) total += (e.amount ?? 0);
+  }
+  return total;
+}
+
 // Pick the reaction animation a victim should play when they take damage.
 // Returns null when the fighter took no damage (no override needed).
 //   ultimate damage                → 'death' (fall+die)
-//   melee hit while jumping        → 'death' (knocked out of the air; the
-//                                      death anim's collapse reads as a fall)
+//   melee hit while jumping        → 'death' (knocked out of the air)
 //   projectile hit while jumping   → 'hurt'  (no knockdown — jumper completes
-//                                      arc and hurt fires after landing; the
-//                                      caller controls when it fires)
+//                                      arc and hurt fires after landing)
+//   slide collision                → 'death' (hard throwback)
+//   hit-attacker clipped by slide  → 'death' (legs taken out — throwback
+//                                      reads better than a meek 'hurt' here)
 //   any other damage               → 'hurt'
+// In every 'death' case, ArenaStage's tweenImpactRecover carries the sprite
+// back to base position while the death anim plays.
 export function reactionAnim(damage, gotUltHit, victimAction, knockdownFromAir = true) {
   if (damage <= 0) return null;
   if (gotUltHit) return 'death';
   if (victimAction === 'jump' && knockdownFromAir) return 'death';
+  if (victimAction === 'slide') return 'death';
+  if (victimAction === 'hit') return 'death';
   return 'hurt';
 }
 
@@ -50,6 +88,17 @@ export function reactionAnim(damage, gotUltHit, victimAction, knockdownFromAir =
 // fires an ice arrow on her IceShoot3) rather than a melee swing.
 export function isProjectileHit(character) {
   return !!character?.extraProjectileActions?.includes('hit');
+}
+
+// True when this character's ultimate motion lifts them off the ground
+// (flyHit / jumpShoot / arc) — same logic as data/characters.isAirborneUltimate
+// but takes the character object directly so animResolution doesn't need to
+// look up by id. Default ult motion is flyHit → airborne.
+function isAirborneUlt(action, character) {
+  if (!isUltimateKey(action)) return false;
+  const kind = character?.motionOverrides?.[action]?.kind;
+  if (!kind) return true; // default flyHit
+  return kind === 'flyHit' || kind === 'jumpShoot' || kind === 'arc';
 }
 
 // Visual ms from action start until the attacker's blow lands on its target.
@@ -97,6 +146,35 @@ function jumpHoldFor(ownAction, opponentImpact) {
   return Math.round(opponentImpact - jumpPeakMs);
 }
 
+// When a slider is going to take damage from an incoming shoot, the natural
+// slide tween reaches the opponent before the bullet arrives — so visually
+// the slider charges all the way in, THEN the slide gets cut short on the
+// recovery. The user wants the bullet to clip them just after the slide
+// starts. Two-step:
+//  - The reaction fires SHOOT_HIT_OFFSET_MS BEFORE the bullet reaches the
+//    slider's resting base (the bullet is still in flight; visually it has
+//    just passed through where the slider is mid-glide).
+//  - The slide is held so it starts SLIDE_LEAD_MS before the reaction —
+//    slider barely begins their forward phase before getting hit.
+const SLIDE_LEAD_MS = 100;
+const SHOOT_HIT_OFFSET_MS = 250;
+function shootSlideHitsAt(opponentImpact) {
+  return Math.max(0, opponentImpact - SHOOT_HIT_OFFSET_MS);
+}
+function slideHoldFor(ownAction, ownDamage, opponentAction, opponentImpact, opponentChar) {
+  if (ownAction !== 'slide') return 0;
+  if (ownDamage <= 0) return 0;
+  // Shoot-pattern timing also applies to grounded Ultimates (e.g., womanHero's
+  // spread shot). For airborne Ultimates the slider plays their full slide
+  // and the reaction fires after — handled in computeAttackTiming, NO hold.
+  const isShoot = opponentAction === 'shoot';
+  const isGroundedUlt = isUltimateKey(opponentAction) && !isAirborneUlt(opponentAction, opponentChar);
+  if (!isShoot && !isGroundedUlt) return 0;
+  const reactionAt = shootSlideHitsAt(opponentImpact);
+  if (reactionAt <= SLIDE_LEAD_MS) return 0;
+  return Math.round(reactionAt - SLIDE_LEAD_MS);
+}
+
 // Given a resolveActions() result and (optionally) the two characters,
 // produce the timeline the renderers need to schedule the turn.
 //   initialAnim*   → what plays at t=0 (becomes 'idle' when a launch is delayed)
@@ -114,13 +192,36 @@ export function computeAttackTiming(result, characterA, characterB) {
   const bGotUltHit = hasUltimateHit(result.events, 'B');
   const actionA = result.actualActionA || 'idle';
   const actionB = result.actualActionB || 'idle';
-  const damageToA = result.damageToA;
-  const damageToB = result.damageToB;
-  const impactA = impactDelayFor(actionA, characterA);
-  const impactB = impactDelayFor(actionB, characterB);
+  // Strip self-damage so reactions only fire for opponent-inflicted hits.
+  const damageToA = Math.max(0, result.damageToA - selfDamageFor(result.events, 'A'));
+  const damageToB = Math.max(0, result.damageToB - selfDamageFor(result.events, 'B'));
+  let impactA = impactDelayFor(actionA, characterA);
+  let impactB = impactDelayFor(actionB, characterB);
+  // Converging melee pairs (slide-vs-slide, hit-vs-slide, slide-vs-hit) meet
+  // at the centre well before either reaches end-of-fwd. Override both impact
+  // times to the meeting moment so the reaction fires BEFORE the sprites
+  // cross through each other.
+  const isConverging = (actionA === 'slide' && actionB === 'slide')
+    || (actionA === 'hit'   && actionB === 'slide')
+    || (actionA === 'slide' && actionB === 'hit');
+  if (isConverging) {
+    const meetAt = convergeMeetMs(actionA, characterA, actionB, characterB);
+    if (meetAt != null) {
+      impactA = meetAt;
+      impactB = meetAt;
+    }
+  }
   // Slow-attack jump-sync: hold the jumper in idle until just before peak.
-  const launchAtA = jumpHoldFor(actionA, impactB);
-  const launchAtB = jumpHoldFor(actionB, impactA);
+  // Same idea for sliders against fast shoots OR grounded Ultimates — hold
+  // so the bullet/arrow catches them just after the slide starts. Slow
+  // throwers (turtle/monkey) don't trigger slideHold because the slider
+  // takes no damage in that pairing (slide rushes the thrower instead).
+  // Airborne Ultimates also don't hold — the slider plays their full slide
+  // and the reaction fires when the slide naturally completes.
+  const launchAtA = jumpHoldFor(actionA, impactB)
+    || slideHoldFor(actionA, damageToA, actionB, impactB, characterB);
+  const launchAtB = jumpHoldFor(actionB, impactA)
+    || slideHoldFor(actionB, damageToB, actionA, impactA, characterA);
   const initialAnimA = launchAtA > 0 ? 'idle' : actionA;
   const initialAnimB = launchAtB > 0 ? 'idle' : actionB;
   const launchAnimA = launchAtA > 0 ? actionA : null;
@@ -131,14 +232,39 @@ export function computeAttackTiming(result, characterA, characterB) {
   // reaction fires at the visual impact and uses 'death' if mid-air.
   const aLandedHurt = actionA === 'jump' && damageToA > 0 && !aGotUltHit && actionB === 'hit' && isProjectileHit(characterB);
   const bLandedHurt = actionB === 'jump' && damageToB > 0 && !bGotUltHit && actionA === 'hit' && isProjectileHit(characterA);
+  // Slider getting clipped by an incoming attack:
+  //  - fast shoot: reaction fires before bullet reaches base (mid-slide
+  //    throwback) — uses the shoot-vs-slide pattern.
+  //  - grounded ult (e.g., womanHero spread): same pattern as fast shoot.
+  //  - airborne ult (Beast Rocket Charge, etc.): slider plays the full slide
+  //    (forward → hold → retreat to base) and the reaction fires AFTER the
+  //    slide completes — the death anim plays at base, no throwback tween.
+  const aShootPattern = actionA === 'slide' && damageToA > 0 && (
+    actionB === 'shoot'
+    || (isUltimateKey(actionB) && !isAirborneUlt(actionB, characterB))
+  );
+  const bShootPattern = actionB === 'slide' && damageToB > 0 && (
+    actionA === 'shoot'
+    || (isUltimateKey(actionA) && !isAirborneUlt(actionA, characterA))
+  );
+  const aSlideUltAirborne = actionA === 'slide' && damageToA > 0
+    && isUltimateKey(actionB) && isAirborneUlt(actionB, characterB);
+  const bSlideUltAirborne = actionB === 'slide' && damageToB > 0
+    && isUltimateKey(actionA) && isAirborneUlt(actionA, characterA);
   const reactionA = aLandedHurt
     ? reactionAnim(damageToA, aGotUltHit, actionA, /* knockdownFromAir */ false)
     : reactionAnim(damageToA, aGotUltHit, actionA);
   const reactionB = bLandedHurt
     ? reactionAnim(damageToB, bGotUltHit, actionB, /* knockdownFromAir */ false)
     : reactionAnim(damageToB, bGotUltHit, actionB);
-  const reactionAtA = aLandedHurt ? launchAtA + ANIM_DURATION.jump : impactB;
-  const reactionAtB = bLandedHurt ? launchAtB + ANIM_DURATION.jump : impactA;
+  const reactionAtA = aLandedHurt ? launchAtA + ANIM_DURATION.jump
+    : aShootPattern ? shootSlideHitsAt(impactB)
+    : aSlideUltAirborne ? ANIM_DURATION.slide
+    : impactB;
+  const reactionAtB = bLandedHurt ? launchAtB + ANIM_DURATION.jump
+    : bShootPattern ? shootSlideHitsAt(impactA)
+    : bSlideUltAirborne ? ANIM_DURATION.slide
+    : impactA;
   // Each fighter's "natural" anim duration accounts for the launch delay.
   const ownAnimEndA = launchAnimA ? launchAtA + durationFor(launchAnimA) : durationFor(initialAnimA);
   const ownAnimEndB = launchAnimB ? launchAtB + durationFor(launchAnimB) : durationFor(initialAnimB);

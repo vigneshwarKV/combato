@@ -202,10 +202,21 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
   }
 
   if (attacker === 'shoot') {
-    // Shoot travels straight — jump and slide both evade. Defend does NOT block shoot
+    // Shoot travels straight — jump still evades. Defend does NOT block shoot
     // (a shield is for melee/ultimate impact, not stopping projectiles).
     if (defender === 'jump')  { events.push({ type: 'miss', attacker: attackerLabel, reason: 'jumped' }); return hit(0, false); }
-    if (defender === 'slide') { events.push({ type: 'miss', attacker: attackerLabel, reason: 'slid' }); return hit(0, false); }
+    if (defender === 'slide') {
+      // Fast bullets catch the slider mid-slide. Slow throws (turtle / monkey
+      // spear) lose to a slide — the slider reaches the thrower before the
+      // projectile spawns; the throw gets interrupted (handled in the slide
+      // branch where the slider damages the slow thrower).
+      if (isSlowProjectileShot(attackerCharId, defenderCharId)) {
+        events.push({ type: 'miss', attacker: attackerLabel, reason: 'interrupted_by_slide' });
+        return hit(0, false);
+      }
+      events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: BASE_DAMAGE.shoot, kind: 'shoot' });
+      return hit(BASE_DAMAGE.shoot, true);
+    }
     // An airborne ultimate (flyHit / jet-pack lift) takes the defender out of
     // the projectile's path the same way a jump does. Grounded ultimates
     // (e.g., womanHero's Triple Shot) still get hit.
@@ -218,19 +229,33 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
   }
 
   if (attacker === 'slide') {
-    // Slide is a low-line tackle — passes under hit/shoot, can't reach a jumper.
-    // It collides with a slide (handled as clash in resolveActions) and damages
-    // anyone standing (idle / defend / shoot — defend doesn't help vs slide).
-    // It also can't reach an opponent who is mid-Ultimate: airborne ults clear
-    // the slider entirely, and grounded ults (e.g., womanHero's spread shot)
-    // create an arrow rain the slider can't slide through.
+    // Slide is a low-line tackle — clips a melee hitter's legs and throws
+    // them back. Passes under shoots; can't reach a jumper. It collides with
+    // a slide (handled as a clash in resolveActions) and damages anyone
+    // standing (idle / defend / shoot — defend doesn't help vs slide). It
+    // also can't reach a defender who is mid-Ultimate: airborne ults clear
+    // the slider entirely, grounded ults (e.g., womanHero's spread shot)
+    // create an arrow rain the slider can't slide through. Projectile-style
+    // hits (womanHero's IceShoot3 jumpShoot — she rises up to fire) put the
+    // attacker out of leg-clip range too.
     if (defender === 'jump') { events.push({ type: 'miss', attacker: attackerLabel, reason: 'jumped' }); return hit(0, false); }
-    if (defender === 'hit')  { events.push({ type: 'miss', attacker: attackerLabel, reason: 'attack_whiffed' }); return hit(0, false); }
+    if (defender === 'hit' && CHARACTERS[defenderCharId]?.extraProjectileActions?.includes('hit')) {
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'attacker_airborne' });
+      return hit(0, false);
+    }
+    if (defender === 'shoot' && !isSlowProjectileShot(defenderCharId, attackerCharId)) {
+      // Fast shooter tags the slider mid-slide before the slide reaches them
+      // (the slider's hit damage is awarded in the shoot branch's hit case).
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'shot_first' });
+      return hit(0, false);
+    }
     if (isUltimateKey(defender)) {
       const reason = isAirborneUltimate(defenderCharId, defender) ? 'ult_airborne' : 'ult_active';
       events.push({ type: 'miss', attacker: attackerLabel, reason });
       return hit(0, false);
     }
+    // Slide damages everything still on the ground here: idle / defend / shoot
+    // (slow thrower) / melee hit attacker.
     const dmg = BASE_DAMAGE.slide ?? 6;
     events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: dmg, kind: 'slide' });
     return hit(dmg, true);
@@ -246,16 +271,13 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
       return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: true, ult, blocked: true } };
     }
 
-    // An airborne ult (jet-pack/flyHit) skips clean over a sliding defender —
-    // they pass each other in different vertical lanes, neither connects.
-    // Grounded ults (e.g., womanHero's spread shot) still hit a slider in full
-    // because at least one arrow is angled to the lower lane.
-    if (defender === 'slide' && isAirborneUltimate(attackerCharId, attacker) && !ult.ignoresDodge) {
-      events.push({ type: 'miss', attacker: attackerLabel, reason: 'slid_under', name: ult.name });
-      return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: true, ult, missed: true } };
-    }
-
-    // Ultimate base damage (multi-hit scaling if applicable)
+    // All Ultimates land on a sliding defender — visual outcome differs:
+    //  - airborne ult (flyHit / jet-pack): slider plays the FULL slide first
+    //    (forward → hold → retreat back to base), and only THEN takes the
+    //    death anim — read as "slid out and back, ult catches them at home"
+    //  - grounded ult (e.g., womanHero spread shot): same as shoot-vs-slide
+    //    pattern — slider holds in idle, brief slide, gets thrown back.
+    // Both timings are computed in animResolution.computeAttackTiming.
     let dmg = ult.damage ?? 0;
     if (ult.hits && ult.hits > 1) dmg = (ult.damage ?? 0) * ult.hits;
 
@@ -268,6 +290,22 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
 
 function hit(damage, landed) {
   return { attackerDamage: damage, attackerHit: landed, attackResult: { ultimate: false } };
+}
+
+// True when the shooter's projectile spawn delay is long enough that an
+// opposing slider reaches them before the throw releases. Used to flip the
+// shoot-vs-slide outcome: fast guns (no delay) tag the slider; slow throwers
+// (turtle's spear delay 380, monkey's 320) get rushed by the slider instead.
+// Threshold is the slider's own slide forward time — they cover that distance
+// in `fwdMs`, so any spawn delay >= fwdMs means the slider arrives first.
+function isSlowProjectileShot(shooterCharId, sliderCharId) {
+  const shooter = CHARACTERS[shooterCharId];
+  const slider  = CHARACTERS[sliderCharId];
+  const shooterDelay = shooter?.projectileDelayByAction?.shoot
+    ?? shooter?.projectileDelayMs
+    ?? 0;
+  const sliderFwdMs = slider?.motionOverrides?.slide?.fwdMs ?? 320;
+  return shooterDelay >= sliderFwdMs;
 }
 
 function tickDot(statusList) {

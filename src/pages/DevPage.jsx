@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import ArenaStage from '../components/ArenaStage.jsx';
 import ArenaBackground from '../components/ArenaBackground.jsx';
 import { CHARACTERS, METER } from '../data/characters.js';
@@ -201,16 +202,25 @@ export default function DevPage() {
     }
     // t=reactionAt*: victims swap to hurt/death (only when they took damage).
     // For projectile-hit-vs-jumper this is deferred to the jumper's landing.
+    // flushSync forces React to commit the animClass change (and run
+    // ArenaStage's useEffect to cancel any pending projectile timers) before
+    // returning to the event loop — required when a same-tick projectile
+    // spawn timer would otherwise fire first (e.g., monkey throw 320ms vs
+    // slide impact 320ms).
     if (timing.reactionA) {
       schedule(() => {
-        setAnimClassA(`anim-${timing.reactionA}`);
-        setAnimKeyA(k => k + 1);
+        flushSync(() => {
+          setAnimClassA(`anim-${timing.reactionA}`);
+          setAnimKeyA(k => k + 1);
+        });
       }, timing.reactionAtA);
     }
     if (timing.reactionB) {
       schedule(() => {
-        setAnimClassB(`anim-${timing.reactionB}`);
-        setAnimKeyB(k => k + 1);
+        flushSync(() => {
+          setAnimClassB(`anim-${timing.reactionB}`);
+          setAnimKeyB(k => k + 1);
+        });
       }, timing.reactionAtB);
     }
     // t=clear: each fighter back to idle independently.
@@ -295,6 +305,8 @@ export default function DevPage() {
               animClassB={animClassB}
               animKeyA={animKeyA}
               animKeyB={animKeyB}
+              plannedActionA={selectedA}
+              plannedActionB={selectedB}
               width={1100}
               height={700}
             />

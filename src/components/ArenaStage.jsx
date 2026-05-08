@@ -26,9 +26,15 @@ export default function ArenaStage({
   characterAId, characterBId,
   animClassA, animClassB,
   animKeyA, animKeyB,
+  // The action each fighter is going to perform this turn (even if currently
+  // visually held in idle for sync, e.g. slideHold). Used by fireProjectile
+  // to tell that the defender is GOING to slide so the bullet can fade out
+  // before reaching the slider's resting base.
+  plannedActionA, plannedActionB,
   hpA = 100, hpB = 100,
   width = 1100,
   height = 600,
+  onReady,
 }) {
   const containerRef = useRef(null);
   const appRef = useRef(null);
@@ -39,6 +45,18 @@ export default function ArenaStage({
   const charA = CHARACTERS[characterAId];
   const charB = CHARACTERS[characterBId];
 
+  // sizeRef gives the async init access to the LATEST width/height. Without it,
+  // ResizeObserver-driven width changes that arrive while init is awaiting
+  // would leave sprites placed using the stale mount-time width — visually
+  // shifting them off-center inside the now-wider wrapping div.
+  const sizeRef = useRef({ width, height });
+  sizeRef.current = { width, height };
+
+  // onReadyRef lets the async init fire the latest callback without depending
+  // on it (which would re-init on every parent render).
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+
   useEffect(() => {
     if (!containerRef.current || !charA || !charB) return;
     let cancelled = false;
@@ -48,8 +66,9 @@ export default function ArenaStage({
 
     (async () => {
       try {
+        const { width: w0, height: h0 } = sizeRef.current;
         await app.init({
-          width, height,
+          width: w0, height: h0,
           backgroundAlpha: 0,
           antialias: true,
           preference: 'webgl',
@@ -70,19 +89,23 @@ export default function ArenaStage({
         shieldA.visible = false;
         shieldB.visible = false;
 
+        // Read the LATEST size — stageWidth may have updated during the await.
+        const { width: w, height: h } = sizeRef.current;
+        if (w !== w0 || h !== h0) app.renderer.resize(w, h);
+
         // Center two fighters at the bottom of the stage, separated by ~180px.
         // Fighter A faces right (default), Fighter B is mirrored.
-        const groundY = height - 30;
+        const groundY = h - 30;
         const baseScaleA = (charA.displayScale ?? 1) * (charA.renderMode === 'spine' ? 1 : 1);
         const baseScaleB = (charB.displayScale ?? 1) * (charB.renderMode === 'spine' ? 1 : 1);
 
         // Keep at least 80px from each canvas edge so sprites never start outside bounds
-        const sep = Math.min(240, width / 2 - 80);
-        spriteA.x = width / 2 - sep;
+        const sep = Math.min(240, w / 2 - 80);
+        spriteA.x = w / 2 - sep;
         spriteA.y = groundY;
         applyScale(spriteA, baseScaleA, /* mirrored */ false);
 
-        spriteB.x = width / 2 + sep;
+        spriteB.x = w / 2 + sep;
         spriteB.y = groundY;
         applyScale(spriteB, baseScaleB, /* mirrored */ true);
 
@@ -109,12 +132,26 @@ export default function ArenaStage({
         spriteA._baseY = spriteA.y;
         spriteB._baseX = spriteB.x;
         spriteB._baseY = spriteB.y;
+        // Stash character on Spine sprites too so fireProjectile's predictive
+        // aim can read motionOverrides.slide directly off toSprite._character.
+        // (loadPng already sets sprite._character; this is the Spine equivalent.)
+        spriteA._character = charA;
+        spriteB._character = charB;
 
         fighterARef.current = { sprite: spriteA, character: charA, shield: shieldA, baseX: spriteA.x, baseY: spriteA.y, side: 'A', activeTween: null };
         fighterBRef.current = { sprite: spriteB, character: charB, shield: shieldB, baseX: spriteB.x, baseY: spriteB.y, side: 'B', activeTween: null };
 
         playAnimation(spriteA, charA, 'idle');
         playAnimation(spriteB, charB, 'idle');
+
+        // Signal readiness AFTER sprites are loaded and idle pose is up. The
+        // host gates startFight() on this — without the gate the fight loop's
+        // first action_result fires before sprites exist and the animation
+        // useEffects bail (fighterARef null), dropping the first batch on the
+        // floor. Random-move fights especially exhibit this: callAI returns
+        // 'FAIL' instantly with no API key, so batch 1 dispatches well before
+        // the Spine atlas / PNG manifest fetches resolve.
+        onReadyRef.current?.();
       } catch (e) {
         console.error('[ArenaStage] init failed:', e);
         if (!cancelled) setLoadError(e.message || 'Stage load failed');
@@ -131,6 +168,50 @@ export default function ArenaStage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [characterAId, characterBId]);
 
+  // Resize the PIXI canvas + recenter fighters when stageWidth/height change
+  // after init (Arena.jsx feeds a ResizeObserver-driven width). Without this,
+  // a 1100px canvas would sit left-aligned inside a wider wrapping div and the
+  // fighters would appear shifted left of screen center. Skips reposition while
+  // a tween is active so an in-flight lunge/jump doesn't get yanked back.
+  useEffect(() => {
+    const app = appRef.current;
+    const fa = fighterARef.current;
+    const fb = fighterBRef.current;
+    if (!app?.renderer || !fa || !fb) return;
+    app.renderer.resize(width, height);
+    const groundY = height - 30;
+    const sep = Math.min(240, width / 2 - 80);
+
+    fa.baseX = width / 2 - sep;
+    fa.baseY = groundY;
+    fa.sprite._baseX = fa.baseX;
+    fa.sprite._baseY = fa.baseY;
+    if (!fa.activeTween) {
+      fa.sprite.x = fa.baseX;
+      fa.sprite.y = fa.baseY;
+    }
+
+    fb.baseX = width / 2 + sep;
+    fb.baseY = groundY;
+    fb.sprite._baseX = fb.baseX;
+    fb.sprite._baseY = fb.baseY;
+    if (!fb.activeTween) {
+      fb.sprite.x = fb.baseX;
+      fb.sprite.y = fb.baseY;
+    }
+  }, [width, height]);
+
+  // Mirror plannedAction* onto sprites so fireProjectile can inspect what the
+  // defender is GOING to do this turn (even if currently held in idle).
+  useEffect(() => {
+    const fa = fighterARef.current;
+    if (fa?.sprite) fa.sprite._plannedAction = plannedActionA;
+  }, [plannedActionA]);
+  useEffect(() => {
+    const fb = fighterBRef.current;
+    if (fb?.sprite) fb.sprite._plannedAction = plannedActionB;
+  }, [plannedActionB]);
+
   // Drive Fighter A animation. Trust useFight as the single source of truth —
   // it dispatches anim-death on KO and anim-celebrate on victory; do NOT
   // override based on hp here, otherwise the death plays once on ACTION_RESULT
@@ -138,20 +219,28 @@ export default function ArenaStage({
   useEffect(() => {
     const fa = fighterARef.current;
     if (!fa) return;
+    cancelPendingProjectiles(fa);
     const action = (animClassA || 'anim-idle').replace(/^anim-/, '');
+    fa.sprite._currentAction = action;
     playAction(fa, fighterBRef.current, action, appRef.current);
     raiseAttacker(fa.sprite, action);
-    if (isProjectileAction(action, charA)) spawnProjectile(appRef.current, fa.sprite, fighterBRef.current?.sprite, action, 'A', charA);
+    if (isProjectileAction(action, charA)) {
+      fa._pendingProjectiles = spawnProjectile(appRef.current, fa.sprite, fighterBRef.current?.sprite, action, 'A', charA);
+    }
   }, [animClassA, animKeyA]);
 
   // Drive Fighter B animation
   useEffect(() => {
     const fb = fighterBRef.current;
     if (!fb) return;
+    cancelPendingProjectiles(fb);
     const action = (animClassB || 'anim-idle').replace(/^anim-/, '');
+    fb.sprite._currentAction = action;
     playAction(fb, fighterARef.current, action, appRef.current);
     raiseAttacker(fb.sprite, action);
-    if (isProjectileAction(action, charB)) spawnProjectile(appRef.current, fb.sprite, fighterARef.current?.sprite, action, 'B', charB);
+    if (isProjectileAction(action, charB)) {
+      fb._pendingProjectiles = spawnProjectile(appRef.current, fb.sprite, fighterARef.current?.sprite, action, 'B', charB);
+    }
   }, [animClassB, animKeyB]);
 
   if (!charA || !charB) {
@@ -201,12 +290,17 @@ function isProjectileAction(action, character) {
   return character?.extraProjectileActions?.includes(action) ?? false;
 }
 
+// Returns an array of pending setTimeout IDs so the caller can cancel any
+// scheduled-but-not-yet-spawned projectiles when the attacker's animation
+// gets interrupted (e.g., a slow thrower clipped by a slide should keep the
+// windup but never release the spear).
 function spawnProjectile(app, fromSprite, toSprite, action, side, character) {
-  if (!app || !fromSprite || !toSprite) return;
+  if (!app || !fromSprite || !toSprite) return [];
   const delayMs = character?.projectileDelayByAction?.[action]
     ?? character?.projectileDelayMs ?? 0;
   const motionOverride = character?.motionOverrides?.[action];
   const spreadShot = motionOverride?.spreadShot;
+  const timers = [];
 
   if (spreadShot) {
     const stagger = motionOverride?.spreadStagger ?? 100;
@@ -225,20 +319,64 @@ function spawnProjectile(app, fromSprite, toSprite, action, side, character) {
         if (step.rotation !== undefined) fromSprite.rotation = step.rotation;
         playAnimation(fromSprite, character, action);
         const releaseFn = () => fireProjectile(app, fromSprite, toSprite, action, side, character, step.endYOff ?? 0);
-        if (releaseDelay > 0) setTimeout(releaseFn, releaseDelay);
+        if (releaseDelay > 0) timers.push(setTimeout(releaseFn, releaseDelay));
         else releaseFn();
       };
-      if (animAt > 0) setTimeout(startAnim, animAt);
+      if (animAt > 0) timers.push(setTimeout(startAnim, animAt));
       else startAnim();
     });
-    return;
+    return timers;
   }
 
   if (delayMs > 0) {
-    setTimeout(() => fireProjectile(app, fromSprite, toSprite, action, side, character, 0), delayMs);
+    timers.push(setTimeout(() => {
+      // If the attacker's animation has already moved on (interrupted by a
+      // counter-attack — e.g., slide clipping a slow thrower mid-windup),
+      // don't release the weapon. The currentAction stash is updated in
+      // ArenaStage's animClass useEffect.
+      if (fromSprite._currentAction !== action) return;
+      fireProjectile(app, fromSprite, toSprite, action, side, character, 0);
+    }, delayMs));
   } else {
     fireProjectile(app, fromSprite, toSprite, action, side, character, 0);
   }
+  return timers;
+}
+
+function cancelPendingProjectiles(fighter) {
+  if (!fighter?._pendingProjectiles?.length) return;
+  fighter._pendingProjectiles.forEach(id => clearTimeout(id));
+  fighter._pendingProjectiles = [];
+}
+
+// Reproduce the slide glide tween's X-position at time `t` (ms since slide
+// start). Used for predictive aim — slide and the opposing shoot start in the
+// same dispatch tick, so `t` is also the time elapsed since the bullet's
+// turn began. Falls back to base if numbers are missing.
+function predictSliderX(sliderSprite, attackerSprite, t) {
+  const sliderChar = sliderSprite._character;
+  const sliderBaseX = sliderSprite._baseX;
+  const attackerBaseX = attackerSprite._baseX;
+  if (sliderBaseX == null || attackerBaseX == null) return null;
+  const motion = sliderChar?.motionOverrides?.slide ?? PNG_MOTION.slide;
+  const fwdMs = motion.fwdMs ?? 320;
+  const holdMs = motion.holdMs ?? 220;
+  const retMs  = motion.retMs ?? 360;
+  const gap    = motion.gap ?? 130;
+  // Slider's direction is opposite to the attacker's: attacker on the left
+  // (sliderBaseX > attackerBaseX) ⇒ slider moves left toward attacker, etc.
+  const sliderDir = sliderBaseX > attackerBaseX ? -1 : 1;
+  const targetX = attackerBaseX + (sliderDir > 0 ? -gap : gap);  // stop `gap` short of attacker
+  if (t <= 0) return sliderBaseX;
+  if (t <= fwdMs) {
+    return sliderBaseX + (targetX - sliderBaseX) * easeOut(t / fwdMs);
+  }
+  if (t <= fwdMs + holdMs) return targetX;
+  if (t <= fwdMs + holdMs + retMs) {
+    const r = (t - fwdMs - holdMs) / retMs;
+    return targetX + (sliderBaseX - targetX) * easeOut(r);
+  }
+  return sliderBaseX;
 }
 
 // endYOffset shifts the TARGET Y on the opponent (positive = lower). For spread
@@ -258,8 +396,19 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
   // defendOffsetX (Spine rig compensation) and sprite.y by jump/lunge tweens.
   // Reading either directly would point the projectile to the wrong place
   // (e.g., backwards when monkey defends with offset 387 on side A).
-  const targetBaseX = toSprite._baseX ?? toSprite.x;
+  let targetBaseX = toSprite._baseX ?? toSprite.x;
   const targetBaseY = toSprite._baseY ?? toSprite.y;
+  // If the defender is sliding (or about to slide — held in idle while
+  // waiting for the shot), redirect the bullet to the midpoint of the
+  // slider's forward path AND shorten the visual flight so it disappears
+  // before reaching the slider's resting base. Engine already handles damage.
+  const targetIsSliding = toSprite._currentAction === 'slide' || toSprite._plannedAction === 'slide';
+  let duration = 600;
+  if (targetIsSliding) {
+    const midX = sliderMidPathX(toSprite, fromSprite);
+    if (midX != null) targetBaseX = midX;
+    duration = SHORT_PROJECTILE_DURATION_MS;
+  }
   const endX = targetBaseX + (side === 'A' ? -40 : 40);
   const endY = targetBaseY - 80 + endYOffset;
 
@@ -278,7 +427,6 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
     app.stage.addChild(bullet);
 
     const startTime = performance.now();
-    const duration = 600;
     const tick = () => {
       const elapsed = performance.now() - startTime;
       const t = Math.min(1, elapsed / duration);
@@ -291,6 +439,26 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
     };
     app.ticker.add(tick);
   }).catch(e => console.warn('[ArenaStage] projectile load failed:', e));
+}
+
+// Bullets fired at a sliding target reach midX in this many ms — matches the
+// shoot-vs-slide reaction time (impactA - SHOOT_HIT_OFFSET_MS in animResolution
+// where impactA = projectileDelay + 600). Hardcoded here because ArenaStage
+// doesn't import animResolution; if SHOOT_HIT_OFFSET_MS changes there, mirror.
+const SHORT_PROJECTILE_DURATION_MS = 350;
+
+// Midpoint of a slider's forward glide path. Used as the bullet's aim when
+// the defender is sliding so the projectile visibly meets them mid-slide
+// instead of flying past to their resting base.
+function sliderMidPathX(sliderSprite, attackerSprite) {
+  const sliderBaseX = sliderSprite._baseX;
+  const attackerBaseX = attackerSprite._baseX;
+  if (sliderBaseX == null || attackerBaseX == null) return null;
+  const motion = sliderSprite._character?.motionOverrides?.slide ?? PNG_MOTION.slide;
+  const gap = motion.gap ?? 130;
+  const sliderDir = sliderBaseX > attackerBaseX ? -1 : 1;
+  const sliderTargetX = attackerBaseX + (sliderDir > 0 ? -gap : gap);
+  return (sliderBaseX + sliderTargetX) / 2;
 }
 
 // Muzzle flash + smoke cloud at the gun barrel. Layered: outer glow, bright
@@ -431,28 +599,38 @@ function cancelActiveTween(fighter, { resetPosition = true } = {}) {
   }
 }
 
-// Gravity-style drop from current Y to baseY. Used when a jumping defender
-// gets clipped out of the air by a melee hit / ultimate — instead of snapping
-// to ground and then playing the death/hurt anim, we let the body fall first
-// so the impact reads as "knocked down" rather than "teleported and collapsed".
-function tweenKnockdown(fighter, app) {
+// Recover from a displaced impact pose to the fighter's base position while
+// the death/hurt anim plays in parallel. Used in two cases:
+//   - jumper clipped out of the air by a melee hit/ult — Y drops with gravity
+//   - slide-vs-slide collision — X tweens back so both fighters get thrown
+//     apart toward their starting positions
+// When both axes are displaced (e.g., flyHit ult slammed mid-flight), both
+// channels animate simultaneously.
+function tweenImpactRecover(fighter, app) {
   if (!app || !fighter?.sprite) return;
+  const startX = fighter.sprite.x;
   const startY = fighter.sprite.y;
+  const endX = fighter.baseX;
   const endY = fighter.baseY;
-  if (endY - startY < 20) { // already grounded — no tween needed
+  const dx = endX - startX;
+  const dy = endY - startY;
+  if (Math.abs(dx) < 20 && Math.abs(dy) < 20) {
+    fighter.sprite.x = endX;
     fighter.sprite.y = endY;
+    fighter.sprite.rotation = 0;
     return;
   }
-  // Snap X back; only the Y descent is animated.
-  fighter.sprite.x = fighter.baseX;
   fighter.sprite.rotation = 0;
   const startTime = performance.now();
-  const ms = 350;
+  const ms = 400;
   const tick = () => {
     const t = Math.min((performance.now() - startTime) / ms, 1);
-    const eased = t * t; // gravity ease-in
-    fighter.sprite.y = startY + (endY - startY) * eased;
+    const easeOut = 1 - Math.pow(1 - t, 2); // for X (smooth deceleration toward base)
+    const easeIn  = t * t;                  // for Y descent (gravity)
+    fighter.sprite.x = startX + dx * easeOut;
+    fighter.sprite.y = startY + dy * (dy > 0 ? easeIn : easeOut);
     if (t >= 1) {
+      fighter.sprite.x = endX;
       fighter.sprite.y = endY;
       app.ticker.remove(tick);
       fighter.activeTween = null;
@@ -610,13 +788,17 @@ function playAction(fighter, opponent, action, app) {
   const baseMotion = PNG_MOTION[action] ?? (action.startsWith('ultimate_') ? DEFAULT_ULTIMATE_MOTION : PNG_MOTION.idle);
   const override = fighter.character.motionOverrides?.[action];
   const motion = override ? { ...baseMotion, ...override } : baseMotion;
-  // If we're transitioning to a knockdown anim (death / hurt) while the sprite
-  // is still mid-air (jumper just got clipped), skip the snap-to-base so the
-  // gravity tween can fall from the current height. Otherwise reset normally.
-  const isAirborneTransition = (action === 'death' || action === 'hurt')
-    && fighter.sprite && fighter.sprite.y < fighter.baseY - 20;
-  cancelActiveTween(fighter, { resetPosition: !isAirborneTransition });
-  if (isAirborneTransition) tweenKnockdown(fighter, app);
+  // If we're transitioning into a reaction anim (death / hurt) while the
+  // sprite is still displaced (mid-air from a jump, mid-glide from a slide,
+  // mid-flyHit from an ult), skip the snap-to-base so an impact-recover tween
+  // can carry the body back to its starting position. Otherwise reset normally.
+  const sp = fighter.sprite;
+  const isReactionAnim = action === 'death' || action === 'hurt';
+  const isDisplaced = sp
+    && (sp.y < fighter.baseY - 20 || Math.abs(sp.x - fighter.baseX) > 20);
+  const wantsRecover = isReactionAnim && isDisplaced;
+  cancelActiveTween(fighter, { resetPosition: !wantsRecover });
+  if (wantsRecover) tweenImpactRecover(fighter, app);
 
   switch (motion.kind) {
     case 'lunge':

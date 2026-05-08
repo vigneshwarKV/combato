@@ -84,14 +84,23 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
           // Victim reactions land at `reactionAt*` — typically the attacker's
           // visual impact, but deferred to landing time when a projectile hit
           // (e.g., womanHero) catches a jumping defender.
+          // flushSync so the animClass change commits + useEffect runs (and
+          // any pending projectile timers get cancelled) BEFORE control
+          // returns to the event loop — otherwise a same-tick projectile
+          // setTimeout (e.g., monkey's 320ms throw vs a 320ms slide impact)
+          // would fire before cancelPendingProjectiles has a chance to run.
           if (timing.reactionA) {
             setTimeout(() => {
-              if (fightGenRef.current === thisGen) dispatch({ type: 'VICTIM_REACTION_A', reaction: timing.reactionA });
+              if (fightGenRef.current === thisGen) {
+                flushSync(() => dispatch({ type: 'VICTIM_REACTION_A', reaction: timing.reactionA }));
+              }
             }, timing.reactionAtA);
           }
           if (timing.reactionB) {
             setTimeout(() => {
-              if (fightGenRef.current === thisGen) dispatch({ type: 'VICTIM_REACTION_B', reaction: timing.reactionB });
+              if (fightGenRef.current === thisGen) {
+                flushSync(() => dispatch({ type: 'VICTIM_REACTION_B', reaction: timing.reactionB }));
+              }
             }, timing.reactionAtB);
           }
           // Skip the idle-clear for a fighter that just got KO'd — the KO

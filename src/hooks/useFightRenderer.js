@@ -1,4 +1,5 @@
 import { useReducer, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import { isUltimateKey } from '../engine/damageEngine.js';
 import { CHARACTERS } from '../data/characters.js';
 import { hasUltimateHit, computeAttackTiming } from '../engine/animResolution.js';
@@ -94,8 +95,14 @@ function reducer(state, action) {
       const hasKO = hpA <= 0 || hpB <= 0;
       const aGotUltHit = hasUltimateHit(events, 'A');
       const bGotUltHit = hasUltimateHit(events, 'B');
-      const newHitClassA = damageToA > 0 ? (aGotUltHit ? 'anim-hit-super' : 'anim-hit-normal') : '';
-      const newHitClassB = damageToB > 0 ? (bGotUltHit ? 'anim-hit-super' : 'anim-hit-normal') : '';
+      // Subtract self-damage (e.g. Beast's Rocket Charge backlash) — only
+      // opponent-inflicted damage should trigger the red hit-flash.
+      const aSelfDmg = events?.filter(e => e.type === 'self_damage' && e.fighter === 'A').reduce((s, e) => s + (e.amount ?? 0), 0) ?? 0;
+      const bSelfDmg = events?.filter(e => e.type === 'self_damage' && e.fighter === 'B').reduce((s, e) => s + (e.amount ?? 0), 0) ?? 0;
+      const aOpponentDmg = damageToA - aSelfDmg;
+      const bOpponentDmg = damageToB - bSelfDmg;
+      const newHitClassA = aOpponentDmg > 0 ? (aGotUltHit ? 'anim-hit-super' : 'anim-hit-normal') : '';
+      const newHitClassB = bOpponentDmg > 0 ? (bGotUltHit ? 'anim-hit-super' : 'anim-hit-normal') : '';
       // The dispatcher passes `initialAnim*` so it can hold a jumper in idle
       // until they should launch (sync jump peak with a slow projectile).
       // Falls back to the requested action when no deferral is needed.
@@ -185,11 +192,14 @@ export function useFightRenderer() {
         // Victim reactions fire at `reactionAt*` — the attacker's visual
         // impact for melee/ult, or the jumper's landing time when a projectile
         // hit (e.g., womanHero's ice arrow) catches an airborne defender.
+        // flushSync ensures the animClass commit + ArenaStage useEffect
+        // (which cancels pending projectile timers) lands synchronously
+        // before any same-tick projectile spawn timer fires.
         if (timing.reactionA) {
-          setTimeout(() => dispatch({ type: 'VICTIM_REACTION_A', reaction: timing.reactionA }), timing.reactionAtA);
+          setTimeout(() => flushSync(() => dispatch({ type: 'VICTIM_REACTION_A', reaction: timing.reactionA })), timing.reactionAtA);
         }
         if (timing.reactionB) {
-          setTimeout(() => dispatch({ type: 'VICTIM_REACTION_B', reaction: timing.reactionB }), timing.reactionAtB);
+          setTimeout(() => flushSync(() => dispatch({ type: 'VICTIM_REACTION_B', reaction: timing.reactionB })), timing.reactionAtB);
         }
         // Skip the idle-clear for a fighter that just got KO'd — the KO
         // event sets them to anim-death; an interim idle flash would jar.

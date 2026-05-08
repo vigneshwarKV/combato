@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ArenaStage from './ArenaStage.jsx';
 import StatusBars from './StatusBars.jsx';
 import ArenaBackground from './ArenaBackground.jsx';
 import ActionLabel from './ActionLabel.jsx';
-import Fighter from './Fighter.jsx';
 import { useFight } from '../hooks/useFight.js';
 import { useFightRenderer } from '../hooks/useFightRenderer.js';
 import { CHARACTERS } from '../data/characters.js';
@@ -50,16 +49,23 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
   const currentActionA = currentTurnIndex >= 0 && movesA[currentTurnIndex] ? movesA[currentTurnIndex] : null;
   const currentActionB = currentTurnIndex >= 0 && movesB[currentTurnIndex] ? movesB[currentTurnIndex] : null;
 
-  // Host: start fight on mount
+  // ArenaStage signals readiness after sprites finish loading. Host fight start
+  // is gated on this so the first batch's animations aren't dispatched before
+  // sprites exist (see ArenaStage onReady note for the random-move race).
+  const [stageReady, setStageReady] = useState(false);
+  const handleStageReady = useCallback(() => setStageReady(true), []);
+
+  // Host: start fight once stage is ready
   useEffect(() => {
-    if (mode !== 'host') return;
+    if (mode !== 'host' || !stageReady) return;
+    let cancelled = false;
     const run = async () => {
       const result = await startFight();
-      if (result && onFightEnd) onFightEnd(result);
+      if (!cancelled && result && onFightEnd) onFightEnd(result);
     };
     run().catch(err => console.error('[Arena] fight error:', err));
-    return cancelFight;
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { cancelled = true; cancelFight(); };
+  }, [stageReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Spectator: process ALL new events (not just the last — batched updates may skip events)
   const lastProcessedEventRef = useRef(0);
@@ -183,19 +189,27 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
                 characterBId={fighterB.character}
                 animClassA={animClassA} animClassB={animClassB}
                 animKeyA={animKeyA} animKeyB={animKeyB}
+                plannedActionA={currentActionA} plannedActionB={currentActionB}
                 hpA={hpA} hpB={hpB}
                 width={stageWidth} height={520}
+                onReady={handleStageReady}
               />
             ) : (
-              <div style={{ display: 'flex', gap: 'min(8vw, 100px)', alignItems: 'flex-end' }}>
-                <div style={{ zoom: 2.0 }}>
-                  <Fighter fighter={{ ...fighterA, hp: hpA }} animClass={animClassA} animKey={animKeyA}
-                    hitClass={hitClassA} hitKey={hitKeyA} side="A" currentAction={currentActionA} />
-                </div>
-                <div style={{ zoom: 2.0 }}>
-                  <Fighter fighter={{ ...fighterB, hp: hpB }} animClass={animClassB} animKey={animKeyB}
-                    hitClass={hitClassB} hitKey={hitKeyB} side="B" currentAction={currentActionB} />
-                </div>
+              // Character data hasn't arrived yet (joiner race: LOBBY_UPDATE
+              // landed before FIGHT_START), or a character key is unknown.
+              // Show a quiet placeholder instead of the legacy stick-figure
+              // <Fighter> debug skeleton — once data syncs we'll re-render
+              // into ArenaStage. The fight start gate keeps the loop paused
+              // until then.
+              <div style={{
+                color: 'var(--text-muted)',
+                fontFamily: 'var(--font-arena)',
+                letterSpacing: '0.2em',
+                fontSize: 14,
+                opacity: 0.7,
+                paddingBottom: '8vh',
+              }}>
+                LOADING FIGHTERS…
               </div>
             )}
           </div>
