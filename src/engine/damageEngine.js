@@ -196,7 +196,24 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
     // counts damage, but the reaction is deferred to AFTER landing (handled
     // visually in animResolution.computeAttackTiming).
     if (defender === 'slide')  { events.push({ type: 'miss', attacker: attackerLabel, reason: 'slid' }); return hit(0, false); }
-    if (defender === 'defend') { events.push({ type: 'blocked', defender: defenderLabel, kind: 'hit' }); return hit(0, false); }
+    // Rush-style hits (Skater Kid's skateboard run) carry too much momentum
+    // for a defend pose to absorb — defender takes full hit damage.
+    if (defender === 'defend' && !CHARACTERS[attackerCharId]?.hitIsRushStyle) {
+      events.push({ type: 'blocked', defender: defenderLabel, kind: 'hit' });
+      return hit(0, false);
+    }
+    // Melee hit attacker rushing forward gets stopped by an opposing FAST
+    // shoot — bullet catches the hitter mid-lunge (damage handled in the
+    // shoot branch). SLOW throwers (turtle's spear, monkey's spear) lose
+    // to the lunge — the hitter reaches them before the projectile spawns
+    // and the hit damage lands on the thrower instead. Projectile-style
+    // hits (womanHero's IceShoot) don't lunge so they aren't stopped.
+    if (defender === 'shoot'
+      && !CHARACTERS[attackerCharId]?.extraProjectileActions?.includes('hit')
+      && !isSlowProjectileShot(defenderCharId, attackerCharId, 'hit')) {
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'shot_first' });
+      return hit(0, false);
+    }
     events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: BASE_DAMAGE.hit, kind: 'hit' });
     return hit(BASE_DAMAGE.hit, true);
   }
@@ -222,6 +239,15 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
     // (e.g., womanHero's Triple Shot) still get hit.
     if (isAirborneUltimate(defenderCharId, defender)) {
       events.push({ type: 'miss', attacker: attackerLabel, reason: 'ult_airborne' });
+      return hit(0, false);
+    }
+    // Slow thrower rushed by a melee hit-attacker — the lunge reaches the
+    // thrower before the projectile spawns. Shoot is interrupted; the
+    // lunge's damage is awarded in the hit branch.
+    if (defender === 'hit'
+      && !CHARACTERS[defenderCharId]?.extraProjectileActions?.includes('hit')
+      && isSlowProjectileShot(attackerCharId, defenderCharId, 'hit')) {
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'interrupted_by_hit' });
       return hit(0, false);
     }
     events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: BASE_DAMAGE.shoot, kind: 'shoot' });
@@ -271,6 +297,15 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
       return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: true, ult, blocked: true } };
     }
 
+    // Melee hit attacker rushing forward clips the ult-er mid-windup before
+    // the ult connects — ult is interrupted (no damage to the hitter). The
+    // hit's damage still lands on the ult-er via the hit branch. Skipped
+    // for projectile-style hits (Woman Hero's IceShoot doesn't lunge).
+    if (defender === 'hit' && !CHARACTERS[defenderCharId]?.extraProjectileActions?.includes('hit')) {
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'interrupted_by_hit', name: ult.name });
+      return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: true, ult, missed: true } };
+    }
+
     // All Ultimates land on a sliding defender — visual outcome differs:
     //  - airborne ult (flyHit / jet-pack): slider plays the FULL slide first
     //    (forward → hold → retreat back to base), and only THEN takes the
@@ -293,19 +328,21 @@ function hit(damage, landed) {
 }
 
 // True when the shooter's projectile spawn delay is long enough that an
-// opposing slider reaches them before the throw releases. Used to flip the
-// shoot-vs-slide outcome: fast guns (no delay) tag the slider; slow throwers
-// (turtle's spear delay 380, monkey's 320) get rushed by the slider instead.
-// Threshold is the slider's own slide forward time — they cover that distance
-// in `fwdMs`, so any spawn delay >= fwdMs means the slider arrives first.
-function isSlowProjectileShot(shooterCharId, sliderCharId) {
+// opposing rusher reaches them before the throw releases. Used to flip the
+// shoot-vs-slide AND shoot-vs-melee-hit outcomes: fast guns (no delay) tag
+// the rusher mid-motion; slow throwers (turtle's spear delay 380, monkey's
+// 320) get rushed before they fire. Threshold is the rusher's own forward
+// phase length — they cover that distance in `fwdMs`, so any spawn delay
+// >= fwdMs means the rusher arrives first.
+function isSlowProjectileShot(shooterCharId, rusherCharId, rusherAction = 'slide') {
   const shooter = CHARACTERS[shooterCharId];
-  const slider  = CHARACTERS[sliderCharId];
+  const rusher  = CHARACTERS[rusherCharId];
   const shooterDelay = shooter?.projectileDelayByAction?.shoot
     ?? shooter?.projectileDelayMs
     ?? 0;
-  const sliderFwdMs = slider?.motionOverrides?.slide?.fwdMs ?? 320;
-  return shooterDelay >= sliderFwdMs;
+  const defaultFwd = rusherAction === 'slide' ? 320 : 220;
+  const rusherFwdMs = rusher?.motionOverrides?.[rusherAction]?.fwdMs ?? defaultFwd;
+  return shooterDelay >= rusherFwdMs;
 }
 
 function tickDot(statusList) {

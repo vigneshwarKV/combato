@@ -1,6 +1,9 @@
 import { CHARACTERS } from '../data/characters.js';
 
 // Map action keys to display names. Ultimates are looked up by character.
+// hurt/death/celebrate are reaction patterns (the engine drives those via
+// animClass, not via the planned-action stream) and must NEVER render as a
+// label — see REACTION_KEYS below.
 const BASE_LABELS = {
   idle:    { text: 'IDLE',    color: '#94a3b8' },
   jump:    { text: 'JUMP',    color: '#60a5fa' },
@@ -8,14 +11,14 @@ const BASE_LABELS = {
   shoot:   { text: 'SHOOT',   color: '#a78bfa' },
   slide:   { text: 'SLIDE',   color: '#22d3ee' },
   defend:  { text: 'DEFEND',  color: '#fbbf24' },
-  hurt:    { text: 'HURT',    color: '#ef4444' },
-  death:   { text: 'KO',      color: '#dc2626' },
-  celebrate: { text: 'WIN!',  color: '#facc15' },
   none:    { text: '—',       color: '#475569' },
 };
 
+const REACTION_KEYS = new Set(['hurt', 'death', 'celebrate']);
+
 function labelFor(action, characterId) {
   if (!action) return null;
+  if (REACTION_KEYS.has(action)) return null;
   const base = BASE_LABELS[action];
   if (base) return base;
   if (action.startsWith('ultimate_') && characterId) {

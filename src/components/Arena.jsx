@@ -165,15 +165,21 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
             <StatusBars fighter={fighterB} hp={hpB} meter={meterB} status={statusB} side="B" />
           </div>
 
-          {/* Action labels */}
+          {/* Action labels — each label sits above its fighter (left-half /
+              right-half columns roughly track the sprite x positions chosen
+              by ArenaStage). */}
           {hasSpriteA && hasSpriteB && (
             <div style={{
-              position: 'absolute', top: 'calc(50% - 60px)', left: 0, right: 0,
-              display: 'flex', justifyContent: 'center', gap: 220,
+              position: 'absolute', top: '14%', left: 0, right: 0,
+              display: 'flex',
               pointerEvents: 'none', zIndex: 15,
             }}>
-              <ActionLabel action={animClassA?.replace(/^anim-/, '')} characterId={fighterA.character} side="A" />
-              <ActionLabel action={animClassB?.replace(/^anim-/, '')} characterId={fighterB.character} side="B" />
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+                <ActionLabel action={currentActionA} characterId={fighterA.character} side="A" />
+              </div>
+              <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+                <ActionLabel action={currentActionB} characterId={fighterB.character} side="B" />
+              </div>
             </div>
           )}
 

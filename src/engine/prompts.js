@@ -7,11 +7,11 @@ const MOCK_AI = false;
 export const GAME_RULES = `ACTION SYSTEM:
   idle    → stand still, 0 dmg, no meter change
   jump    → evades shoot only; ALL hit variants land on a jumper (melee hit knocks them out of the air immediately; projectile-based hits like Woman Hero's Ice Arrow still register damage and the hurt fires after the jumper has landed); still hittable by Ultimates; +${METER.GAIN_ON_JUMP_EVADE} meter on each successful evade
-  hit     → ${BASE_DAMAGE.hit} dmg close-range attack; +${METER.GAIN_ON_MELEE_HIT} meter on landed hit; MISSED by slide; LANDS on jumpers (melee hit knocks down mid-air; projectile hit triggers a delayed hurt after landing); BLOCKED by defend; CLASHES with opposing hit (both whiff)
+  hit     → ${BASE_DAMAGE.hit} dmg close-range attack; +${METER.GAIN_ON_MELEE_HIT} meter on landed hit; MISSED by slide; LANDS on jumpers (melee hit knocks down mid-air; projectile hit triggers a delayed hurt after landing); BLOCKED by defend (UNLESS the attacker's hit is a RUSH-style charge — Skater Kid's skateboard run carries too much momentum and breaks through defend); CLASHES with opposing hit (both whiff, no HP loss — when BOTH hits are MELEE the fighters visually collide mid-lunge and fall back to base with the death anim, but HP is untouched). MELEE hitter rushing into a FAST shoot gets STOPPED — bullet catches them mid-lunge and throws them back; only the shooter's bullet damage lands (rush-style hits get the same slide-vs-shoot throwback timing). Against a SLOW thrower (Iron Turtle's spear, Monkey King's spear) the lunge LANDS — hitter reaches the thrower before the projectile spawns. Projectile-style hits (Woman Hero's IceShoot) don't lunge so both projectiles fly normally
   shoot   → ${BASE_DAMAGE.shoot} dmg straight-line projectile; +${METER.GAIN_ON_RANGED_HIT} meter on landed hit; MISSED by jump or airborne Ultimates (jet-pack/flyHit ults lift the user out of the bullet's path); defend does NOT block shoot. Fast shoots HIT a sliding defender (slider thrown back); SLOW throws (Iron Turtle's spear, Monkey King's spear — long spawn delay) get RUSHED — the slider reaches the thrower before the projectile releases and the slide damage lands on the thrower instead
   slide   → ${BASE_DAMAGE.slide} dmg low tackle; evades hit (melee attackers clipped at the legs and thrown back) AND fast shoot is the one that catches the slider; deals damage to defenders/idle/melee-hit/slow-throwers; MISSED by jump and by airborne hit attackers (Woman Hero's jumpShoot); SLIDE-vs-SLIDE collides at the centre — both take ${BASE_DAMAGE.slide} dmg and are thrown back; slide CANNOT damage an opponent who is mid-Ultimate; +${METER.GAIN_ON_MELEE_HIT} meter on landed slide, +${METER.GAIN_ON_DODGE} on successful evade
   defend  → blocks hit AND Ultimates only (0 dmg); does NOT block shoot or slide (defender gets HURT through); +${METER.GAIN_ON_BLOCK} meter on successful block
-  Ultimates → character-specific; cost meter; effects vary (damage, status, heal, reflect); BLOCKED by defend (unless 'unblockable'); CLASH with opposing Ultimate (both whiff, meter still spent); ALL Ultimates LAND on a sliding defender (slider takes full ult damage). Visual differs: airborne ults (jet-pack/flyHit) let the slider complete their full slide first, then the death anim fires at base; grounded ults (e.g., Woman Hero's Triple Shot) use the same shoot-vs-slide pattern (slider holds, brief slide, throwback)
+  Ultimates → character-specific; cost meter; effects vary (damage, status, heal, reflect); BLOCKED by defend (unless 'unblockable'); CLASH with opposing Ultimate (both whiff, no HP loss, meter still spent — when BOTH ults are airborne the fighters visually collide mid-flight and fall down with the death anim, but HP is untouched); ALL Ultimates LAND on a sliding defender (slider takes full ult damage). Visual differs: airborne ults (jet-pack/flyHit) let the slider complete their full slide first, then the death anim fires at base; grounded ults (e.g., Woman Hero's Triple Shot) use the same shoot-vs-slide pattern (slider holds, brief slide, throwback). MELEE hit INTERRUPTS an ult — hitter's lunge clips the ult-er mid-windup, ult-er takes the hit damage and falls out of mid-flight with the death anim, and the ult never connects (hitter takes 0 damage)
 
 SUPER METER:
   Meter fills from 0→${METER.MAX} during the fight.
@@ -249,7 +249,10 @@ export async function callAI(fighter, { system, messages, maxTokens = 400 }, def
  * Prefers base actions; occasionally picks an Ultimate if character has one.
  */
 export function getFallback(n, charId) {
-  const options = charId ? validActionsForCharacter(charId).filter(a => a !== 'none') : BASE_ACTIONS;
+  const exclude = new Set(['none', 'idle']);
+  const options = charId
+    ? validActionsForCharacter(charId).filter(a => !exclude.has(a))
+    : BASE_ACTIONS.filter(a => !exclude.has(a));
   return Array.from({ length: n }, () => options[Math.floor(Math.random() * options.length)]);
 }
 

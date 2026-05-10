@@ -28,16 +28,45 @@ export const IMPACT_DELAY = {
 // pass through each other. Stage-width-dependent corrections are minor; the
 // 0.44 ratio is accurate to within a frame or two for the default sep.
 const CONVERGE_MEET_RATIO = 0.44;
-const DEFAULT_FWD_MS = { hit: 220, slide: 320 };
+const DEFAULT_FWD_MS = { hit: 220, slide: 320, ult: 900 };
+const DEFAULT_GAP = { hit: 150, slide: 130, ult: 160 };
 function fwdMsFor(action, character) {
+  if (isUltimateKey(action)) {
+    return character?.motionOverrides?.[action]?.fwdMs ?? DEFAULT_FWD_MS.ult;
+  }
   if (action !== 'hit' && action !== 'slide') return null;
   return character?.motionOverrides?.[action]?.fwdMs ?? DEFAULT_FWD_MS[action];
+}
+function gapFor(action, character) {
+  if (isUltimateKey(action)) {
+    return character?.motionOverrides?.[action]?.gap ?? DEFAULT_GAP.ult;
+  }
+  if (action !== 'hit' && action !== 'slide') return null;
+  return character?.motionOverrides?.[action]?.gap ?? DEFAULT_GAP[action];
 }
 function convergeMeetMs(actionA, characterA, actionB, characterB) {
   const fwdA = fwdMsFor(actionA, characterA);
   const fwdB = fwdMsFor(actionB, characterB);
   if (!fwdA || !fwdB) return null;
   return Math.round(((fwdA + fwdB) / 2) * CONVERGE_MEET_RATIO);
+}
+
+// Two airborne flyHit Ultimates fly toward each other linearly in X. They
+// collide mid-air at the t where their X paths cross. Solve:
+//   dA·(t/fwdA) + dB·(t/fwdB) = 2·sep, where d = 2·sep − gap (each fighter's
+//   forward travel). Default sep = 240 (max stage half-width).
+const STAGE_HALF_SEP = 240;
+function ultClashMeetMs(actionA, characterA, actionB, characterB) {
+  const fwdA = fwdMsFor(actionA, characterA);
+  const fwdB = fwdMsFor(actionB, characterB);
+  const gapA = gapFor(actionA, characterA);
+  const gapB = gapFor(actionB, characterB);
+  if (!fwdA || !fwdB || gapA == null || gapB == null) return null;
+  const dA = 2 * STAGE_HALF_SEP - gapA;
+  const dB = 2 * STAGE_HALF_SEP - gapB;
+  const closingSpeed = dA / fwdA + dB / fwdB;
+  if (closingSpeed <= 0) return null;
+  return Math.round((2 * STAGE_HALF_SEP) / closingSpeed);
 }
 
 export function durationFor(actionKey) {
@@ -162,6 +191,10 @@ function shootSlideHitsAt(opponentImpact) {
   return Math.max(0, opponentImpact - SHOOT_HIT_OFFSET_MS);
 }
 function slideHoldFor(ownAction, ownDamage, opponentAction, opponentImpact, opponentChar) {
+  // Rush-style hits (Skater Kid's skateboard run) get the slide-pattern
+  // reaction TIMING, but skip the idle hold — their fwdMs is long enough
+  // that they're still mid-rush when the bullet meets them at the slide-
+  // pattern reaction time. Holding them in idle first just adds dead air.
   if (ownAction !== 'slide') return 0;
   if (ownDamage <= 0) return 0;
   // Shoot-pattern timing also applies to grounded Ultimates (e.g., womanHero's
@@ -173,6 +206,16 @@ function slideHoldFor(ownAction, ownDamage, opponentAction, opponentImpact, oppo
   const reactionAt = shootSlideHitsAt(opponentImpact);
   if (reactionAt <= SLIDE_LEAD_MS) return 0;
   return Math.round(reactionAt - SLIDE_LEAD_MS);
+}
+
+// Hit-vs-fast-shoot reaction time: when the bullet visually crosses the
+// hitter mid-lunge. Empirically ~90% of the lunge's forward phase — bullet
+// has flown most of its path by then and the hitter has nearly reached the
+// hit target. No artificial idle hold here, the lunge starts at t=0.
+const HIT_VS_SHOOT_REACTION_RATIO = 0.9;
+function hitVsShootReactAt(hitterChar) {
+  const fwdMs = hitterChar?.motionOverrides?.hit?.fwdMs ?? 220;
+  return Math.round(fwdMs * HIT_VS_SHOOT_REACTION_RATIO);
 }
 
 // Given a resolveActions() result and (optionally) the two characters,
@@ -239,39 +282,107 @@ export function computeAttackTiming(result, characterA, characterB) {
   //  - airborne ult (Beast Rocket Charge, etc.): slider plays the full slide
   //    (forward → hold → retreat to base) and the reaction fires AFTER the
   //    slide completes — the death anim plays at base, no throwback tween.
-  const aShootPattern = actionA === 'slide' && damageToA > 0 && (
+  // Slide-shoot pattern: slider (or rush-style hitter, e.g. Skater Kid)
+  // hit by fast shoot or grounded ult — holds, lunges briefly, throwback
+  // at shoot-pattern offset.
+  const aIsRushy = actionA === 'slide' || (actionA === 'hit' && characterA?.hitIsRushStyle);
+  const bIsRushy = actionB === 'slide' || (actionB === 'hit' && characterB?.hitIsRushStyle);
+  const aShootPattern = aIsRushy && damageToA > 0 && (
     actionB === 'shoot'
     || (isUltimateKey(actionB) && !isAirborneUlt(actionB, characterB))
   );
-  const bShootPattern = actionB === 'slide' && damageToB > 0 && (
+  const bShootPattern = bIsRushy && damageToB > 0 && (
     actionA === 'shoot'
     || (isUltimateKey(actionA) && !isAirborneUlt(actionA, characterA))
   );
+  // Hit-vs-fast-shoot: melee hitter clipped mid-lunge by an incoming bullet.
+  // No hold — lunge starts at t=0 and the reaction fires when the bullet
+  // visually meets the hitter (~90% of fwdMs). Rush-style hits use the
+  // slide-shoot pattern above instead.
+  const aHitVsShoot = actionA === 'hit' && damageToA > 0 && actionB === 'shoot'
+    && !isProjectileHit(characterA) && !characterA?.hitIsRushStyle;
+  const bHitVsShoot = actionB === 'hit' && damageToB > 0 && actionA === 'shoot'
+    && !isProjectileHit(characterB) && !characterB?.hitIsRushStyle;
+  // Airborne ult vs airborne ult: engine clashes both for 0 damage, but
+  // visually we want both fighters to collide mid-flight and fall down with
+  // the death anim (HP unchanged, only the visual reads as a knockout).
+  // Skipped when either ult is grounded (Woman Hero's spread shot stays
+  // grounded — that pairing keeps the silent clash with no death anim).
+  const isAirborneUltClash =
+    isUltimateKey(actionA) && isUltimateKey(actionB)
+    && damageToA === 0 && damageToB === 0
+    && isAirborneUlt(actionA, characterA) && isAirborneUlt(actionB, characterB);
+  const ultClashAt = isAirborneUltClash
+    ? ultClashMeetMs(actionA, characterA, actionB, characterB)
+    : null;
+  // Airborne ult-er clipped by an opposing melee hit: ult is interrupted in
+  // engine; here we make the ult-er fall out of mid-flight with the death
+  // anim (rather than the default 'hurt' which would just play in place).
+  const aAirborneUltKO = isUltimateKey(actionA) && damageToA > 0 && isAirborneUlt(actionA, characterA);
+  const bAirborneUltKO = isUltimateKey(actionB) && damageToB > 0 && isAirborneUlt(actionB, characterB);
+  // Slow-shooter clipped by a rushing melee hit (turtle/monkey spear). The
+  // reaction must fire BEFORE the projectile spawn delay so cancelPending-
+  // Projectiles can clear the spawn timer — otherwise the spear visually
+  // releases before the throw is interrupted. Using fwdMsFor('hit') puts
+  // the reaction at the lunge's forward-end (~220ms < monkey's 320 spawn).
+  const aShooterHitByLunge = actionA === 'shoot' && damageToA > 0 && actionB === 'hit' && !isProjectileHit(characterB);
+  const bShooterHitByLunge = actionB === 'shoot' && damageToB > 0 && actionA === 'hit' && !isProjectileHit(characterA);
+  // Same idea for melee hit vs melee hit — both lunge toward each other,
+  // collide mid-fwd, throw back to base with the death anim. Skipped for
+  // projectile-style hits (Woman Hero's IceShoot doesn't lunge — that
+  // pairing keeps the silent clash).
+  const isMeleeHitClash =
+    actionA === 'hit' && actionB === 'hit'
+    && damageToA === 0 && damageToB === 0
+    && !isProjectileHit(characterA) && !isProjectileHit(characterB);
+  const hitClashAt = isMeleeHitClash
+    ? convergeMeetMs('hit', characterA, 'hit', characterB)
+    : null;
   const aSlideUltAirborne = actionA === 'slide' && damageToA > 0
     && isUltimateKey(actionB) && isAirborneUlt(actionB, characterB);
   const bSlideUltAirborne = actionB === 'slide' && damageToB > 0
     && isUltimateKey(actionA) && isAirborneUlt(actionA, characterA);
-  const reactionA = aLandedHurt
-    ? reactionAnim(damageToA, aGotUltHit, actionA, /* knockdownFromAir */ false)
+  const reactionA = isAirborneUltClash || isMeleeHitClash || aAirborneUltKO ? 'death'
+    : aLandedHurt ? reactionAnim(damageToA, aGotUltHit, actionA, /* knockdownFromAir */ false)
     : reactionAnim(damageToA, aGotUltHit, actionA);
-  const reactionB = bLandedHurt
-    ? reactionAnim(damageToB, bGotUltHit, actionB, /* knockdownFromAir */ false)
+  const reactionB = isAirborneUltClash || isMeleeHitClash || bAirborneUltKO ? 'death'
+    : bLandedHurt ? reactionAnim(damageToB, bGotUltHit, actionB, /* knockdownFromAir */ false)
     : reactionAnim(damageToB, bGotUltHit, actionB);
-  const reactionAtA = aLandedHurt ? launchAtA + ANIM_DURATION.jump
+  const reactionAtA = isAirborneUltClash ? ultClashAt
+    : isMeleeHitClash ? hitClashAt
+    : aLandedHurt ? launchAtA + ANIM_DURATION.jump
     : aShootPattern ? shootSlideHitsAt(impactB)
+    : aHitVsShoot ? hitVsShootReactAt(characterA)
+    : aShooterHitByLunge ? (fwdMsFor('hit', characterB) ?? DEFAULT_FWD_MS.hit)
     : aSlideUltAirborne ? ANIM_DURATION.slide
     : impactB;
-  const reactionAtB = bLandedHurt ? launchAtB + ANIM_DURATION.jump
+  const reactionAtB = isAirborneUltClash ? ultClashAt
+    : isMeleeHitClash ? hitClashAt
+    : bLandedHurt ? launchAtB + ANIM_DURATION.jump
     : bShootPattern ? shootSlideHitsAt(impactA)
+    : bHitVsShoot ? hitVsShootReactAt(characterB)
+    : bShooterHitByLunge ? (fwdMsFor('hit', characterA) ?? DEFAULT_FWD_MS.hit)
     : bSlideUltAirborne ? ANIM_DURATION.slide
     : impactA;
   // Each fighter's "natural" anim duration accounts for the launch delay.
   const ownAnimEndA = launchAnimA ? launchAtA + durationFor(launchAnimA) : durationFor(initialAnimA);
   const ownAnimEndB = launchAnimB ? launchAtB + durationFor(launchAnimB) : durationFor(initialAnimB);
+  // Successful block: when defender blocks an opposing hit or Ultimate (no
+  // damage taken), they should hold the defend pose for the full duration of
+  // the attacker's animation — without this, the defender's defend ends at
+  // ANIM_DURATION.defend (700ms) while the attacker is still mid-swing/ult.
+  const aDefendBlocking = actionA === 'defend' && damageToA === 0
+    && (actionB === 'hit' || isUltimateKey(actionB));
+  const bDefendBlocking = actionB === 'defend' && damageToB === 0
+    && (actionA === 'hit' || isUltimateKey(actionA));
   // Victim clears at reaction + reaction-anim duration; non-victim clears at
-  // the natural anim end.
-  const clearA = reactionA ? reactionAtA + durationFor(reactionA) : ownAnimEndA;
-  const clearB = reactionB ? reactionAtB + durationFor(reactionB) : ownAnimEndB;
+  // the natural anim end (extended to opponent's anim when blocking).
+  const clearA = reactionA ? reactionAtA + durationFor(reactionA)
+    : aDefendBlocking ? Math.max(ownAnimEndA, durationFor(actionB))
+    : ownAnimEndA;
+  const clearB = reactionB ? reactionAtB + durationFor(reactionB)
+    : bDefendBlocking ? Math.max(ownAnimEndB, durationFor(actionA))
+    : ownAnimEndB;
   return {
     initialAnimA, initialAnimB,
     launchAnimA, launchAnimB,

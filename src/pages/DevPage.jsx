@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import ArenaStage from '../components/ArenaStage.jsx';
 import ArenaBackground from '../components/ArenaBackground.jsx';
 import { CHARACTERS, METER } from '../data/characters.js';
-import { resolveActions } from '../engine/damageEngine.js';
+import { resolveActions, validActionsForCharacter } from '../engine/damageEngine.js';
 import { computeAttackTiming } from '../engine/animResolution.js';
 
 const CHARACTER_LIST = Object.values(CHARACTERS);
@@ -144,6 +144,7 @@ export default function DevPage() {
   const [selectedA, setSelectedA] = useState('idle');
   const [selectedB, setSelectedB] = useState('idle');
   const [lastOutcome, setLastOutcome] = useState(null);
+  const [isLooping, setIsLooping] = useState(false);
   // All scheduled timers for the current sequence (reactions + clears). Any
   // re-fire or character change cancels every pending entry so animations
   // never cross-fade from a previous sequence.
@@ -157,15 +158,21 @@ export default function DevPage() {
     timersRef.current.push(id);
     return id;
   };
+  // Random-loop drivers. loopRef gates the next tick (so cancel takes effect
+  // even if a tick was already queued); loopTimerRef holds the pending tick.
+  const loopRef = useRef(false);
+  const loopTimerRef = useRef(null);
 
-  // Run the selected actions through the real fight engine so DevPage exhibits
-  // the same clash matrix, mid-action hurt/death reactions, and per-fighter
-  // idle reset as an actual fight. Meter is pinned at MAX so ultimates fire.
-  const fireBoth = useCallback(() => {
+  // Run a chosen pair of actions through the real fight engine so DevPage
+  // exhibits the same clash matrix, mid-action hurt/death reactions, and
+  // per-fighter idle reset as an actual fight. Meter is pinned at MAX so
+  // ultimates fire. Returns the cycle duration so a caller (random loop) can
+  // chain the next action when the current one finishes.
+  const fireWith = useCallback((actA, actB) => {
     cancelTimers();
 
     const result = resolveActions(
-      selectedA, selectedB,
+      actA, actB,
       charAId, charBId,
       METER.MAX, METER.MAX,
       [], [],
@@ -232,25 +239,64 @@ export default function DevPage() {
       setAnimClassB('anim-idle');
       setAnimKeyB(k => k + 1);
     }, timing.clearB);
-  }, [selectedA, selectedB, charAId, charBId]);
+
+    return Math.max(timing.clearA, timing.clearB);
+  }, [charAId, charBId]);
+
+  const fireBoth = useCallback(() => {
+    fireWith(selectedA, selectedB);
+  }, [fireWith, selectedA, selectedB]);
+
+  const stopRandomLoop = useCallback(() => {
+    loopRef.current = false;
+    if (loopTimerRef.current) {
+      clearTimeout(loopTimerRef.current);
+      loopTimerRef.current = null;
+    }
+    setIsLooping(false);
+  }, []);
+
+  const startRandomLoop = useCallback(() => {
+    if (loopRef.current) return;
+    loopRef.current = true;
+    setIsLooping(true);
+    const pick = (charId) => {
+      const opts = validActionsForCharacter(charId).filter(a => a !== 'none' && a !== 'idle');
+      return opts[Math.floor(Math.random() * opts.length)];
+    };
+    const tick = () => {
+      if (!loopRef.current) return;
+      const a = pick(charAId);
+      const b = pick(charBId);
+      setSelectedA(a);
+      setSelectedB(b);
+      const cycleMs = fireWith(a, b);
+      // Buffer between cycles so a viewer can register the outcome before the
+      // next sequence begins.
+      loopTimerRef.current = setTimeout(tick, cycleMs + 400);
+    };
+    tick();
+  }, [fireWith, charAId, charBId]);
 
   const resetA = useCallback((id) => {
+    stopRandomLoop();
     cancelTimers();
     setCharAId(id);
     setSelectedA('idle');
     setAnimClassA('anim-idle');
     setAnimKeyA(k => k + 1);
     setLastOutcome(null);
-  }, []);
+  }, [stopRandomLoop]);
 
   const resetB = useCallback((id) => {
+    stopRandomLoop();
     cancelTimers();
     setCharBId(id);
     setSelectedB('idle');
     setAnimClassB('anim-idle');
     setAnimKeyB(k => k + 1);
     setLastOutcome(null);
-  }, []);
+  }, [stopRandomLoop]);
 
   const bgSeed = `${charAId}-${charBId}`;
 
@@ -372,6 +418,7 @@ export default function DevPage() {
         )}
         <button
           onClick={fireBoth}
+          disabled={isLooping}
           style={{
             padding: '8px 28px',
             fontFamily: 'var(--font-arena)',
@@ -381,13 +428,37 @@ export default function DevPage() {
             border: '2px solid #ef4444',
             background: 'linear-gradient(180deg, rgba(239,68,68,0.3), rgba(127,29,29,0.5))',
             color: '#fecaca',
-            cursor: 'pointer',
+            cursor: isLooping ? 'not-allowed' : 'pointer',
+            opacity: isLooping ? 0.4 : 1,
             borderRadius: 4,
             boxShadow: '0 0 12px rgba(239,68,68,0.5)',
             fontWeight: 'bold',
           }}
         >
           ⚔ Attack
+        </button>
+        <button
+          onClick={isLooping ? stopRandomLoop : startRandomLoop}
+          style={{
+            padding: '8px 22px',
+            fontFamily: 'var(--font-arena)',
+            fontSize: 13,
+            letterSpacing: '0.2em',
+            textTransform: 'uppercase',
+            border: `2px solid ${isLooping ? '#fbbf24' : '#a855f7'}`,
+            background: isLooping
+              ? 'linear-gradient(180deg, rgba(251,191,36,0.3), rgba(120,53,15,0.5))'
+              : 'linear-gradient(180deg, rgba(168,85,247,0.3), rgba(76,29,149,0.5))',
+            color: isLooping ? '#fde68a' : '#e9d5ff',
+            cursor: 'pointer',
+            borderRadius: 4,
+            boxShadow: isLooping
+              ? '0 0 12px rgba(251,191,36,0.5)'
+              : '0 0 12px rgba(168,85,247,0.5)',
+            fontWeight: 'bold',
+          }}
+        >
+          {isLooping ? '■ Cancel' : '🎲 Random Attack'}
         </button>
         <span style={{
           fontFamily: 'var(--font-arena)',

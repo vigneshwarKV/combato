@@ -398,14 +398,19 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
   // (e.g., backwards when monkey defends with offset 387 on side A).
   let targetBaseX = toSprite._baseX ?? toSprite.x;
   const targetBaseY = toSprite._baseY ?? toSprite.y;
-  // If the defender is sliding (or about to slide — held in idle while
-  // waiting for the shot), redirect the bullet to the midpoint of the
-  // slider's forward path AND shorten the visual flight so it disappears
-  // before reaching the slider's resting base. Engine already handles damage.
+  // If the defender is sliding (or about to slide), OR doing a rush-style
+  // hit (Skater Kid's skateboard run), redirect the bullet to the midpoint
+  // of their forward path AND shorten the visual flight so it disappears
+  // before reaching their resting base. Standard melee hit doesn't need
+  // this: the lunge ends near the shooter and the natural bullet path
+  // passes through them around 90% of fwdMs.
   const targetIsSliding = toSprite._currentAction === 'slide' || toSprite._plannedAction === 'slide';
+  const targetIsRushHit = (toSprite._currentAction === 'hit' || toSprite._plannedAction === 'hit')
+    && toSprite._character?.hitIsRushStyle;
   let duration = 600;
-  if (targetIsSliding) {
-    const midX = sliderMidPathX(toSprite, fromSprite);
+  if (targetIsSliding || targetIsRushHit) {
+    const action = targetIsSliding ? 'slide' : 'hit';
+    const midX = convergeMidPathX(toSprite, fromSprite, action);
     if (midX != null) targetBaseX = midX;
     duration = SHORT_PROJECTILE_DURATION_MS;
   }
@@ -447,18 +452,20 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
 // doesn't import animResolution; if SHOOT_HIT_OFFSET_MS changes there, mirror.
 const SHORT_PROJECTILE_DURATION_MS = 350;
 
-// Midpoint of a slider's forward glide path. Used as the bullet's aim when
-// the defender is sliding so the projectile visibly meets them mid-slide
-// instead of flying past to their resting base.
-function sliderMidPathX(sliderSprite, attackerSprite) {
-  const sliderBaseX = sliderSprite._baseX;
+// Midpoint of a converging defender's forward path (slide glide OR melee
+// hit lunge). Used as the bullet's aim when the defender is rushing the
+// shooter, so the projectile visibly meets them mid-motion instead of
+// flying past to their resting base.
+function convergeMidPathX(targetSprite, attackerSprite, action) {
+  const targetBaseX = targetSprite._baseX;
   const attackerBaseX = attackerSprite._baseX;
-  if (sliderBaseX == null || attackerBaseX == null) return null;
-  const motion = sliderSprite._character?.motionOverrides?.slide ?? PNG_MOTION.slide;
-  const gap = motion.gap ?? 130;
-  const sliderDir = sliderBaseX > attackerBaseX ? -1 : 1;
-  const sliderTargetX = attackerBaseX + (sliderDir > 0 ? -gap : gap);
-  return (sliderBaseX + sliderTargetX) / 2;
+  if (targetBaseX == null || attackerBaseX == null) return null;
+  const motion = targetSprite._character?.motionOverrides?.[action] ?? PNG_MOTION[action];
+  if (!motion) return null;
+  const gap = motion.gap ?? (action === 'hit' ? 150 : 130);
+  const dir = targetBaseX > attackerBaseX ? -1 : 1;
+  const targetX = attackerBaseX + (dir > 0 ? -gap : gap);
+  return (targetBaseX + targetX) / 2;
 }
 
 // Muzzle flash + smoke cloud at the gun barrel. Layered: outer glow, bright
@@ -788,15 +795,20 @@ function playAction(fighter, opponent, action, app) {
   const baseMotion = PNG_MOTION[action] ?? (action.startsWith('ultimate_') ? DEFAULT_ULTIMATE_MOTION : PNG_MOTION.idle);
   const override = fighter.character.motionOverrides?.[action];
   const motion = override ? { ...baseMotion, ...override } : baseMotion;
-  // If we're transitioning into a reaction anim (death / hurt) while the
-  // sprite is still displaced (mid-air from a jump, mid-glide from a slide,
-  // mid-flyHit from an ult), skip the snap-to-base so an impact-recover tween
-  // can carry the body back to its starting position. Otherwise reset normally.
+  // If we're transitioning into a reaction anim (death / hurt) while a motion
+  // tween is in progress AND the sprite is currently displaced (mid-air from
+  // jump, mid-glide from slide, mid-flyHit from an ult), skip the snap-to-base
+  // so an impact-recover tween can carry the body back to its starting
+  // position. The activeTween check matters: defenders sit at sprite.x =
+  // baseX ± defendOffsetX (Spine rig compensation, no tween), and that's a
+  // STATIC offset — when defend ends we must SNAP back, not tween, otherwise
+  // the body slides sideways into the opponent's lane and back. Otherwise
+  // reset normally.
   const sp = fighter.sprite;
   const isReactionAnim = action === 'death' || action === 'hurt';
   const isDisplaced = sp
     && (sp.y < fighter.baseY - 20 || Math.abs(sp.x - fighter.baseX) > 20);
-  const wantsRecover = isReactionAnim && isDisplaced;
+  const wantsRecover = isReactionAnim && isDisplaced && !!fighter.activeTween;
   cancelActiveTween(fighter, { resetPosition: !wantsRecover });
   if (wantsRecover) tweenImpactRecover(fighter, app);
 
