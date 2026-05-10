@@ -520,6 +520,26 @@ export default function DevPage() {
           B: <span style={{ color: 'var(--neon-gold)' }}>{actionLabel(selectedB, CHARACTERS[charBId])}</span>
         </span>
       </div>
+
+      {/* Landscape toggle — same handler as Arena.jsx. */}
+      <button
+        className="landscape-btn"
+        onClick={async () => {
+          try {
+            const el = document.documentElement;
+            if (el.requestFullscreen && !document.fullscreenElement) {
+              await el.requestFullscreen();
+            }
+            if (screen.orientation && screen.orientation.lock) {
+              await screen.orientation.lock('landscape');
+            }
+          } catch (e) {
+            console.warn('[DevPage] landscape lock failed:', e);
+          }
+        }}
+      >
+        ↻ LANDSCAPE
+      </button>
     </div>
   );
 }

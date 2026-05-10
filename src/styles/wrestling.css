@@ -1505,3 +1505,39 @@ body {
   }
 }
 
+/* ─── Landscape Toggle Button ───────────────────────────────────────────── */
+
+/* Small rectangular button bottom-right of the arena. Hidden on landscape
+   (no point showing it once the device is already in landscape). Tapping
+   requests fullscreen + locks screen orientation; both APIs require a user
+   gesture, hence a button. iOS Safari doesn't support orientation.lock so
+   the click is best-effort and falls back to fullscreen only. */
+.landscape-btn {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(8, 0, 13, 0.85);
+  border: 1px solid var(--neon-gold);
+  border-radius: 4px;
+  color: var(--neon-gold);
+  font-family: var(--font-arena);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(255, 215, 0, 0.3);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.landscape-btn:active {
+  background: rgba(255, 215, 0, 0.15);
+}
+
+@media (orientation: landscape) {
+  .landscape-btn { display: none; }
+}
+

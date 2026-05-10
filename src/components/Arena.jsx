@@ -265,6 +265,28 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
           </div>
         </ArenaBackground>
       </div>
+
+      {/* Landscape toggle — fullscreen + orientation.lock both need a user
+          gesture, so we trigger them from a button click. iOS Safari doesn't
+          support orientation.lock; the fullscreen call still helps there. */}
+      <button
+        className="landscape-btn"
+        onClick={async () => {
+          try {
+            const el = document.documentElement;
+            if (el.requestFullscreen && !document.fullscreenElement) {
+              await el.requestFullscreen();
+            }
+            if (screen.orientation && screen.orientation.lock) {
+              await screen.orientation.lock('landscape');
+            }
+          } catch (e) {
+            console.warn('[Arena] landscape lock failed:', e);
+          }
+        }}
+      >
+        ↻ LANDSCAPE
+      </button>
     </div>
   );
 }
