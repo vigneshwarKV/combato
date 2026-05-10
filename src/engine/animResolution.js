@@ -275,6 +275,12 @@ export function computeAttackTiming(result, characterA, characterB) {
   // reaction fires at the visual impact and uses 'death' if mid-air.
   const aLandedHurt = actionA === 'jump' && damageToA > 0 && !aGotUltHit && actionB === 'hit' && isProjectileHit(characterB);
   const bLandedHurt = actionB === 'jump' && damageToB > 0 && !bGotUltHit && actionA === 'hit' && isProjectileHit(characterA);
+  // Same idea for projectile-hit landing on a slider — slide dodges the
+  // arrow's path momentarily, but once they finish the glide and return to
+  // base the arrow catches them. Plays simple hurt at base (no throwback
+  // since they've already returned to baseX).
+  const aSlideLandedHurt = actionA === 'slide' && damageToA > 0 && !aGotUltHit && actionB === 'hit' && isProjectileHit(characterB);
+  const bSlideLandedHurt = actionB === 'slide' && damageToB > 0 && !bGotUltHit && actionA === 'hit' && isProjectileHit(characterA);
   // Slider getting clipped by an incoming attack:
   //  - fast shoot: reaction fires before bullet reaches base (mid-slide
   //    throwback) — uses the shoot-vs-slide pattern.
@@ -344,13 +350,16 @@ export function computeAttackTiming(result, characterA, characterB) {
     && isUltimateKey(actionA) && isAirborneUlt(actionA, characterA);
   const reactionA = isAirborneUltClash || isMeleeHitClash || aAirborneUltKO ? 'death'
     : aLandedHurt ? reactionAnim(damageToA, aGotUltHit, actionA, /* knockdownFromAir */ false)
+    : aSlideLandedHurt ? 'hurt'
     : reactionAnim(damageToA, aGotUltHit, actionA);
   const reactionB = isAirborneUltClash || isMeleeHitClash || bAirborneUltKO ? 'death'
     : bLandedHurt ? reactionAnim(damageToB, bGotUltHit, actionB, /* knockdownFromAir */ false)
+    : bSlideLandedHurt ? 'hurt'
     : reactionAnim(damageToB, bGotUltHit, actionB);
   const reactionAtA = isAirborneUltClash ? ultClashAt
     : isMeleeHitClash ? hitClashAt
     : aLandedHurt ? launchAtA + ANIM_DURATION.jump
+    : aSlideLandedHurt ? ANIM_DURATION.slide
     : aShootPattern ? shootSlideHitsAt(impactB)
     : aHitVsShoot ? hitVsShootReactAt(characterA)
     : aShooterHitByLunge ? (fwdMsFor('hit', characterB) ?? DEFAULT_FWD_MS.hit)
@@ -359,6 +368,7 @@ export function computeAttackTiming(result, characterA, characterB) {
   const reactionAtB = isAirborneUltClash ? ultClashAt
     : isMeleeHitClash ? hitClashAt
     : bLandedHurt ? launchAtB + ANIM_DURATION.jump
+    : bSlideLandedHurt ? ANIM_DURATION.slide
     : bShootPattern ? shootSlideHitsAt(impactA)
     : bHitVsShoot ? hitVsShootReactAt(characterB)
     : bShooterHitByLunge ? (fwdMsFor('hit', characterA) ?? DEFAULT_FWD_MS.hit)

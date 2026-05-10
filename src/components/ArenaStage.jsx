@@ -404,13 +404,19 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
   // before reaching their resting base. Standard melee hit doesn't need
   // this: the lunge ends near the shooter and the natural bullet path
   // passes through them around 90% of fwdMs.
-  const targetIsSliding = toSprite._currentAction === 'slide' || toSprite._plannedAction === 'slide';
-  const targetIsRushHit = (toSprite._currentAction === 'hit' || toSprite._plannedAction === 'hit')
+  // Exception: a projectile-hit attacker (Woman Hero's IceShoot) always
+  // releases at the opponent's IDLE position — her arrow doesn't track
+  // movement, it just flies straight to where the opponent normally stands.
+  const isAttackerProjHit = action === 'hit' && character?.extraProjectileActions?.includes('hit');
+  const targetIsSliding = !isAttackerProjHit
+    && (toSprite._currentAction === 'slide' || toSprite._plannedAction === 'slide');
+  const targetIsRushHit = !isAttackerProjHit
+    && (toSprite._currentAction === 'hit' || toSprite._plannedAction === 'hit')
     && toSprite._character?.hitIsRushStyle;
   let duration = 600;
   if (targetIsSliding || targetIsRushHit) {
-    const action = targetIsSliding ? 'slide' : 'hit';
-    const midX = convergeMidPathX(toSprite, fromSprite, action);
+    const targetAction = targetIsSliding ? 'slide' : 'hit';
+    const midX = convergeMidPathX(toSprite, fromSprite, targetAction);
     if (midX != null) targetBaseX = midX;
     duration = SHORT_PROJECTILE_DURATION_MS;
   }

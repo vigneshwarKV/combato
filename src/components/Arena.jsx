@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ArenaStage from './ArenaStage.jsx';
 import StatusBars from './StatusBars.jsx';
 import ArenaBackground from './ArenaBackground.jsx';
@@ -6,6 +6,14 @@ import ActionLabel from './ActionLabel.jsx';
 import { useFight } from '../hooks/useFight.js';
 import { useFightRenderer } from '../hooks/useFightRenderer.js';
 import { CHARACTERS } from '../data/characters.js';
+
+// Fixed canvas design dimensions. All fighter positioning, motion offsets
+// (PNG_MOTION) and projectile aim are tuned in this pixel space, so we render
+// at this size and uniformly CSS-scale the canvas to fit the viewport. The
+// parallax background and HUD overlays stay at viewport size — only the
+// canvas + sprite layer scales — so desktop output is unchanged.
+const DESIGN_W = 1100;
+const DESIGN_H = 520;
 
 // mode="host"      → runs its own fight via useFight (getMoves from fightConfig for P2P)
 // mode="spectator" → renders fight events from fightEvents prop via useFightRenderer
@@ -15,16 +23,42 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
   const broadcastRef = useRef(null);
   broadcastRef.current = fightConfig.onBroadcastEvent ?? null;
 
-  const stageContainerRef = useRef(null);
-  const [stageWidth, setStageWidth] = useState(1100);
-  useEffect(() => {
-    if (!stageContainerRef.current) return;
-    const ro = new ResizeObserver(entries => {
-      const w = Math.floor(entries[0].contentRect.width);
-      if (w > 0) setStageWidth(w);
-    });
-    ro.observe(stageContainerRef.current);
-    return () => ro.disconnect();
+  // Measure the stage wrapper to compute a uniform scale that fits the
+  // 1100×520 design surface inside the available area. Listens to
+  // ResizeObserver (covers most cases) plus orientationchange/resize as a
+  // safety net for iOS Safari's mid-rotate layout settle.
+  const stageWrapperRef = useRef(null);
+  const [stageScale, setStageScale] = useState(1);
+  useLayoutEffect(() => {
+    if (!stageWrapperRef.current) return;
+    let raf = 0;
+    const compute = () => {
+      const el = stageWrapperRef.current;
+      if (!el) return;
+      const w = el.clientWidth;
+      // Mirror the 4vh paddingBottom on the fighter container so the canvas
+      // doesn't overlap the ground edge on small screens.
+      const padBottom = window.innerHeight * 0.04;
+      const h = el.clientHeight - padBottom;
+      if (w <= 0 || h <= 0) return;
+      const s = Math.min(w / DESIGN_W, h / DESIGN_H, 1);
+      setStageScale(s);
+    };
+    const schedule = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(compute);
+    };
+    const ro = new ResizeObserver(schedule);
+    ro.observe(stageWrapperRef.current);
+    window.addEventListener('orientationchange', schedule);
+    window.addEventListener('resize', schedule);
+    compute();
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('orientationchange', schedule);
+      window.removeEventListener('resize', schedule);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, []);
 
   const host = useFight(fighterA, fighterB, fightConfig, broadcastRef);
@@ -149,7 +183,7 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
       </div>
 
       {/* Stage */}
-      <div className="flex-1 relative min-h-0 overflow-visible">
+      <div ref={stageWrapperRef} className="flex-1 relative min-h-0 overflow-hidden">
         <ArenaBackground seed={bgSeed} parallax>
 
           {/* Status bars */}
@@ -183,23 +217,33 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
             </div>
           )}
 
-          {/* Fighters */}
-          <div ref={stageContainerRef} style={{
+          {/* Fighters — canvas renders at fixed DESIGN_W×DESIGN_H and the
+              wrapper applies a uniform CSS scale so it fits the available
+              area on any viewport without disturbing pixel-tuned motion. */}
+          <div style={{
             position: 'absolute', inset: 0,
             display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
             paddingBottom: '4vh', zIndex: 10,
           }}>
             {hasSpriteA && hasSpriteB ? (
-              <ArenaStage
-                characterAId={fighterA.character}
-                characterBId={fighterB.character}
-                animClassA={animClassA} animClassB={animClassB}
-                animKeyA={animKeyA} animKeyB={animKeyB}
-                plannedActionA={currentActionA} plannedActionB={currentActionB}
-                hpA={hpA} hpB={hpB}
-                width={stageWidth} height={520}
-                onReady={handleStageReady}
-              />
+              <div style={{
+                width: DESIGN_W, height: DESIGN_H,
+                position: 'relative',
+                flexShrink: 0,
+                transform: `scale(${stageScale})`,
+                transformOrigin: 'center bottom',
+              }}>
+                <ArenaStage
+                  characterAId={fighterA.character}
+                  characterBId={fighterB.character}
+                  animClassA={animClassA} animClassB={animClassB}
+                  animKeyA={animKeyA} animKeyB={animKeyB}
+                  plannedActionA={currentActionA} plannedActionB={currentActionB}
+                  hpA={hpA} hpB={hpB}
+                  width={DESIGN_W} height={DESIGN_H}
+                  onReady={handleStageReady}
+                />
+              </div>
             ) : (
               // Character data hasn't arrived yet (joiner race: LOBBY_UPDATE
               // landed before FIGHT_START), or a character key is unknown.

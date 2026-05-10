@@ -63,8 +63,21 @@ export function resolveActions(
   //   slide vs slide → both collide and take slide damage
   const isUltA = isUltimateKey(actualA);
   const isUltB = isUltimateKey(actualB);
-  const clashHit   = actualA === 'hit'   && actualB === 'hit';
-  const clashUlt   = isUltA && isUltB;
+  // Projectile-hit (Woman Hero's IceShoot) doesn't clash with melee — she
+  // jumps up to fire, so the other character's lunge can interrupt her arrow
+  // release while she eats the hit. Skip clash so per-side computeAttack runs.
+  const aProjHit = actualA === 'hit' && CHARACTERS[characterA]?.extraProjectileActions?.includes('hit');
+  const bProjHit = actualB === 'hit' && CHARACTERS[characterB]?.extraProjectileActions?.includes('hit');
+  const clashHit   = actualA === 'hit'   && actualB === 'hit' && !aProjHit && !bProjHit;
+  // Ult-vs-ult only clashes when both ults occupy the same vertical lane —
+  // both airborne (mid-flight collision) or both grounded. An airborne ult
+  // vs a grounded ult (e.g., Beast's Rocket Charge vs Woman Hero's spread
+  // shot) is asymmetric: the flying ult clears the grounded ult's path and
+  // lands on the grounded user, while the grounded user's arrows miss the
+  // flyer. Per-side computeAttack handles that.
+  const aAirborneUlt = isUltA && isAirborneUltimate(characterA, actualA);
+  const bAirborneUlt = isUltB && isAirborneUltimate(characterB, actualB);
+  const clashUlt   = isUltA && isUltB && (aAirborneUlt === bAirborneUlt);
   const clashSlide = actualA === 'slide' && actualB === 'slide';
 
   let dmgFromA, dmgFromB, aHit, bHit, resultA, resultB;
@@ -190,15 +203,46 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
   }
 
   if (attacker === 'hit') {
-    // All hit variants land on a jumper. For melee hits (hammer/fist/kick) the
-    // jumper is clipped out of the air — animResolution plays death+knockdown.
-    // For projectile-based hits (e.g., womanHero's ice arrow) the engine still
-    // counts damage, but the reaction is deferred to AFTER landing (handled
-    // visually in animResolution.computeAttackTiming).
-    if (defender === 'slide')  { events.push({ type: 'miss', attacker: attackerLabel, reason: 'slid' }); return hit(0, false); }
-    // Rush-style hits (Skater Kid's skateboard run) carry too much momentum
-    // for a defend pose to absorb — defender takes full hit damage.
-    if (defender === 'defend' && !CHARACTERS[attackerCharId]?.hitIsRushStyle) {
+    const attackerIsProjHit = !!CHARACTERS[attackerCharId]?.extraProjectileActions?.includes('hit');
+    const attackerIsRushHit = !!CHARACTERS[attackerCharId]?.hitIsRushStyle;
+    const defenderIsProjHit = !!CHARACTERS[defenderCharId]?.extraProjectileActions?.includes('hit');
+    // Projectile-style hit (Woman Hero's IceShoot) misses a jumper — straight-
+    // line shot, jumper evades the same way they do shoot.
+    if (defender === 'jump' && attackerIsProjHit) {
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'jumped' });
+      return hit(0, false);
+    }
+    // Projectile hit attacker vs an opposing melee hit — opponent's lunge
+    // catches the projectile-hitter before they release the arrow. The
+    // melee hit's damage lands (in opponent's branch); this branch whiffs.
+    if (defender === 'hit' && attackerIsProjHit && !defenderIsProjHit) {
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'interrupted_by_hit' });
+      return hit(0, false);
+    }
+    // Rush-style hit (Skater Kid) vs projectile-hit (Woman Hero) — both end
+    // up airborne (skateboard rush vs jumpShoot) and pass each other; rush
+    // misses too. Projectile-hit's miss is handled by the case above.
+    if (defender === 'hit' && attackerIsRushHit && defenderIsProjHit) {
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'both_airborne' });
+      return hit(0, false);
+    }
+    // Melee hits (hammer/fist/kick) clip a jumper out of the air —
+    // animResolution plays death+knockdown. Projectile-based hits had the
+    // damage-applies-but-deferred-hurt path; that's now removed (above) since
+    // the user wants projectile hits to MISS jumpers like a shoot.
+    // Melee hit misses sliders (slide dodges low). Projectile-style hit
+    // (Woman Hero's IceShoot) doesn't miss — the arrow flies straight and
+    // catches the slider once they finish their slide and return to base
+    // (the deferred-hurt timing is handled in animResolution).
+    if (defender === 'slide' && !attackerIsProjHit) {
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'slid' });
+      return hit(0, false);
+    }
+    // Defend blocks regular melee hit, but NOT rush-style charges (Skater
+    // Kid's skateboard run carries too much momentum) and NOT projectile-
+    // style hits (Woman Hero's IceShoot — arrows pierce a shield raised for
+    // melee). Defender takes full hit damage in those cases.
+    if (defender === 'defend' && !attackerIsRushHit && !attackerIsProjHit) {
       events.push({ type: 'blocked', defender: defenderLabel, kind: 'hit' });
       return hit(0, false);
     }
@@ -239,6 +283,13 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
     // (e.g., womanHero's Triple Shot) still get hit.
     if (isAirborneUltimate(defenderCharId, defender)) {
       events.push({ type: 'miss', attacker: attackerLabel, reason: 'ult_airborne' });
+      return hit(0, false);
+    }
+    // Projectile-style hit (Woman Hero's IceShoot) is a jumpShoot — she
+    // rises up to fire her ice arrow, so an opposing straight-line bullet
+    // passes under her like it would past a jumper.
+    if (defender === 'hit' && CHARACTERS[defenderCharId]?.extraProjectileActions?.includes('hit')) {
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'attacker_airborne' });
       return hit(0, false);
     }
     // Slow thrower rushed by a melee hit-attacker — the lunge reaches the
@@ -303,6 +354,18 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
     // for projectile-style hits (Woman Hero's IceShoot doesn't lunge).
     if (defender === 'hit' && !CHARACTERS[defenderCharId]?.extraProjectileActions?.includes('hit')) {
       events.push({ type: 'miss', attacker: attackerLabel, reason: 'interrupted_by_hit', name: ult.name });
+      return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: true, ult, missed: true } };
+    }
+
+    // Grounded ult vs airborne ult — grounded user (e.g., Woman Hero's
+    // spread shot) is stationary firing arrows; the airborne ult-er
+    // (jet-pack/flyHit) clears those arrows by flying past in a different
+    // vertical lane. Grounded ult misses; the airborne ult lands on the
+    // grounded user (handled in the opponent's branch).
+    if (isUltimateKey(defender)
+      && isAirborneUltimate(defenderCharId, defender)
+      && !isAirborneUltimate(attackerCharId, attacker)) {
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'ult_airborne', name: ult.name });
       return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: true, ult, missed: true } };
     }
 

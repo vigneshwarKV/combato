@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useLayoutEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import ArenaStage from '../components/ArenaStage.jsx';
 import ArenaBackground from '../components/ArenaBackground.jsx';
@@ -7,6 +7,13 @@ import { resolveActions, validActionsForCharacter } from '../engine/damageEngine
 import { computeAttackTiming } from '../engine/animResolution.js';
 
 const CHARACTER_LIST = Object.values(CHARACTERS);
+
+// Same approach as Arena.jsx: render the canvas at fixed design dimensions
+// and CSS-scale it to fit available area so DevPage works on mobile/landscape
+// without changing pixel-tuned motion math. DevPage uses a taller 700px design
+// height to give ultimates room above the fighters.
+const DEV_DESIGN_W = 1100;
+const DEV_DESIGN_H = 700;
 
 function actionLabel(key, character) {
   if (key.startsWith('ultimate_')) {
@@ -300,6 +307,42 @@ export default function DevPage() {
 
   const bgSeed = `${charAId}-${charBId}`;
 
+  // Same fitter pattern as Arena.jsx — measure the arena wrapper and pick a
+  // uniform scale that fits the design surface, clamped to ≤ 1 so desktop
+  // never upscales. Listens to ResizeObserver + orientationchange + resize
+  // and debounces with requestAnimationFrame for iOS Safari rotation settle.
+  const arenaWrapperRef = useRef(null);
+  const [stageScale, setStageScale] = useState(1);
+  useLayoutEffect(() => {
+    if (!arenaWrapperRef.current) return;
+    let raf = 0;
+    const compute = () => {
+      const el = arenaWrapperRef.current;
+      if (!el) return;
+      const w = el.clientWidth;
+      const padBottom = window.innerHeight * 0.04;
+      const h = el.clientHeight - padBottom;
+      if (w <= 0 || h <= 0) return;
+      const s = Math.min(w / DEV_DESIGN_W, h / DEV_DESIGN_H, 1);
+      setStageScale(s);
+    };
+    const schedule = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(compute);
+    };
+    const ro = new ResizeObserver(schedule);
+    ro.observe(arenaWrapperRef.current);
+    window.addEventListener('orientationchange', schedule);
+    window.addEventListener('resize', schedule);
+    compute();
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('orientationchange', schedule);
+      window.removeEventListener('resize', schedule);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+
   return (
     <div style={{
       height: '100vh',
@@ -333,7 +376,7 @@ export default function DevPage() {
       </div>
 
       {/* Arena */}
-      <div style={{ flex: 1, position: 'relative', minHeight: 0, overflow: 'hidden' }}>
+      <div ref={arenaWrapperRef} style={{ flex: 1, position: 'relative', minHeight: 0, overflow: 'hidden' }}>
         <ArenaBackground seed={bgSeed} parallax>
           <div style={{
             position: 'absolute',
@@ -344,18 +387,26 @@ export default function DevPage() {
             paddingBottom: '4vh',
             zIndex: 10,
           }}>
-            <ArenaStage
-              characterAId={charAId}
-              characterBId={charBId}
-              animClassA={animClassA}
-              animClassB={animClassB}
-              animKeyA={animKeyA}
-              animKeyB={animKeyB}
-              plannedActionA={selectedA}
-              plannedActionB={selectedB}
-              width={1100}
-              height={700}
-            />
+            <div style={{
+              width: DEV_DESIGN_W, height: DEV_DESIGN_H,
+              position: 'relative',
+              flexShrink: 0,
+              transform: `scale(${stageScale})`,
+              transformOrigin: 'center bottom',
+            }}>
+              <ArenaStage
+                characterAId={charAId}
+                characterBId={charBId}
+                animClassA={animClassA}
+                animClassB={animClassB}
+                animKeyA={animKeyA}
+                animKeyB={animKeyB}
+                plannedActionA={selectedA}
+                plannedActionB={selectedB}
+                width={DEV_DESIGN_W}
+                height={DEV_DESIGN_H}
+              />
+            </div>
           </div>
         </ArenaBackground>
       </div>
