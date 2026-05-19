@@ -193,6 +193,32 @@ body {
   box-shadow: none;
 }
 
+/* ─── Copy icon button ──────────────────────────────────────────────────── */
+
+.copy-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--arena-panel-border);
+  border-radius: 5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.copy-icon-btn:hover {
+  color: var(--neon-gold);
+  border-color: var(--neon-gold);
+}
+.copy-icon-btn[aria-label='Copied!'] {
+  color: #4cde80;
+  border-color: #4cde80;
+}
+
 /* ─── Panels ─────────────────────────────────────────────────────────────── */
 
 .arena-panel {

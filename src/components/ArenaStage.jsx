@@ -418,18 +418,82 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
     const targetAction = targetIsSliding ? 'slide' : 'hit';
     const midX = convergeMidPathX(toSprite, fromSprite, targetAction);
     if (midX != null) targetBaseX = midX;
-    duration = SHORT_PROJECTILE_DURATION_MS;
+    if (targetIsRushHit) {
+      // Bullet should vanish around the moment the rusher's reaction fires
+      // (animResolution caps that at ~90% of the rusher's fwdMs). The bullet
+      // spawned `spawnDelay` ms ago, so its remaining flight should be
+      // rushReact - spawnDelay. Floor at 150ms so it stays briefly visible.
+      const motion = toSprite._character?.motionOverrides?.hit;
+      const rusherFwdMs = motion?.fwdMs ?? 220;
+      const rushReact = Math.round(rusherFwdMs * 0.9);
+      const spawnDelay = character?.projectileDelayByAction?.[action] ?? character?.projectileDelayMs ?? 0;
+      duration = Math.max(150, rushReact - spawnDelay);
+    } else {
+      duration = SHORT_PROJECTILE_DURATION_MS;
+    }
   }
-  const endX = targetBaseX + (side === 'A' ? -40 : 40);
+  // When the defender is evading (jump / airborne ult / projectile-hit
+  // jumpShoot) the bullet WILL miss them in the engine — instead of ending
+  // the tween abruptly AT the defender's resting base, let the bullet fly
+  // past so it visibly travels onward. Bullet keeps a constant speed by
+  // extending the duration proportionally.
+  // Check BOTH _currentAction and _plannedAction — a jumper held in idle by
+  // jumperHoldFor has _currentAction='idle' but _plannedAction='jump', so
+  // we'd otherwise miss the evade case during the hold window.
+  const matchesAction = (a) => toSprite._currentAction === a || toSprite._plannedAction === a;
+  const targetIsJumping = matchesAction('jump');
+  const isUltimateActionOnTarget = (k) =>
+    typeof k === 'string' && k.startsWith('ultimate_');
+  const ultActionOnTarget = isUltimateActionOnTarget(toSprite._plannedAction)
+    ? toSprite._plannedAction
+    : (isUltimateActionOnTarget(toSprite._currentAction) ? toSprite._currentAction : null);
+  const targetIsAirborneUlt = !!ultActionOnTarget && (() => {
+    const kind = toSprite._character?.motionOverrides?.[ultActionOnTarget]?.kind;
+    if (!kind) return true; // default flyHit
+    return kind === 'flyHit' || kind === 'jumpShoot' || kind === 'arc';
+  })();
+  const targetIsProjHitDefender = matchesAction('hit')
+    && !!toSprite._character?.extraProjectileActions?.includes('hit');
+  const targetIsEvading = targetIsJumping || targetIsAirborneUlt || targetIsProjHitDefender;
+  // Push the projectile well past the defender's base — large rotated sprites
+  // (turtle's spear, monkey's spear) have visible body length on both sides
+  // of their anchor, so a smaller offset leaves the spear's tail still
+  // overlapping the defender. 350px keeps the tip near the stage edge.
+  const PASS_THROUGH_PX = 350;
+  const dir = side === 'A' ? 1 : -1;
+  const endX = targetIsEvading
+    ? targetBaseX + dir * PASS_THROUGH_PX
+    : targetBaseX + (side === 'A' ? -40 : 40);
   const endY = targetBaseY - 80 + endYOffset;
+  if (targetIsEvading) {
+    // Add the extra flight time so bullet speed stays the same as before.
+    const baseDist = Math.max(1, Math.abs((targetBaseX + (side === 'A' ? -40 : 40)) - startX));
+    const extraMs = Math.round(duration * (PASS_THROUGH_PX / baseDist));
+    duration += extraMs;
+  }
 
   // Muzzle flash only for bullets (no custom projectile, no arrow).
   if (!isArrow && !character?.projectile) spawnMuzzleEffect(app, startX, startY, side);
 
+  // "Emerge" projectile (e.g., Skater Kid's purple beam) anchors at the tip
+  // and grows its length from a sliver to full over the first ~150ms — reads
+  // as the bullet sliding out of the gun barrel tip-first.
+  const emerge = !!character?.projectileEmerges;
+  const EMERGE_MS = 150;
+  const EMERGE_START_SCALE_X = 0.1;
+
   PIXI.Assets.load(texUrl).then(texture => {
     const bullet = new PIXI.Sprite(texture);
-    bullet.anchor.set(0.5);
-    bullet.scale.set(scale);
+    if (emerge) {
+      // Anchor at the front (sprite-local right edge). After rotation toward
+      // the target this becomes the tip in world-space — bullet.x/y now
+      // represent the tip position, body extends behind it.
+      bullet.anchor.set(1, 0.5);
+      bullet.scale.set(scale * EMERGE_START_SCALE_X, scale);
+    } else {
+      bullet.anchor.set(0.5);
+      bullet.scale.set(scale);
+    }
     if (action === 'ultimate_poison') bullet.tint = 0x84cc16;
 
     bullet.x = startX;
@@ -443,6 +507,18 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
       const t = Math.min(1, elapsed / duration);
       bullet.x = startX + (endX - startX) * t;
       bullet.y = startY + (endY - startY) * t;
+      if (emerge && elapsed < EMERGE_MS) {
+        const eProg = elapsed / EMERGE_MS;
+        bullet.scale.x = scale * (EMERGE_START_SCALE_X + (1 - EMERGE_START_SCALE_X) * eProg);
+      } else if (emerge && bullet.scale.x !== scale) {
+        bullet.scale.x = scale;
+      }
+      // When the projectile is being passed past the defender (miss), fade
+      // it out over the last 20% of its flight so the exit reads cleanly
+      // instead of just popping off the stage.
+      if (targetIsEvading && t > 0.8) {
+        bullet.alpha = Math.max(0, (1 - t) / 0.2);
+      }
       if (t >= 1) {
         app.ticker.remove(tick);
         try { app.stage.removeChild(bullet); bullet.destroy(); } catch { /* ignore */ }
@@ -604,12 +680,114 @@ function cancelActiveTween(fighter, { resetPosition = true } = {}) {
     try { fighter.activeTween(); } catch { /* ignore */ }
     fighter.activeTween = null;
   }
+  if (fighter._exhaustCleanup) {
+    try { fighter._exhaustCleanup(); } catch { /* ignore */ }
+    fighter._exhaustCleanup = null;
+  }
   if (resetPosition && fighter.sprite) {
     // Snap back to base position immediately
     fighter.sprite.x = fighter.baseX;
     fighter.sprite.y = fighter.baseY;
     fighter.sprite.rotation = 0;
   }
+}
+
+// Smoke / fire trail that follows the sprite while an airborne ultimate
+// motion plays. Renders behind the sprite so the body stays visually on top.
+// Caller passes the motion totalMs so the trail naturally fades just as the
+// fighter touches back down. Cancellable via fighter._exhaustCleanup if the
+// motion is interrupted before completion.
+const SMOKE_FRAMES = [
+  '/assets/effects/smokejet01.png',
+  '/assets/effects/smokejet02.png',
+  '/assets/effects/smokejet03.png',
+  '/assets/effects/smokejet04.png',
+];
+const FIRE_FRAMES = [
+  '/assets/effects/JetPackFire1.png',
+  '/assets/effects/JetPackFire2.png',
+  '/assets/effects/JetPackFire3.png',
+];
+
+function spawnJetExhaust(fighter, app, totalMs) {
+  if (!app || !fighter?.sprite) return;
+  const cfg = fighter.character.jetExhaust;
+  if (!cfg) return;
+  const isFire = cfg.type === 'fire';
+  const urls = isFire ? FIRE_FRAMES : SMOKE_FRAMES;
+  // Per-character offsets in the fighter's facing-right local frame; mirrored
+  // for side B. Sprite anchor is (0.5, 1) so y is the feet line — yOff is
+  // negative to lift the puff up to the jetpack/skateboard nozzle. Default is
+  // tuned to sit behind the back (not at the legs) for the standard PNG body.
+  const xOff = cfg.xOff ?? -55;
+  const yOff = cfg.yOff ?? -90;
+  const scale = cfg.scale ?? 1.0;
+  const dir = fighter.side === 'A' ? 1 : -1;
+
+  let cancelled = false;
+  let exhaust = null;
+  const startTime = performance.now();
+
+  Promise.all(urls.map(u => PIXI.Assets.load(u).catch(() => null))).then(textures => {
+    const valid = textures.filter(Boolean);
+    if (cancelled || valid.length === 0) return;
+    exhaust = new PIXI.AnimatedSprite(valid);
+    exhaust.anchor.set(0.5, 0);    // top-center anchor — the puff drifts down from the nozzle
+    // Smoke source PNGs are ~280×400, JetPackFire PNGs are ~80×130. Use
+    // different baselines so both render at a comparable visible size.
+    const baseScale = isFire ? 1.0 : 0.45;
+    exhaust.scale.set(baseScale * scale);
+    exhaust.animationSpeed = isFire ? 0.35 : 0.25;
+    exhaust.loop = true;
+    exhaust.alpha = 0.85;
+    // Place at the nozzle BEFORE adding to stage so the first paint isn't at
+    // canvas origin (0,0). The ticker will keep it locked to the moving sprite.
+    exhaust.x = fighter.sprite.x + xOff * dir;
+    exhaust.y = fighter.sprite.y + yOff;
+    exhaust.alpha = 0;             // fade-in handled in the ticker
+    exhaust.play();
+
+    // Insert behind the sprite so the body always renders on top.
+    const parent = fighter.sprite.parent;
+    if (parent) {
+      const idx = parent.getChildIndex(fighter.sprite);
+      parent.addChildAt(exhaust, idx);
+    } else {
+      app.stage.addChild(exhaust);
+    }
+
+    const tick = () => {
+      if (cancelled) return;
+      const elapsed = performance.now() - startTime;
+      const t = Math.min(1, elapsed / totalMs);
+      // Track the sprite's current position every frame so the trail follows
+      // through the up-arc and back down. dir flips x for side B mirroring.
+      exhaust.x = fighter.sprite.x + xOff * dir;
+      exhaust.y = fighter.sprite.y + yOff;
+      // Fade in fast, hold, fade out as the motion lands.
+      const fadeIn = Math.min(1, elapsed / 120);
+      const fadeOut = t < 0.85 ? 1 : 1 - (t - 0.85) / 0.15;
+      exhaust.alpha = 0.85 * fadeIn * fadeOut;
+      if (t >= 1) cleanup();
+    };
+    app.ticker.add(tick);
+
+    const cleanup = () => {
+      if (cancelled) return;
+      cancelled = true;
+      try { app.ticker.remove(tick); } catch { /* ignore */ }
+      try { exhaust?.parent?.removeChild(exhaust); exhaust?.destroy(); } catch { /* ignore */ }
+    };
+    fighter._exhaustCleanup = cleanup;
+  });
+
+  // Pre-textures cleanup hook (in case we cancel before the texture promise settles)
+  fighter._exhaustCleanup = () => {
+    cancelled = true;
+    if (exhaust) {
+      try { exhaust.parent?.removeChild(exhaust); exhaust.destroy(); } catch { /* ignore */ }
+    }
+  };
 }
 
 // Recover from a displaced impact pose to the fighter's base position while
@@ -763,7 +941,7 @@ function tweenFlyHit(fighter, opponent, motion, app) {
       const arcOffset = (peakY - startY) * Math.sin(Math.PI * t);
       fighter.sprite.y = linearY + arcOffset;
       // Switch to Hit animation on the descent, just before landing
-      if (!phase2Triggered && t >= 0.78 && motion.phase2) {
+      if (!phase2Triggered && t >= FLYHIT_PHASE2_T && motion.phase2) {
         phase2Triggered = true;
         playAnimation(fighter.sprite, fighter.character, motion.phase2);
       }
@@ -788,6 +966,12 @@ function tweenFlyHit(fighter, opponent, motion, app) {
 function easeOut(t) {
   return 1 - Math.pow(1 - t, 2);
 }
+
+// At this fraction of fwdMs the flyHit motion swaps to its phase2 animation
+// (Hit/roll/etc.) — the jetpack visibly fires only during the up-and-forward
+// arc before that. Jet exhaust uses the same threshold so smoke/fire ends
+// exactly as the body switches out of the Jetpack pose.
+const FLYHIT_PHASE2_T = 0.78;
 
 function playAction(fighter, opponent, action, app) {
   if (!fighter) return;
@@ -830,10 +1014,18 @@ function playAction(fighter, opponent, action, app) {
     case 'arc':
       playAnimation(fighter.sprite, fighter.character, action);
       tweenArcY(fighter, motion, app);
+      if (action.startsWith('ultimate_')) {
+        // Only up-arc — exhaust ends as the fighter reaches the parabolic peak.
+        spawnJetExhaust(fighter, app, (motion.ms ?? 850) / 2);
+      }
       break;
     case 'jumpShoot':
       playAnimation(fighter.sprite, fighter.character, action);
       tweenJumpShoot(fighter, motion, app);
+      if (action.startsWith('ultimate_')) {
+        // Up-phase only — once they hover/hold at apex the Jetpack anim ends.
+        spawnJetExhaust(fighter, app, motion.upMs ?? 400);
+      }
       break;
     case 'static':
       if (fighter.character.animations[action]) {
@@ -858,6 +1050,13 @@ function playAction(fighter, opponent, action, app) {
     case 'flyHit':
       playAnimation(fighter.sprite, fighter.character, action);
       tweenFlyHit(fighter, opponent, motion, app);
+      if (action.startsWith('ultimate_')) {
+        // Cut exhaust at the phase2 swap — once the body changes out of the
+        // Jetpack pose into Hit/roll/etc., no more thrust. Motions without a
+        // phase2 still get the full fwd arc.
+        const ms = motion.fwdMs * (motion.phase2 ? FLYHIT_PHASE2_T : 1);
+        spawnJetExhaust(fighter, app, ms);
+      }
       break;
     case 'none':
     default:

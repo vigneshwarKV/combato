@@ -229,14 +229,61 @@ function FighterCard({ fighter, isMe }) {
 
 // ── Copy button ───────────────────────────────────────────────────────────────
 
-function CopyButton({ text, label = 'Copy', sm = false }) {
+function CopyButton({ text, hint = 'Copy' }) {
   const [copied, setCopied] = useState(false);
   function handleCopy() {
     navigator.clipboard?.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
   }
   return (
-    <button className={`btn-arena ${sm ? 'btn-arena-sm' : ''} btn-arena-ghost`} onClick={handleCopy}>
-      {copied ? '✓ Copied!' : label}
+    <button
+      className="copy-icon-btn"
+      onClick={handleCopy}
+      aria-label={copied ? 'Copied!' : hint}
+      title={copied ? 'Copied!' : hint}
+    >
+      {copied ? (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <polyline points="2,8 6,12 14,4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <rect x="6" y="6" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
+          <path d="M4 10H3A1.5 1.5 0 0 1 1.5 8.5V3A1.5 1.5 0 0 1 3 1.5h5.5A1.5 1.5 0 0 1 10 3v1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      )}
+    </button>
+  );
+}
+
+function ShareButton({ text }) {
+  const [shared, setShared] = useState(false);
+  function handleShare() {
+    if (navigator.share) {
+      navigator.share({ url: text }).catch(() => {});
+    } else {
+      navigator.clipboard?.writeText(text).then(() => { setShared(true); setTimeout(() => setShared(false), 2000); });
+    }
+  }
+  return (
+    <button
+      className="copy-icon-btn"
+      onClick={handleShare}
+      aria-label={shared ? 'Copied!' : 'Share invite link'}
+      title={shared ? 'Copied!' : 'Share invite link'}
+    >
+      {shared ? (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <polyline points="2,8 6,12 14,4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <circle cx="12" cy="3" r="1.5" stroke="currentColor" strokeWidth="1.4"/>
+          <circle cx="12" cy="13" r="1.5" stroke="currentColor" strokeWidth="1.4"/>
+          <circle cx="3"  cy="8" r="1.5" stroke="currentColor" strokeWidth="1.4"/>
+          <line x1="4.3" y1="7.25" x2="10.7" y2="3.75" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+          <line x1="4.3" y1="8.75" x2="10.7" y2="12.25" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+        </svg>
+      )}
     </button>
   );
 }
@@ -274,10 +321,10 @@ function LobbyView({ matchCode, isHost, lobbyState, myConfig, updateMyConfig, on
         <div className="flex items-center gap-3">
           <span className="section-label">Room</span>
           <span className="match-code room-code-display">{matchCode}</span>
-          <CopyButton text={matchCode} label="Copy" sm />
+          <CopyButton text={matchCode} />
         </div>
         <div className="flex items-center gap-3 room-header-right">
-          {isHost && inviteLink && <CopyButton text={inviteLink} label="Share Link" sm />}
+          {isHost && inviteLink && <ShareButton text={inviteLink} />}
           {!connected && (
             <span className="text-xs font-arena uppercase tracking-wider" style={{ color: 'var(--neon-red)' }}>
               {error || 'Connecting…'}

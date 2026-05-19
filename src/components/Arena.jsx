@@ -13,7 +13,10 @@ import { CHARACTERS } from '../data/characters.js';
 // parallax background and HUD overlays stay at viewport size — only the
 // canvas + sprite layer scales — so desktop output is unchanged.
 const DESIGN_W = 1100;
-const DESIGN_H = 520;
+// Tall enough that supermove arcs (peakY 400px above groundY) don't clip
+// at the WebGL canvas boundary. groundY = DESIGN_H - 30 = 730; flyHit peak
+// at y=330; a 300px sprite clears the top by ~30px.
+const DESIGN_H = 760;
 
 // mode="host"      → runs its own fight via useFight (getMoves from fightConfig for P2P)
 // mode="spectator" → renders fight events from fightEvents prop via useFightRenderer

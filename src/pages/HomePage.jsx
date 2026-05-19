@@ -6,6 +6,7 @@ export default function HomePage() {
   const navigate = useNavigate();
   const [joinCode, setJoinCode] = useState('');
   const [joinError, setJoinError] = useState('');
+  const [showJoin, setShowJoin] = useState(false);
 
   function handleHostRoom() {
     const code = generateMatchCode();
@@ -42,41 +43,57 @@ export default function HomePage() {
 
         {/* Action area */}
         <div className="flex flex-col gap-4 w-full">
+
           {/* Host button */}
           <button className="btn-arena text-2xl py-4" onClick={handleHostRoom}>
-            Host a Room
+            Host a Match
           </button>
 
-          <div className="flex items-center gap-3">
-            <div className="arena-divider flex-1" />
-            <span className="section-label text-xs px-2">or join</span>
-            <div className="arena-divider flex-1" />
-          </div>
-
-          {/* Join form */}
-          <form onSubmit={handleJoin} className="flex flex-col gap-2">
-            <input
-              className="arena-input text-center text-xl font-arena tracking-widest uppercase"
-              style={{ fontFamily: 'var(--font-arena)', letterSpacing: '0.3em' }}
-              placeholder="ROOM CODE"
-              value={joinCode}
-              onChange={e => {
-                setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8));
-                setJoinError('');
-              }}
-              maxLength={8}
-              spellCheck={false}
-              autoComplete="off"
-            />
-            {joinError && (
-              <p className="text-xs text-center" style={{ color: 'var(--neon-red)', fontFamily: 'var(--font-arena)', letterSpacing: '0.1em' }}>
-                {joinError}
-              </p>
-            )}
-            <button type="submit" className="btn-arena btn-arena-red">
+          {/* Join / Enter the Ring */}
+          {!showJoin ? (
+            <button className="btn-arena btn-arena-red text-2xl py-4" onClick={() => setShowJoin(true)}>
               Enter the Ring
             </button>
-          </form>
+          ) : (
+            <form onSubmit={handleJoin} className="flex flex-col gap-2">
+              <input
+                className="arena-input text-center text-xl font-arena tracking-widest uppercase"
+                style={{ fontFamily: 'var(--font-arena)', letterSpacing: '0.3em' }}
+                placeholder="ROOM CODE"
+                value={joinCode}
+                autoFocus
+                onChange={e => {
+                  setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8));
+                  setJoinError('');
+                }}
+                maxLength={8}
+                spellCheck={false}
+                autoComplete="off"
+              />
+              {joinError && (
+                <p className="text-xs text-center" style={{ color: 'var(--neon-red)', fontFamily: 'var(--font-arena)', letterSpacing: '0.1em' }}>
+                  {joinError}
+                </p>
+              )}
+              <div className="flex gap-2">
+                <button type="button" className="btn-arena btn-arena-ghost flex-1" onClick={() => { setShowJoin(false); setJoinError(''); }}>
+                  Back
+                </button>
+                <button type="submit" className="btn-arena btn-arena-red flex-1">
+                  Join
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Bot match */}
+          <button
+            className="btn-arena text-2xl py-4"
+            style={{ borderColor: 'var(--neon-blue)', color: 'var(--neon-blue)' }}
+            onClick={() => navigate('/bot')}
+          >
+            Fight the Machine
+          </button>
         </div>
 
         {/* Tagline */}

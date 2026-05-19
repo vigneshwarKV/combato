@@ -356,11 +356,25 @@ export function computeAttackTiming(result, characterA, characterB) {
     : bLandedHurt ? reactionAnim(damageToB, bGotUltHit, actionB, /* knockdownFromAir */ false)
     : bSlideLandedHurt ? 'hurt'
     : reactionAnim(damageToB, bGotUltHit, actionB);
+  // Rush-style hits (Skater Kid) have a much longer fwdMs (600) than slides
+  // (320), so applying the standard slide-shoot offset can push the reaction
+  // past the rusher's forward-target arrival. Cap the rush reaction at ~90%
+  // of the rusher's fwdMs so the throwback fires just before they reach the
+  // opponent rather than during the post-reach hold.
+  const RUSH_FWD_CAP_RATIO = 0.9;
+  const rushReactCapA = (actionA === 'hit' && characterA?.hitIsRushStyle)
+    ? Math.round((fwdMsFor('hit', characterA) ?? DEFAULT_FWD_MS.hit) * RUSH_FWD_CAP_RATIO)
+    : null;
+  const rushReactCapB = (actionB === 'hit' && characterB?.hitIsRushStyle)
+    ? Math.round((fwdMsFor('hit', characterB) ?? DEFAULT_FWD_MS.hit) * RUSH_FWD_CAP_RATIO)
+    : null;
   const reactionAtA = isAirborneUltClash ? ultClashAt
     : isMeleeHitClash ? hitClashAt
     : aLandedHurt ? launchAtA + ANIM_DURATION.jump
     : aSlideLandedHurt ? ANIM_DURATION.slide
-    : aShootPattern ? shootSlideHitsAt(impactB)
+    : aShootPattern ? (rushReactCapA != null
+        ? Math.min(shootSlideHitsAt(impactB), rushReactCapA)
+        : shootSlideHitsAt(impactB))
     : aHitVsShoot ? hitVsShootReactAt(characterA)
     : aShooterHitByLunge ? (fwdMsFor('hit', characterB) ?? DEFAULT_FWD_MS.hit)
     : aSlideUltAirborne ? ANIM_DURATION.slide
@@ -369,7 +383,9 @@ export function computeAttackTiming(result, characterA, characterB) {
     : isMeleeHitClash ? hitClashAt
     : bLandedHurt ? launchAtB + ANIM_DURATION.jump
     : bSlideLandedHurt ? ANIM_DURATION.slide
-    : bShootPattern ? shootSlideHitsAt(impactA)
+    : bShootPattern ? (rushReactCapB != null
+        ? Math.min(shootSlideHitsAt(impactA), rushReactCapB)
+        : shootSlideHitsAt(impactA))
     : bHitVsShoot ? hitVsShootReactAt(characterB)
     : bShooterHitByLunge ? (fwdMsFor('hit', characterA) ?? DEFAULT_FWD_MS.hit)
     : bSlideUltAirborne ? ANIM_DURATION.slide
