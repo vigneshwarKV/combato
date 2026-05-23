@@ -6,6 +6,7 @@ import { buildPromptFromStrategy } from '../components/PromptEditorSimple.jsx';
 import PromptEditorSimple from '../components/PromptEditorSimple.jsx';
 import CharacterPreview from '../components/CharacterPreview.jsx';
 import Arena from '../components/Arena.jsx';
+import { loadProfile, isProfileReady } from '../data/designData.js';
 
 const ARCHETYPE_GLYPH = { tank: 'T', striker: 'S', mage: 'M', acrobat: 'A', ranger: 'R' };
 
@@ -27,6 +28,22 @@ function buildBotFighter() {
     prompt: '',
     apiKey: '',
     provider: 'groq',
+    model: '',
+  };
+}
+
+function buildFighterFromProfile(profile) {
+  if (!isProfileReady(profile)) return null;
+  const strategy = profile.strategyMode === 'advanced'
+    ? profile.strategyAdvanced
+    : profile.strategySimple;
+  return {
+    id: `player-${Date.now()}`,
+    name: profile.handle || 'YOU',
+    character: profile.charId,
+    prompt: buildPromptFromStrategy(profile.charId, strategy),
+    provider: 'groq',
+    apiKey: '',
     model: '',
   };
 }
@@ -241,7 +258,7 @@ function SetupScreen({ onFight }) {
 
 export default function BotMatchPage() {
   const navigate = useNavigate();
-  const [playerFighter, setPlayerFighter] = useState(null);
+  const [playerFighter, setPlayerFighter] = useState(() => buildFighterFromProfile(loadProfile()));
   const [botFighter] = useState(buildBotFighter);
 
   if (!playerFighter) {

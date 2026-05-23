@@ -29,54 +29,34 @@ const HOLDS = {
 //               in the sequence.
 export default function CharacterPreview({ characterId, width = 360, height = 420, mode = 'idle' }) {
   const containerRef = useRef(null);
+  const spriteRef = useRef(null);
+  const charRef = useRef(null);
+  const timerRef = useRef(null);
+  const cancelTokenRef = useRef({ cancelled: false });
   const [error, setError] = useState(null);
 
+  // Mount/init effect — runs once per character (mode change does NOT remount).
   useEffect(() => {
     const char = CHARACTERS[characterId];
     if (!containerRef.current || !char) return undefined;
 
-    let cancelled = false;
-    let timer = null;
+    const token = { cancelled: false };
+    cancelTokenRef.current = token;
     let app = null;
     let sprite = null;
-
-    const ultKey = char.ultimates?.[0]?.key ?? null;
-    const STEPS = (mode === 'actions'
-      ? ['hit', 'slide', 'shoot', ultKey]
-      : []
-    ).filter(k => k && char.animations[k]);
-
-    function holdFor(k) {
-      if (k === ultKey) return HOLDS.ultimate;
-      return HOLDS[k] ?? 800;
-    }
 
     (async () => {
       try {
         app = new PIXI.Application();
         await app.init({ width, height, backgroundAlpha: 0, antialias: true, preference: 'webgl' });
-        if (cancelled) { app.destroy(true); return; }
+        if (token.cancelled) { app.destroy(true); return; }
         containerRef.current.appendChild(app.canvas);
 
         sprite = await loadFighterSprite(char);
-        if (cancelled) { destroyFighterSprite(sprite); app.destroy(true); return; }
+        if (token.cancelled) { destroyFighterSprite(sprite); app.destroy(true); return; }
         sprite._pixiApp = app;
         app.stage.addChild(sprite);
 
-        // Background prefetch frames for upcoming PNG actions so the cycle
-        // doesn't stall on first transition. Spine loads everything in one shot.
-        if (char.renderMode === 'png' && STEPS.length > 0) {
-          const manifest = sprite._manifest;
-          const folders = STEPS
-            .map(k => char.animations[k])
-            .filter(folder => folder && manifest?.animations?.[folder]);
-          Promise.all(folders.map(f => loadFrames(char, f, manifest.animations[f])))
-            .catch(() => { /* fire-and-forget; cycle will fall back to lazy load */ });
-        }
-
-        // Compute preview-friendly scale from sprite bounds. Sprite was created
-        // by loadFighterSprite without a scale set yet; bounds reflect natural size.
-        // Spine bounds need a state.update tick first; PNG bounds are valid now.
         let bounds;
         if (char.renderMode === 'spine' && sprite.state) {
           try { sprite.state.apply(sprite.skeleton); sprite.skeleton.updateWorldTransform?.(); } catch { /* ignore */ }
@@ -91,36 +71,101 @@ export default function CharacterPreview({ characterId, width = 360, height = 42
         sprite.x = width / 2;
         sprite.y = height * 0.92;
 
-        if (STEPS.length === 0) {
-          // Idle mode: PIXI's built-in animation loop handles repetition;
-          // no JS timer needed.
-          playAnimation(sprite, char, 'idle');
-        } else {
-          // Action cycle — closure, not React state, so no re-renders.
-          let i = 0;
-          const step = () => {
-            if (cancelled) return;
-            const k = STEPS[i % STEPS.length];
-            playAnimation(sprite, char, k);
-            timer = setTimeout(() => { i++; step(); }, holdFor(k) + 50);
+        // Spine skeletons have no PIXI anchor — sprite.x positions the root
+        // bone, not the visual silhouette center. Bounds are only valid once
+        // the spine has ticked at least once.
+        if (char.renderMode === 'spine') {
+          const recenter = () => {
+            if (token.cancelled || !spriteRef.current) return;
+            const s = spriteRef.current;
+            try {
+              s.state?.update?.(0);
+              s.state?.apply?.(s.skeleton);
+              s.skeleton?.updateWorldTransform?.();
+            } catch { /* ignore */ }
+            const lb = s.getLocalBounds?.();
+            if (lb && lb.width > 0) {
+              const scaleX = Math.abs(s.scale?.x ?? 1);
+              s.x = width / 2 - (lb.x + lb.width / 2) * scaleX;
+              return;
+            }
+            const b = s.getBounds?.();
+            const bx = b?.x ?? b?.minX;
+            const bw = b?.width ?? (b?.maxX != null && b?.minX != null ? b.maxX - b.minX : 0);
+            if (bw > 0) {
+              const visualCenter = bx + bw / 2;
+              s.x += (width / 2) - visualCenter;
+            }
           };
-          step();
+          // Try immediately, then again after a tick in case bounds were 0.
+          recenter();
+          requestAnimationFrame(() => requestAnimationFrame(recenter));
         }
+
+        spriteRef.current = sprite;
+        charRef.current = char;
+        startCycle(mode);
       } catch (e) {
         console.error('[CharacterPreview] init failed:', e);
-        if (!cancelled) setError(e.message || 'Preview load failed');
+        if (!token.cancelled) setError(e.message || 'Preview load failed');
       }
     })();
 
     return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
+      token.cancelled = true;
+      if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+      spriteRef.current = null;
+      charRef.current = null;
       if (sprite) destroyFighterSprite(sprite);
       if (app) {
         try { app.destroy(true, { children: true, texture: false, textureSource: false }); } catch { /* ignore */ }
       }
     };
-  }, [characterId, width, height, mode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [characterId, width, height]);
+
+  // Mode change effect — swap animation cycle without rebuilding Pixi.
+  useEffect(() => {
+    if (spriteRef.current && charRef.current) startCycle(mode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
+  function startCycle(currentMode) {
+    const sprite = spriteRef.current;
+    const char = charRef.current;
+    if (!sprite || !char) return;
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+
+    const ultKey = char.ultimates?.[0]?.key ?? null;
+    const STEPS = (currentMode === 'actions'
+      ? ['hit', 'slide', 'shoot', ultKey]
+      : []
+    ).filter(k => k && char.animations[k]);
+
+    if (char.renderMode === 'png' && STEPS.length > 0) {
+      const manifest = sprite._manifest;
+      const folders = STEPS
+        .map(k => char.animations[k])
+        .filter(folder => folder && manifest?.animations?.[folder]);
+      Promise.all(folders.map(f => loadFrames(char, f, manifest.animations[f])))
+        .catch(() => { /* fire-and-forget */ });
+    }
+
+    if (STEPS.length === 0) {
+      playAnimation(sprite, char, 'idle');
+      return;
+    }
+
+    let i = 0;
+    const holdFor = k => k === ultKey ? HOLDS.ultimate : (HOLDS[k] ?? 800);
+    const step = () => {
+      if (cancelTokenRef.current.cancelled || !spriteRef.current) return;
+      const k = STEPS[i % STEPS.length];
+      playAnimation(sprite, char, k);
+      timerRef.current = setTimeout(() => { i++; step(); }, holdFor(k) + 50);
+    };
+    step();
+  }
 
   if (!CHARACTERS[characterId]) return null;
   return (

@@ -3,6 +3,7 @@ import ArenaStage from './ArenaStage.jsx';
 import StatusBars from './StatusBars.jsx';
 import ArenaBackground from './ArenaBackground.jsx';
 import ActionLabel from './ActionLabel.jsx';
+import { LandscapeLock } from './design/DesignKit.jsx';
 import { useFight } from '../hooks/useFight.js';
 import { useFightRenderer } from '../hooks/useFightRenderer.js';
 import { CHARACTERS } from '../data/characters.js';
@@ -25,6 +26,14 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
   // value without needing it in useCallback deps (avoids stale-closure issues).
   const broadcastRef = useRef(null);
   broadcastRef.current = fightConfig.onBroadcastEvent ?? null;
+
+  // Landscape lock is scoped to the arena fight only: tag <body> on mount so
+  // the rotate overlay (rendered below) shows on phones in portrait, then
+  // remove on unmount so RoomPage's lobby/champion phases run portrait-first.
+  useEffect(() => {
+    document.body.classList.add('needs-landscape');
+    return () => document.body.classList.remove('needs-landscape');
+  }, []);
 
   // Measure the stage wrapper to compute a uniform scale that fits the
   // 1100×520 design surface inside the available area. Listens to
@@ -146,6 +155,8 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
   return (
     <div className={`h-screen flex flex-col overflow-x-hidden ${shakeScreen ? 'screen-shake' : ''}`}
          style={{ backgroundColor: 'var(--arena-bg)' }}>
+
+      <LandscapeLock />
 
       {/* Controls bar */}
       <div

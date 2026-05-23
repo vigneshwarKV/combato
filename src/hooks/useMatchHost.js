@@ -11,7 +11,7 @@ function nextPow2(n) {
 }
 
 function toPublicFighter(f) {
-  return { peerId: f.peerId, name: f.name, character: f.character, isHost: !!f.isHost };
+  return { peerId: f.peerId, name: f.name, character: f.character, isHost: !!f.isHost, ready: !!f.ready };
 }
 
 function getRoundLabel(roundIndex, totalRounds) {
@@ -111,7 +111,8 @@ function cloneBracket(bracket) {
 
 // ── Hook ───────────────────────────────────────────────────────────────────────
 
-export function useMatchHost(matchCode) {
+export function useMatchHost(matchCode, opts = {}) {
+  const { tournamentName } = opts;
   const peerRef         = useRef(null);
   const peersRef        = useRef(new Map());
   const pendingMovesRef = useRef(null);
@@ -119,7 +120,7 @@ export function useMatchHost(matchCode) {
   const myConfigRef     = useRef(null);
   const currentMatchRef = useRef(null);
 
-  const [lobbyState, setLobbyState] = useState({ fighters: [], phase: 'lobby', matchCode });
+  const [lobbyState, setLobbyState] = useState({ fighters: [], phase: 'lobby', matchCode, tournamentName });
   const [myConfig, setMyConfig] = useState({
     name: 'Host', character: null, prompt: '',
     strategy: '', provider: 'groq', apiKey: '', model: '',
@@ -169,6 +170,7 @@ export function useMatchHost(matchCode) {
             name: msg.fighterConfig?.name || 'Fighter',
             character: msg.fighterConfig?.character || null,
             isHost: false,
+            ready: false,
           };
           setLobbyState(prev => {
             const next = { ...prev, fighters: [...prev.fighters, newFighter] };
@@ -226,8 +228,9 @@ export function useMatchHost(matchCode) {
         name: myConfigRef.current.name,
         character: myConfigRef.current.character,
         isHost: true,
+        ready: true,
       };
-      const initial = { fighters: [hostFighter], phase: 'lobby', matchCode };
+      const initial = { fighters: [hostFighter], phase: 'lobby', matchCode, tournamentName };
       setLobbyState(initial);
 
       peer.on('connection', handleConnection);
@@ -466,5 +469,6 @@ export function useMatchHost(matchCode) {
     getMoves, broadcastFightEvent,
     currentMatch, tournamentStarted,
     inviteLink: typeof window !== 'undefined' ? `${window.location.origin}/room/${matchCode}` : '',
+    myPeerId: peerRef.current?.id,
   };
 }

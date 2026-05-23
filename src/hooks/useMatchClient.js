@@ -15,6 +15,7 @@ export function useMatchClient(matchCode) {
     provider: 'groq',
     apiKey: '',
     model: '',
+    ready: false,
   });
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState(null);
@@ -144,7 +145,7 @@ export function useMatchClient(matchCode) {
       myConfigRef.current = next;
       if (hostConnRef.current) {
         sendMessage(hostConnRef.current, 'UPDATE_FIGHTER', {
-          updates: { name: next.name, character: next.character, color: next.color },
+          updates: { name: next.name, character: next.character, color: next.color, ready: next.ready },
         });
       }
       return next;
