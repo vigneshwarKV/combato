@@ -948,6 +948,21 @@ body.pk-design {
 }
 .var-chip:hover { background: rgba(176, 82, 255, 0.25); color: #d9b3ff; }
 
+.btn.btn-saved,
+.btn.btn-saved:disabled {
+  color: var(--green);
+  border-color: rgba(43, 216, 122, 0.7);
+  background: rgba(43, 216, 122, 0.14);
+  box-shadow: 0 0 6px rgba(43, 216, 122, 0.55), 0 0 18px rgba(43, 216, 122, 0.25);
+  opacity: 1;
+  animation: btnSavedPulse 0.35s ease-out;
+}
+@keyframes btnSavedPulse {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
 /* ─── Modal ──────────────────────────────────────────────────────── */
 
 .modal-backdrop {
@@ -1664,7 +1679,7 @@ body.needs-landscape .landscape-lock { display: none; }
    desktop markup with the existing ≤760px CSS — these portrait-only tweaks
    add iOS notch padding and trim a few rem-based sizes for narrow screens. */
 @media (max-width: 760px) and (orientation: portrait) {
-  .topbar { padding-top: 44px; }
+  .topbar { padding-top: max(10px, env(safe-area-inset-top)); }
   .setup-body { padding-bottom: 32px; }
   .editor { font-size: 13px; }
   .editor-gutter { font-size: 12px; }

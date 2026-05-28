@@ -221,6 +221,10 @@ export default function ArenaStage({
     if (!fa) return;
     cancelPendingProjectiles(fa);
     const action = (animClassA || 'anim-idle').replace(/^anim-/, '');
+    // Shooter interrupted: also yank any bullets already in flight from them
+    // (not just pending spawns). Bullet completion at idle is left alone so
+    // natural flight finishes after the shoot anim ends.
+    if (action === 'hurt' || action === 'death') cancelActiveProjectiles(fa);
     fa.sprite._currentAction = action;
     playAction(fa, fighterBRef.current, action, appRef.current);
     raiseAttacker(fa.sprite, action);
@@ -235,6 +239,7 @@ export default function ArenaStage({
     if (!fb) return;
     cancelPendingProjectiles(fb);
     const action = (animClassB || 'anim-idle').replace(/^anim-/, '');
+    if (action === 'hurt' || action === 'death') cancelActiveProjectiles(fb);
     fb.sprite._currentAction = action;
     playAction(fb, fighterARef.current, action, appRef.current);
     raiseAttacker(fb.sprite, action);
@@ -349,6 +354,18 @@ function cancelPendingProjectiles(fighter) {
   fighter._pendingProjectiles = [];
 }
 
+// Kills any bullets/arrows already in flight from this fighter. Called when
+// the shooter is hurt or killed mid-shoot — without this, a Woman Hero arrow
+// (or any in-flight projectile) keeps travelling after its owner gets hit,
+// which reads as "ghost bullet" on screen.
+function cancelActiveProjectiles(fighter) {
+  const cleanups = fighter?.sprite?._activeProjectileCleanups;
+  if (!cleanups?.length) return;
+  // Copy first — each cleanup splices itself out of the array.
+  [...cleanups].forEach(fn => { try { fn(); } catch { /* ignore */ } });
+  fighter.sprite._activeProjectileCleanups = [];
+}
+
 // Reproduce the slide glide tween's X-position at time `t` (ms since slide
 // start). Used for predictive aim — slide and the opposing shoot start in the
 // same dispatch tick, so `t` is also the time elapsed since the bullet's
@@ -398,36 +415,38 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
   // (e.g., backwards when monkey defends with offset 387 on side A).
   let targetBaseX = toSprite._baseX ?? toSprite.x;
   const targetBaseY = toSprite._baseY ?? toSprite.y;
-  // If the defender is sliding (or about to slide), OR doing a rush-style
-  // hit (Skater Kid's skateboard run), redirect the bullet to the midpoint
-  // of their forward path AND shorten the visual flight so it disappears
-  // before reaching their resting base. Standard melee hit doesn't need
-  // this: the lunge ends near the shooter and the natural bullet path
-  // passes through them around 90% of fwdMs.
+  // If the defender is sliding (or about to slide), OR doing a melee-style
+  // hit (normal lunge OR Skater Kid's skateboard rush), redirect the bullet
+  // to the midpoint of their forward path AND shorten the visual flight so
+  // it disappears around the moment they get hurt — otherwise the bullet
+  // visibly continues past to their resting base after the hurt anim fires.
   // Exception: a projectile-hit attacker (Woman Hero's IceShoot) always
   // releases at the opponent's IDLE position — her arrow doesn't track
   // movement, it just flies straight to where the opponent normally stands.
+  // Slow shooters (turtle/monkey) lose to a normal melee hit so the bullet
+  // never spawns; this branch only fires when shoot wins vs hit.
   const isAttackerProjHit = action === 'hit' && character?.extraProjectileActions?.includes('hit');
   const targetIsSliding = !isAttackerProjHit
     && (toSprite._currentAction === 'slide' || toSprite._plannedAction === 'slide');
-  const targetIsRushHit = !isAttackerProjHit
+  const targetIsMeleeHit = !isAttackerProjHit
     && (toSprite._currentAction === 'hit' || toSprite._plannedAction === 'hit')
-    && toSprite._character?.hitIsRushStyle;
+    && !toSprite._character?.extraProjectileActions?.includes('hit');
   let duration = 600;
-  if (targetIsSliding || targetIsRushHit) {
+  if (targetIsSliding || targetIsMeleeHit) {
     const targetAction = targetIsSliding ? 'slide' : 'hit';
     const midX = convergeMidPathX(toSprite, fromSprite, targetAction);
     if (midX != null) targetBaseX = midX;
-    if (targetIsRushHit) {
-      // Bullet should vanish around the moment the rusher's reaction fires
-      // (animResolution caps that at ~90% of the rusher's fwdMs). The bullet
-      // spawned `spawnDelay` ms ago, so its remaining flight should be
-      // rushReact - spawnDelay. Floor at 150ms so it stays briefly visible.
+    if (targetIsMeleeHit) {
+      // Bullet should vanish around the moment the hitter's reaction fires
+      // (animResolution puts that at ~90% of the hitter's fwdMs — same ratio
+      // for normal lunge ~220ms and Skater Kid's rush ~600ms). The bullet
+      // spawned `spawnDelay` ms ago, so its remaining flight is
+      // hitReact - spawnDelay. Floor at 150ms so it stays briefly visible.
       const motion = toSprite._character?.motionOverrides?.hit;
-      const rusherFwdMs = motion?.fwdMs ?? 220;
-      const rushReact = Math.round(rusherFwdMs * 0.9);
+      const hitterFwdMs = motion?.fwdMs ?? 220;
+      const hitReact = Math.round(hitterFwdMs * 0.9);
       const spawnDelay = character?.projectileDelayByAction?.[action] ?? character?.projectileDelayMs ?? 0;
-      duration = Math.max(150, rushReact - spawnDelay);
+      duration = Math.max(150, hitReact - spawnDelay);
     } else {
       duration = SHORT_PROJECTILE_DURATION_MS;
     }
@@ -483,6 +502,11 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
   const EMERGE_START_SCALE_X = 0.1;
 
   PIXI.Assets.load(texUrl).then(texture => {
+    // If the shooter got hurt before the texture finished loading, don't even
+    // spawn the bullet — the firing animation has already been interrupted.
+    if (fromSprite._currentAction === 'hurt' || fromSprite._currentAction === 'death') {
+      return;
+    }
     const bullet = new PIXI.Sprite(texture);
     if (emerge) {
       // Anchor at the front (sprite-local right edge). After rotation toward
@@ -501,6 +525,18 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
     bullet.rotation = Math.atan2(endY - startY, endX - startX);
     app.stage.addChild(bullet);
 
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      app.ticker.remove(tick);
+      try { app.stage.removeChild(bullet); bullet.destroy(); } catch { /* ignore */ }
+      const list = fromSprite._activeProjectileCleanups;
+      if (list) {
+        const idx = list.indexOf(cleanup);
+        if (idx !== -1) list.splice(idx, 1);
+      }
+    };
     const startTime = performance.now();
     const tick = () => {
       const elapsed = performance.now() - startTime;
@@ -519,12 +555,14 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
       if (targetIsEvading && t > 0.8) {
         bullet.alpha = Math.max(0, (1 - t) / 0.2);
       }
-      if (t >= 1) {
-        app.ticker.remove(tick);
-        try { app.stage.removeChild(bullet); bullet.destroy(); } catch { /* ignore */ }
-      }
+      if (t >= 1) cleanup();
     };
     app.ticker.add(tick);
+    // Register so cancelActiveProjectiles can kill this bullet if the shooter
+    // is hurt mid-flight (e.g., Woman Hero's IceShoot interrupted by a lunge
+    // after the arrow has already left her bow).
+    fromSprite._activeProjectileCleanups = fromSprite._activeProjectileCleanups || [];
+    fromSprite._activeProjectileCleanups.push(cleanup);
   }).catch(e => console.warn('[ArenaStage] projectile load failed:', e));
 }
 

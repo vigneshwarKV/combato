@@ -13,6 +13,7 @@ export default function CharSelectPage() {
   const queryTab = new URLSearchParams(location.search).get('tab');
   const initialTab = (location.state?.tab === 'strategy' || queryTab === 'strategy') ? 'strategy' : 'fighter';
   const [tab, setTab] = useState(initialTab);
+  const [savedFlash, setSavedFlash] = useState(false);
   const [draft, setDraft] = useState(() => {
     const p = loadProfile();
     return {
@@ -33,13 +34,19 @@ export default function CharSelectPage() {
   const canSave = fighterReady;
 
   function save() {
-    if (!canSave) return;
+    if (!canSave || savedFlash) return;
     saveProfile(draft);
-    if (!strategyReady) {
-      setTab('strategy');
-      return;
-    }
-    navigate('/');
+    setSavedFlash(true);
+    const strategyEmpty = strategyText.trim().length === 0;
+    const jumpToStrategy = tab === 'fighter' && strategyEmpty;
+    setTimeout(() => {
+      if (jumpToStrategy) {
+        setSavedFlash(false);
+        setTab('strategy');
+      } else {
+        navigate('/');
+      }
+    }, 750);
   }
 
   function setCharId(id) { setDraft(d => ({ ...d, charId: id })); }
@@ -92,18 +99,19 @@ export default function CharSelectPage() {
         )}
 
         <div className="setup-foot">
-          <span style={{ fontSize: 11, color: 'var(--ink-mute)', letterSpacing: '0.14em', textTransform: 'uppercase', fontFamily: 'var(--f-display)' }}>
-            Saved locally · No account required
-          </span>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            {!fighterReady && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
+            {!fighterReady && !savedFlash && (
               <span className="f-mono" style={{ fontSize: 11, color: 'var(--ink-mute)' }}>
                 Pick a fighter
               </span>
             )}
             <button className="btn btn-sm btn-ghost" onClick={() => navigate('/')}>CANCEL</button>
-            <button className="btn btn-sm" onClick={save} disabled={!canSave}>
-              <Icon name="check" size={14} />&nbsp;SAVE
+            <button
+              className={`btn btn-sm ${savedFlash ? 'btn-saved' : ''}`}
+              onClick={save}
+              disabled={!canSave || savedFlash}
+            >
+              <Icon name="check" size={14} />&nbsp;{savedFlash ? 'SAVED' : 'SAVE'}
             </button>
           </div>
         </div>
