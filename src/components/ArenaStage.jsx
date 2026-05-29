@@ -1059,6 +1059,12 @@ function playAction(fighter, opponent, action, app) {
       break;
     case 'jumpShoot':
       playAnimation(fighter.sprite, fighter.character, action);
+      // Apply the "aim" body tilt at the START of the jump (not at arrow
+      // spawn) so the archer enters the apex already in archer pose. Reset by
+      // the next action's cancelActiveTween.
+      if (motion.fireRotation !== undefined) {
+        fighter.sprite.rotation = motion.fireRotation;
+      }
       tweenJumpShoot(fighter, motion, app);
       if (action.startsWith('ultimate_')) {
         // Up-phase only — once they hover/hold at apex the Jetpack anim ends.

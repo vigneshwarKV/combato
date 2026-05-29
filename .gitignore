@@ -13,7 +13,8 @@ dist-ssr
 *.local
 
 # Fighter data (contains API keys — never commit)
-data/
+# Anchored to repo root so it does NOT match src/data/ (game data — must commit)
+/data/
 
 # Craftpix licensed asset zips — not redistributable per license
 assets/*.zip
