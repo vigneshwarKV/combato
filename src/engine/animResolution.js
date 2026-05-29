@@ -17,7 +17,12 @@ export const IMPACT_DELAY = {
   hit:    380,   // mid-lunge hold
   shoot:  600,   // projectile travel time (spawn delay added on top)
   slide:  320,   // end of forward glide (vs a stationary defender)
-  ultimate: 750, // ~0.78 × 900 fwdMs default for flyHit
+  // Ult: fire at ~93% of the default flyHit fwdMs (900) so the victim's
+  // reaction lands when the ult-er has nearly reached them — not at the
+  // earlier phase2 anim-swap (0.78×). Before this, vs an opponent's shoot
+  // the shooter's death fired mid-flight while the ult-er was still 22%
+  // away in the air.
+  ultimate: 840,
 };
 
 // When two converging tweens (slide ↔ slide, hit ↔ slide) approach each other,
@@ -148,10 +153,13 @@ export function impactDelayFor(action, character) {
   }
   if (action === 'slide') return IMPACT_DELAY.slide;
   if (isUltimateKey(action)) {
-    // flyHit phase2 triggers at 0.78 × fwdMs — read the override if present
-    // so character-specific timings (e.g., monkey's longer fwdMs) stay in sync.
+    // flyHit phase2 (hit-pose anim swap) triggers at 0.78 × fwdMs, but the
+    // attacker keeps traveling until 1.0. Fire the victim's reaction at 0.93
+    // so it lands as the ult-er nearly arrives — not mid-flight when they're
+    // still ~22% away (which read as "the shooter dies before the ult-er
+    // reaches them").
     const override = character?.motionOverrides?.[action];
-    if (override?.fwdMs)             return Math.round(override.fwdMs * 0.78);
+    if (override?.fwdMs)             return Math.round(override.fwdMs * 0.93);
     if (override?.kind === 'jumpShoot') return (override.upMs ?? 400) + (override.holdMs ?? 200);
     if (override?.spreadShot) {
       const release = override.releaseDelay ?? 0;

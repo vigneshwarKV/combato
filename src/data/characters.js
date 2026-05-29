@@ -102,6 +102,11 @@ export const CHARACTERS = {
     // 3rd frame of the climb sequence — both legs on the ground (frames 0/1
     // have the back leg raised mid-step). 0-indexed: 2 → Climbing_002.png.
     defendStaticFrame: 2,
+    // Die_000 has the body drawn high in the 464px-tall canvas with empty
+    // space at the bottom. The auto-compensator (spritePlayer) already shifts
+    // by (deathH-idleH)*scale ≈ 151px, but more is needed to plant the body
+    // on the ground. Positive yOffset pushes sprite anchor further down.
+    actionYOffsets: { death: 80 },
     // Smoke trail behind the jetpack during airborne ultimates. type 'fire'
     // uses JetPackFire1-3, 'smoke' uses smokejet01-04. Tune position with
     // xOff (default -55), yOff (default -90), scale (default 1).

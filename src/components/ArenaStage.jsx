@@ -835,12 +835,18 @@ function spawnJetExhaust(fighter, app, totalMs) {
 //     apart toward their starting positions
 // When both axes are displaced (e.g., flyHit ult slammed mid-flight), both
 // channels animate simultaneously.
-function tweenImpactRecover(fighter, app) {
+function tweenImpactRecover(fighter, app, action) {
   if (!app || !fighter?.sprite) return;
   const startX = fighter.sprite.x;
   const startY = fighter.sprite.y;
+  // Honor actionYOffsets for the reaction anim (e.g. Beast's death pose draws
+  // the body high in its 464px canvas — actionYOffsets.death pushes the sprite
+  // anchor further down so the fallen body lands on the ground). Without this,
+  // the recover tween would end at plain baseY and overwrite the offset,
+  // leaving the body floating above the ground after a throw-back.
+  const yOffset = (action && fighter.character.actionYOffsets?.[action]) || 0;
   const endX = fighter.baseX;
-  const endY = fighter.baseY;
+  const endY = fighter.baseY + yOffset;
   const dx = endX - startX;
   const dy = endY - startY;
   if (Math.abs(dx) < 20 && Math.abs(dy) < 20) {
@@ -1038,7 +1044,7 @@ function playAction(fighter, opponent, action, app) {
     && (sp.y < fighter.baseY - 20 || Math.abs(sp.x - fighter.baseX) > 20);
   const wantsRecover = isReactionAnim && isDisplaced && !!fighter.activeTween;
   cancelActiveTween(fighter, { resetPosition: !wantsRecover });
-  if (wantsRecover) tweenImpactRecover(fighter, app);
+  if (wantsRecover) tweenImpactRecover(fighter, app, action);
 
   switch (motion.kind) {
     case 'lunge':

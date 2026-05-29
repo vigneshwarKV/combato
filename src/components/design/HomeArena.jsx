@@ -156,10 +156,12 @@ export default function HomeArena() {
       if (!el) return;
       const w = el.clientWidth;
       if (w <= 0) return;
-      // Width-only fit, clamped to 1 so desktop never upscales sprites. We
-      // deliberately don't constrain by slot height — the stage is allowed
+      // Width-only fit, capped so desktop never upscales sprites. The cap
+      // also acts as a "shrink the hero fighters relative to the in-game
+      // arena" knob — lower = smaller home characters without touching the
+      // per-character displayScale used in real fights. The stage is allowed
       // (and expected) to overflow upward so jumps clear the wordmark.
-      setScale(Math.min(w / STAGE_W, 1));
+      setScale(Math.min(w / STAGE_W, 0.75));
     };
     const sched = () => {
       if (raf) cancelAnimationFrame(raf);

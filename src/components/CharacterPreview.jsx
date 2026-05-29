@@ -65,7 +65,7 @@ export default function CharacterPreview({ characterId, width = 360, height = 42
           bounds = sprite.getBounds?.();
         }
         const naturalH = bounds?.height || sprite.height || (sprite.textures?.[0]?.height ?? 200);
-        const targetH = height * 0.85;
+        const targetH = height * 0.7;
         const previewScale = Math.max(0.2, Math.min(3, targetH / naturalH));
         applyScale(sprite, previewScale, /* mirrored */ false);
         sprite.x = width / 2;
