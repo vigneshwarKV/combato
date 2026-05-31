@@ -6,6 +6,10 @@ import { isUltimateKey } from './damageEngine.js';
 export const ANIM_DURATION = {
   idle: 500, jump: 900, hit: 800, shoot: 800,
   slide: 950, defend: 700, hurt: 500, death: 800, none: 500, ultimate: 1550,
+  // Attacker thrown back (death pose) after a hit/ultimate is blocked by a
+  // shield. Long enough for the backward throw + settle tween + death pose to
+  // read (see ArenaStage.tweenKnockback).
+  knockback: 800,
 };
 
 // When (ms from action start) each attacker action visually CONNECTS with its
@@ -226,6 +230,29 @@ function hitVsShootReactAt(hitterChar) {
   return Math.round(fwdMs * HIT_VS_SHOOT_REACTION_RATIO);
 }
 
+// When a blocked attacker is thrown back, decide WHEN the throw fires.
+//   melee hit → at normal impact (the punch meets the shield and bounces).
+//   ultimate  → the super move flies all the way in and the hit lands FIRST;
+//               only after the forward flight + half the hold does the shield
+//               hurl the attacker away. So fire later than the normal ult
+//               impact (which is ~0.93·fwdMs, mid-descent).
+function shieldThrowAt(action, character) {
+  if (isUltimateKey(action)) {
+    const fwd = fwdMsFor(action, character) ?? DEFAULT_FWD_MS.ult;
+    // Roll-type ults (Skater Sky Grind, Monkey Cloud Somersault) bounce off
+    // the shield as soon as they reach the head — no shield-hold loiter, no
+    // rolling-in-place. Fire the throwback right as fwd ends (small buffer
+    // so the head contact registers visually).
+    if (action === 'ultimate_roll') return fwd + 30;
+    // Other ults (slam-style) fly all the way in, the hit "lands" on the
+    // shield, then the throwback fires after half the hold — reads as
+    // "impact, brief contact, hurled away".
+    const hold = character?.motionOverrides?.[action]?.holdMs ?? 500;
+    return Math.round(fwd + hold * 0.5);
+  }
+  return impactDelayFor(action, character);
+}
+
 // Given a resolveActions() result and (optionally) the two characters,
 // produce the timeline the renderers need to schedule the turn.
 //   initialAnim*   → what plays at t=0 (becomes 'idle' when a launch is delayed)
@@ -398,6 +425,21 @@ export function computeAttackTiming(result, characterA, characterB) {
     : bShooterHitByLunge ? (fwdMsFor('hit', characterA) ?? DEFAULT_FWD_MS.hit)
     : bSlideUltAirborne ? ANIM_DURATION.slide
     : impactA;
+  // ── Shield throwback ──────────────────────────────────────────────────
+  // When an attacker's hit/ultimate is blocked by the opponent's shield, the
+  // attacker is thrown back. damageEngine tags each `blocked` event with the
+  // DEFENDER's label, so a block with defender 'B' means A's blow bounced off
+  // B's shield → A is thrown (and vice-versa). `piercesShield` attackers
+  // (Woman Hero) never produce a block event, so they're naturally exempt.
+  // The throw only overrides a fighter with no existing damage reaction.
+  const aThrownBack = !reactionA
+    && (result.events?.some(e => e.type === 'blocked' && e.defender === 'B') ?? false);
+  const bThrownBack = !reactionB
+    && (result.events?.some(e => e.type === 'blocked' && e.defender === 'A') ?? false);
+  const outReactionA = aThrownBack ? 'knockback' : reactionA;
+  const outReactionB = bThrownBack ? 'knockback' : reactionB;
+  const outReactionAtA = aThrownBack ? shieldThrowAt(actionA, characterA) : reactionAtA;
+  const outReactionAtB = bThrownBack ? shieldThrowAt(actionB, characterB) : reactionAtB;
   // Each fighter's "natural" anim duration accounts for the launch delay.
   const ownAnimEndA = launchAnimA ? launchAtA + durationFor(launchAnimA) : durationFor(initialAnimA);
   const ownAnimEndB = launchAnimB ? launchAtB + durationFor(launchAnimB) : durationFor(initialAnimB);
@@ -410,19 +452,23 @@ export function computeAttackTiming(result, characterA, characterB) {
   const bDefendBlocking = actionB === 'defend' && damageToB === 0
     && (actionA === 'hit' || isUltimateKey(actionA));
   // Victim clears at reaction + reaction-anim duration; non-victim clears at
-  // the natural anim end (extended to opponent's anim when blocking).
-  const clearA = reactionA ? reactionAtA + durationFor(reactionA)
-    : aDefendBlocking ? Math.max(ownAnimEndA, durationFor(actionB))
+  // the natural anim end (extended to opponent's anim when blocking, and to
+  // the thrown attacker's knockback so the defender holds the shield until the
+  // opponent finishes tumbling).
+  const clearA = outReactionA ? outReactionAtA + durationFor(outReactionA)
+    : aDefendBlocking ? Math.max(ownAnimEndA, durationFor(actionB),
+        bThrownBack ? outReactionAtB + durationFor('knockback') : 0)
     : ownAnimEndA;
-  const clearB = reactionB ? reactionAtB + durationFor(reactionB)
-    : bDefendBlocking ? Math.max(ownAnimEndB, durationFor(actionA))
+  const clearB = outReactionB ? outReactionAtB + durationFor(outReactionB)
+    : bDefendBlocking ? Math.max(ownAnimEndB, durationFor(actionA),
+        aThrownBack ? outReactionAtA + durationFor('knockback') : 0)
     : ownAnimEndB;
   return {
     initialAnimA, initialAnimB,
     launchAnimA, launchAnimB,
     launchAtA, launchAtB,
-    reactionA, reactionB,
-    reactionAtA, reactionAtB,
+    reactionA: outReactionA, reactionB: outReactionB,
+    reactionAtA: outReactionAtA, reactionAtB: outReactionAtB,
     impactA, impactB,
     clearA, clearB,
     aGotUltHit, bGotUltHit,

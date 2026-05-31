@@ -11,7 +11,7 @@ import { CHARACTERS } from '../data/characters.js';
 // Fixed canvas design dimensions. All fighter positioning, motion offsets
 // (PNG_MOTION) and projectile aim are tuned in this pixel space, so we render
 // at this size and uniformly CSS-scale the canvas to fit the viewport. The
-// parallax background and HUD overlays stay at viewport size — only the
+// arena background and HUD overlays stay at viewport size — only the
 // canvas + sprite layer scales — so desktop output is unchanged.
 const DESIGN_W = 1100;
 // Tall enough that supermove arcs (peakY 400px above groundY) don't clip
@@ -196,9 +196,11 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
         )}
       </div>
 
-      {/* Stage */}
+      {/* Stage — the background is a single full-scene image that fills the
+          arena (`cover`). It's anchored to the top so the sky/horizon stays in
+          frame; the clip happens at the bottom (where the ground continues). */}
       <div ref={stageWrapperRef} className="flex-1 relative min-h-0 overflow-hidden">
-        <ArenaBackground seed={bgSeed} parallax>
+        <ArenaBackground seed={bgSeed} fit="cover" position="center top">
 
           {/* Status bars */}
           <div style={{

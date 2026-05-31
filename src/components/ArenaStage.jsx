@@ -57,6 +57,15 @@ export default function ArenaStage({
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
 
+  // Capture the latest planned actions so the async init can stash them onto
+  // sprite._plannedAction as soon as the sprites exist. Without this the
+  // dedicated plannedAction useEffects can fire BEFORE init finishes (refs
+  // are still null), then never re-fire — leaving sprite._plannedAction
+  // undefined and breaking renderer checks that branch on the opponent's
+  // planned action (e.g., ultimate_roll vs defend → head-stop endYOffset).
+  const plannedActionRef = useRef({ A: plannedActionA, B: plannedActionB });
+  plannedActionRef.current = { A: plannedActionA, B: plannedActionB };
+
   useEffect(() => {
     if (!containerRef.current || !charA || !charB) return;
     let cancelled = false;
@@ -114,7 +123,8 @@ export default function ArenaStage({
         app.stage.addChild(spriteB);
         app.stage.addChild(spriteA);
 
-        // Shields are created but never shown (removed per design decision)
+        // Shields render above both fighters; shown/hidden per turn when a
+        // fighter's action is 'defend' (see showShield / hideShield).
         app.stage.addChild(shieldA);
         app.stage.addChild(shieldB);
 
@@ -140,6 +150,13 @@ export default function ArenaStage({
 
         fighterARef.current = { sprite: spriteA, character: charA, shield: shieldA, baseX: spriteA.x, baseY: spriteA.y, side: 'A', activeTween: null };
         fighterBRef.current = { sprite: spriteB, character: charB, shield: shieldB, baseX: spriteB.x, baseY: spriteB.y, side: 'B', activeTween: null };
+
+        // Stash the latest planned actions onto the freshly-created sprites
+        // so renderer branches that check opponent.sprite._plannedAction
+        // (e.g., ult_roll head-stop on defend) work on first action — the
+        // dedicated useEffects may have fired earlier with null refs.
+        spriteA._plannedAction = plannedActionRef.current.A;
+        spriteB._plannedAction = plannedActionRef.current.B;
 
         playAnimation(spriteA, charA, 'idle');
         playAnimation(spriteB, charB, 'idle');
@@ -199,6 +216,10 @@ export default function ArenaStage({
       fb.sprite.x = fb.baseX;
       fb.sprite.y = fb.baseY;
     }
+
+    // Keep a visible defend shield centred on the new base position.
+    if (fa.shield?.visible) fa.shield.x = fa.baseX;
+    if (fb.shield?.visible) fb.shield.x = fb.baseX;
   }, [width, height]);
 
   // Mirror plannedAction* onto sprites so fireProjectile can inspect what the
@@ -224,8 +245,10 @@ export default function ArenaStage({
     // Shooter interrupted: also yank any bullets already in flight from them
     // (not just pending spawns). Bullet completion at idle is left alone so
     // natural flight finishes after the shoot anim ends.
-    if (action === 'hurt' || action === 'death') cancelActiveProjectiles(fa);
+    if (action === 'hurt' || action === 'death' || action === 'knockback') cancelActiveProjectiles(fa);
     fa.sprite._currentAction = action;
+    if (action === 'defend') showShield(fa, appRef.current);
+    else hideShield(fa);
     playAction(fa, fighterBRef.current, action, appRef.current);
     raiseAttacker(fa.sprite, action);
     if (isProjectileAction(action, charA)) {
@@ -239,8 +262,10 @@ export default function ArenaStage({
     if (!fb) return;
     cancelPendingProjectiles(fb);
     const action = (animClassB || 'anim-idle').replace(/^anim-/, '');
-    if (action === 'hurt' || action === 'death') cancelActiveProjectiles(fb);
+    if (action === 'hurt' || action === 'death' || action === 'knockback') cancelActiveProjectiles(fb);
     fb.sprite._currentAction = action;
+    if (action === 'defend') showShield(fb, appRef.current);
+    else hideShield(fb);
     playAction(fb, fighterARef.current, action, appRef.current);
     raiseAttacker(fb.sprite, action);
     if (isProjectileAction(action, charB)) {
@@ -263,14 +288,100 @@ export default function ArenaStage({
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
+// "Pulse Glass" defend shield — a clean hard-light force-field dome that drops
+// over the head while defending (ported from the dropin/defend-shield.css
+// design). Drawn with Pixi.Graphics so it scales to any character and needs no
+// image assets. The dome's base seam sits at local y=0 and the arch rises to
+// negative y, so positioning is anchored at the head's lower line.
 function makeShield() {
-  // A glowing translucent shield drawn with Pixi.Graphics — works at any size
-  // and avoids needing per-character shield sprites.
   const g = new PIXI.Graphics();
-  g.ellipse(0, 0, 48, 90).fill({ color: 0x60a5fa, alpha: 0.28 });
-  g.ellipse(0, 0, 48, 90).stroke({ color: 0x93c5fd, width: 3, alpha: 0.95 });
-  g.moveTo(-12, -40).lineTo(12, -40).lineTo(0, -16).lineTo(-12, -40).fill({ color: 0xffffff, alpha: 0.5 });
+  drawShieldDome(g, 120); // default width; re-sized per fighter in showShield
   return g;
+}
+
+// (Re)draw the dome silhouette sized to `w` (the on-screen character width).
+function drawShieldDome(g, w) {
+  g.clear();
+  const halfW = w / 2;
+  const h = w * 0.5;             // dome height (rounded top, flatter bottom)
+  const peakY = -h;
+  const archPath = () => {
+    g.moveTo(-halfW, 0);
+    g.bezierCurveTo(-halfW, peakY * 1.35, halfW, peakY * 1.35, halfW, 0);
+  };
+  // 1 · translucent cool-blue glassy volume
+  g.moveTo(-halfW, 0);
+  g.bezierCurveTo(-halfW, peakY * 1.35, halfW, peakY * 1.35, halfW, 0);
+  g.lineTo(-halfW, 0);
+  g.closePath();
+  g.fill({ color: 0x6cc6ff, alpha: 0.12 });
+  // 2 · soft engineered glow — wide low-alpha strokes hugging the rim
+  archPath(); g.stroke({ color: 0x60c2ff, width: Math.max(8, w * 0.06), alpha: 0.10 });
+  archPath(); g.stroke({ color: 0x8fdcff, width: Math.max(4, w * 0.03), alpha: 0.20 });
+  // 3 · crisp bright Fresnel rim
+  archPath(); g.stroke({ color: 0xc6f2ff, width: 2, alpha: 0.95 });
+  // 4 · bright base seam where the field anchors over the head
+  g.moveTo(-halfW * 0.9, 0);
+  g.lineTo(halfW * 0.9, 0);
+  g.stroke({ color: 0xd6f8ff, width: 2.5, alpha: 0.9 });
+  // 5 · specular sheen, upper-left
+  g.ellipse(-w * 0.17, -h * 0.62, w * 0.12, h * 0.17).fill({ color: 0xffffff, alpha: 0.20 });
+  // 6 · vertical refraction streak
+  g.rect(-w * 0.17, -h * 0.80, Math.max(2, w * 0.02), h * 0.6).fill({ color: 0xffffff, alpha: 0.10 });
+}
+
+// Reveal the shield over a fighter's head and run the appear + breathe loop.
+function showShield(fighter, app) {
+  const shield = fighter?.shield;
+  const sprite = fighter?.sprite;
+  if (!shield || !sprite) return;
+  const ch = fighter.character;
+  const spriteH = Math.abs(sprite.height) || 200;
+  // Fixed on-screen dome width so every fighter gets the same shield — sprite
+  // frame widths vary wildly between packs (e.g. Beast's canvas is far wider),
+  // so sizing off sprite.width made some domes huge. Override per-character
+  // with `shieldWidth` / `shieldScale` if a fighter needs a tweak.
+  const domeW = (ch.shieldWidth ?? 340) * (ch.shieldScale ?? 1);
+  drawShieldDome(shield, domeW);
+  // Anchor at the VISUAL base x (not sprite.x — Spine shifts that by
+  // defendOffsetX), with the base seam around the head's lower line.
+  const headFrac = ch.shieldHeadFraction ?? 0.50;
+  shield.x = fighter.baseX;
+  shield.y = fighter.baseY - spriteH * headFrac + (ch.shieldOffsetY ?? 0);
+  shield.alpha = 0;
+  shield.scale.set(0.82);
+  shield.visible = true;
+  animateShieldIn(shield, app);
+}
+
+function hideShield(fighter) {
+  const shield = fighter?.shield;
+  if (!shield) return;
+  if (shield._shieldCleanup) { try { shield._shieldCleanup(); } catch { /* ignore */ } shield._shieldCleanup = null; }
+  shield.visible = false;
+}
+
+// Appear (scale-up + fade-in over 280ms) then a gentle breathing pulse, matching
+// the design's pk-shield-in / pk-shield-breathe keyframes.
+function animateShieldIn(shield, app) {
+  if (!app) return;
+  if (shield._shieldCleanup) { try { shield._shieldCleanup(); } catch { /* ignore */ } }
+  const start = performance.now();
+  const APPEAR_MS = 280;
+  const tick = () => {
+    const elapsed = performance.now() - start;
+    if (elapsed <= APPEAR_MS) {
+      const t = easeOut(elapsed / APPEAR_MS);
+      shield.scale.set(0.82 + 0.18 * t);
+      shield.alpha = t;
+    } else {
+      const osc = Math.sin((elapsed - APPEAR_MS) / 1500 * Math.PI); // ~3s period
+      shield.scale.set(1 + osc * 0.015);
+      shield.alpha = 0.94 + osc * 0.06;
+    }
+  };
+  app.ticker.add(tick);
+  shield._shieldCleanup = () => app.ticker.remove(tick);
 }
 
 // Pick the projectile sprite for a given action. Ultimate shoots use elemental
@@ -875,6 +986,53 @@ function tweenImpactRecover(fighter, app, action) {
   fighter.activeTween = () => app.ticker.remove(tick);
 }
 
+// Hurl the fighter backward (away from the opponent) after their attack was
+// blocked by a shield. Starts from wherever the sprite currently is (mid-lunge
+// or mid-flight), throws PAST the base position to an overshoot, then settles
+// back to base. Y eases down to baseY so an airborne ult-er also drops home.
+const KNOCKBACK_PX = 80;
+function tweenKnockback(fighter, app) {
+  if (!app || !fighter?.sprite) return;
+  const dir = fighter.side === 'A' ? 1 : -1;     // facing direction (toward opponent)
+  const startX = fighter.sprite.x;
+  const startY = fighter.sprite.y;
+  const baseX = fighter.baseX;
+  const baseY = fighter.baseY;
+  const overshootX = baseX - dir * KNOCKBACK_PX;  // past base, away from opponent
+  const startTime = performance.now();
+  const throwMs = 220;   // fast hurl back to the overshoot
+  const settleMs = 300;  // ease forward to rest at base
+  const totalMs = throwMs + settleMs;
+  fighter.sprite.rotation = 0;
+  const tick = () => {
+    const elapsed = performance.now() - startTime;
+    if (elapsed <= throwMs) {
+      // Throw phase: sweep X back fast; KEEP Y at impact height so a
+      // shield-blocked airborne attacker (roll ult bounce) appears to hurl
+      // straight back from where they hit the shield rather than diving to
+      // the ground mid-air. For grounded knockbacks (hit lunge blocked)
+      // startY already equals baseY so this is a no-op.
+      const t = easeOut(elapsed / throwMs);
+      fighter.sprite.x = startX + (overshootX - startX) * t;
+      fighter.sprite.y = startY;
+    } else if (elapsed <= totalMs) {
+      // Settle phase: ease X back to base AND descend Y from impact height
+      // to ground — gives the airborne knockback a graceful landing instead
+      // of a hard snap.
+      const t = easeOut((elapsed - throwMs) / settleMs);
+      fighter.sprite.x = overshootX + (baseX - overshootX) * t;
+      fighter.sprite.y = startY + (baseY - startY) * t;
+    } else {
+      fighter.sprite.x = baseX;
+      fighter.sprite.y = baseY;
+      app.ticker.remove(tick);
+      fighter.activeTween = null;
+    }
+  };
+  app.ticker.add(tick);
+  fighter.activeTween = () => app.ticker.remove(tick);
+}
+
 function tweenLunge(fighter, opponent, motion, app) {
   if (!app || !opponent) return;
   const dir = fighter.side === 'A' ? 1 : -1;
@@ -1019,6 +1177,16 @@ const FLYHIT_PHASE2_T = 0.78;
 
 function playAction(fighter, opponent, action, app) {
   if (!fighter) return;
+  // Shield throwback: the attacker's hit/ultimate bounced off the opponent's
+  // shield. Keep the current (lunged-forward / mid-flight) position — don't
+  // snap to base — and hurl the body backward away from the opponent while the
+  // hurt pose plays.
+  if (action === 'knockback') {
+    cancelActiveTween(fighter, { resetPosition: false });
+    playAnimation(fighter.sprite, fighter.character, 'death');
+    tweenKnockback(fighter, app);
+    return;
+  }
   // Skip motion system for characters without a motionProfile and not PNG.
   if (fighter.character.renderMode !== 'png' && !fighter.character.motionProfile) {
     playAnimation(fighter.sprite, fighter.character, action);
@@ -1097,9 +1265,27 @@ function playAction(fighter, opponent, action, app) {
         playAnimation(fighter.sprite, fighter.character, 'idle');
       }
       break;
-    case 'flyHit':
+    case 'flyHit': {
+      // Roll-type ults (Skater Sky Grind, Monkey Cloud Somersault) default to
+      // continuing all the way to the ground (endYOffset 0). If the opponent
+      // is defending, stop at upper-body height (~180px above ground) so the
+      // roll reads as bouncing off the shield instead of slamming through it.
+      const opponentDefending = opponent?.sprite?._plannedAction === 'defend';
+      // `defendEndYOffset` and `defendPeakY` (per-character via motionOverrides)
+      // trump the fallbacks — lets each character tune the head-stop height
+      // AND arc apex for their own rig. The default peakY 400 was tuned for
+      // a ground slam; when bouncing off a shield at head height, that arc
+      // sends them clipping off the top of the canvas. 220 keeps the arc
+      // tidy above the head without clipping.
+      const flyMotion = (action === 'ultimate_roll' && opponentDefending)
+        ? {
+            ...motion,
+            endYOffset: motion.defendEndYOffset ?? motion.endYOffset ?? 180,
+            peakY: motion.defendPeakY ?? 220,
+          }
+        : motion;
       playAnimation(fighter.sprite, fighter.character, action);
-      tweenFlyHit(fighter, opponent, motion, app);
+      tweenFlyHit(fighter, opponent, flyMotion, app);
       if (action.startsWith('ultimate_')) {
         // Cut exhaust at the phase2 swap — once the body changes out of the
         // Jetpack pose into Hit/roll/etc., no more thrust. Motions without a
@@ -1108,6 +1294,7 @@ function playAction(fighter, opponent, action, app) {
         spawnJetExhaust(fighter, app, ms);
       }
       break;
+    }
     case 'none':
     default:
       playAnimation(fighter.sprite, fighter.character, action);

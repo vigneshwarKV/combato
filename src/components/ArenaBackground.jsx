@@ -7,6 +7,7 @@ const BACKGROUNDS = [
   'game_background_2',
   'game_background_3',
   'game_background_4',
+  "game_background_5"
 ];
 
 function pickBackground(seed) {
@@ -16,38 +17,33 @@ function pickBackground(seed) {
 }
 
 /**
- * Renders a layered parallax background using the Craftpix battle backgrounds.
- * Each background ships with 5 layers that we stack back-to-front.
+ * Renders a single full-scene battle background. Each background is one image
+ * stored directly at /assets/backgrounds/PNG/<slug>.png.
  *
  * Props:
  *   seed: string used to deterministically pick a background (e.g. fighterA.id+fighterB.id)
- *   parallax: if true, render all 5 layers; if false, just the composite image
+ *   fit: backgroundSize mode — 'cover' (fill, may crop) or 'contain' (show the
+ *        whole image, never crop, may leave gaps). Defaults to 'cover'.
+ *   position: backgroundPosition — which part to keep in frame when 'cover'
+ *        crops (e.g. 'center top' keeps the sky, clips the bottom). Defaults
+ *        to 'center bottom'.
  */
-export default function ArenaBackground({ seed = 'default', parallax = true, children }) {
+export default function ArenaBackground({ seed = 'default', fit = 'cover', position = 'center bottom', children }) {
   const slug = useMemo(() => pickBackground(seed), [seed]);
-  const base = `/assets/backgrounds/PNG/${slug}`;
-
-  const layerStyle = {
-    position: 'absolute',
-    inset: 0,
-    backgroundSize: 'cover',
-    backgroundPosition: 'center bottom',
-    backgroundRepeat: 'no-repeat',
-  };
+  const src = `/assets/backgrounds/PNG/${slug}.png`;
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'visible' }}>
-      {parallax ? (
-        <>
-          <div style={{ ...layerStyle, backgroundImage: `url(${base}/layers/back_land.png)` }} />
-          <div style={{ ...layerStyle, backgroundImage: `url(${base}/layers/back_decor.png)` }} />
-          <div style={{ ...layerStyle, backgroundImage: `url(${base}/layers/battleground.png)` }} />
-          <div style={{ ...layerStyle, backgroundImage: `url(${base}/layers/ground_decor.png)` }} />
-          <div style={{ ...layerStyle, backgroundImage: `url(${base}/layers/front_decor.png)` }} />
-        </>
-      ) : (
-        <div style={{ ...layerStyle, backgroundImage: `url(${base}/${slug}.png)` }} />
-      )}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage: `url(${src})`,
+          backgroundSize: fit,
+          backgroundPosition: position,
+          backgroundRepeat: 'no-repeat',
+        }}
+      />
       {children}
     </div>
   );

@@ -300,6 +300,12 @@ export const CHARACTERS = {
     // too early for a rush this long).
     motionOverrides: {
       hit: { kind: 'lunge', fwdMs: 600, gap: 60, holdMs: 160, retMs: 260 },
+      // ultimate_roll default lands at the GROUND (endYOffset 0). gap=80
+      // closes the distance — default 160 left him stopping well short of
+      // the opponent. When the opponent defends, the renderer overrides
+      // endYOffset to ~180 so the roll stops at the shield (head height)
+      // and retreats. Logic lives in ArenaStage.playAction's flyHit case.
+      ultimate_roll: { gap: 80 },
     },
     animations: {
       idle:  'Idle',
@@ -310,10 +316,10 @@ export const CHARACTERS = {
       defend: 'Idle',
       hurt:  'GetHit',
       death: 'Dead',
-      ultimate_skygrind: 'JetPack',
+      ultimate_roll: 'JetPack',
     },
     ultimates: [
-      { key: 'ultimate_skygrind', name: 'Sky Grind', meterCost: 100, damage: 26, airborne: true },
+      { key: 'ultimate_roll', name: 'Sky Grind', meterCost: 100, damage: 26, airborne: true },
     ],
   },
 
@@ -340,6 +346,14 @@ export const CHARACTERS = {
     // spear from near the thrower's hand instead.
     projectileStartXByAction: { shoot: 60 },
     projectileDelayByAction: { shoot: 550 },
+    // Close the gap on the roll ult so he lands ON the opponent rather than
+    // stopping short. Default flyHit gap is 160 — 80 brings him in close.
+    // defendEndYOffset lifts him higher than skater's 180 default because the
+    // Monkey 'Roll' spine track draws his body lower in bone-space, so the
+    // standard 180 leaves his body brushing the ground when blocked.
+    motionOverrides: {
+      ultimate_roll: { gap: 80, defendEndYOffset: 280 },
+    },
     animations: {
       idle:  'Idle',
       jump:  'Jump',
@@ -350,10 +364,10 @@ export const CHARACTERS = {
       hurt:  'GetHit',
       death: 'Death',
       celebrate: 'Celebrates',
-      ultimate_cloudleap: 'FlyOnStick',
+      ultimate_roll: 'FlyOnStick',
     },
     ultimates: [
-      { key: 'ultimate_cloudleap', name: 'Cloud Somersault', meterCost: 100, damage: 16, hits: 2, airborne: true },
+      { key: 'ultimate_roll', name: 'Cloud Somersault', meterCost: 100, damage: 16, hits: 2, airborne: true },
     ],
   },
 
@@ -410,6 +424,10 @@ export const CHARACTERS = {
     displayScale: 1.5,
     defendOffsetX: 250,
     extraProjectileActions: ['hit'],
+    // Her arrows pierce a raised guard: both her hit (already projectile-style)
+    // and her ultimate punch straight through a defending opponent's shield and
+    // deal full damage — and she is never thrown back by a blocked shield.
+    piercesShield: true,
     // Arrows, not bullets:
     //   shoot → fire arrow (FireShoot anim)
     //   hit   → ice arrow (IceShoot anim, airborne jumpShoot)

@@ -377,7 +377,7 @@ export default function DevPage() {
 
       {/* Arena */}
       <div ref={arenaWrapperRef} style={{ flex: 1, position: 'relative', minHeight: 0, overflow: 'hidden' }}>
-        <ArenaBackground seed={bgSeed} parallax>
+        <ArenaBackground seed={bgSeed} fit="cover" position="center top">
           <div style={{
             position: 'absolute',
             inset: 0,

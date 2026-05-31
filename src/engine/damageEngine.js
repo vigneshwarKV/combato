@@ -343,7 +343,9 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
     if (!ult) return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: false } };
 
     // Defend blocks Ultimates (only hit + ultimate are blockable per the matrix).
-    if (defender === 'defend' && !ult.unblockable) {
+    // Exception: `piercesShield` characters (Woman Hero) punch their ultimate
+    // straight through a raised guard for full damage — same way her hit pierces.
+    if (defender === 'defend' && !ult.unblockable && !CHARACTERS[attackerCharId]?.piercesShield) {
       events.push({ type: 'blocked', defender: defenderLabel, kind: 'ultimate', name: ult.name });
       return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: true, ult, blocked: true } };
     }
