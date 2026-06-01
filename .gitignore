@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Env files (contain managed API keys — never commit)
+.env
+.env.*
+!.env.example
+
 # Fighter data (contains API keys — never commit)
 # Anchored to repo root so it does NOT match src/data/ (game data — must commit)
 /data/

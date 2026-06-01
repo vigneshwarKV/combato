@@ -294,6 +294,7 @@ export default function RoomPage() {
       const template = getCharacterTemplate(profile.charId) || DEFAULT_PROMPT;
       want.prompt = baseStrategy ? `${baseStrategy}\n\n${template}` : template;
       want.strategy = baseStrategy || '';
+      want.promptMode = 'advanced';
     }
     if (Object.keys(want).length > 0) {
       updateMyConfig(want);
@@ -359,9 +360,9 @@ export default function RoomPage() {
     const inject = (f) => {
       if (!f) return f;
       if (isHost && f.peerId === hostPeerId) {
-        return { ...f, prompt: host.myConfig.prompt, apiKey: host.myConfig.apiKey, provider: host.myConfig.provider, model: host.myConfig.model };
+        return { ...f, prompt: host.myConfig.prompt, promptMode: host.myConfig.promptMode || 'advanced' };
       }
-      return { ...f, prompt: '', apiKey: '', provider: 'groq' };
+      return { ...f, prompt: '', promptMode: 'advanced' };
     };
 
     const fighterA = inject(rawA);

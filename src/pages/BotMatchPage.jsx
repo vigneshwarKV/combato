@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CHARACTER_LIST } from '../data/characters.js';
-import { getCharacterTemplate, DEFAULT_PROMPT } from '../data/promptTemplates.js';
-import { buildPromptFromStrategy } from '../components/PromptEditorSimple.jsx';
+import { getCharacterTemplate, DEFAULT_SIMPLE_STRATEGY } from '../data/promptTemplates.js';
 import PromptEditorSimple from '../components/PromptEditorSimple.jsx';
+import PromptEditorAdvanced from '../components/PromptEditorAdvanced.jsx';
 import CharacterPreview from '../components/CharacterPreview.jsx';
 import Arena from '../components/Arena.jsx';
 import { loadProfile, isProfileReady } from '../data/designData.js';
@@ -19,32 +19,32 @@ function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+// Built-in strategy so the bot opponent actually plays via the managed LLM.
+const BOT_STRATEGY = 'Pressure the opponent: build meter with shoot and hit, defend when they attack, and unleash super_move the moment it is available.';
+
 function buildBotFighter() {
   const char = pickRandom(CHARACTER_LIST);
   return {
     id: 'bot',
     name: pickRandom(BOT_NAMES),
     character: char.id,
-    prompt: '',
-    apiKey: '',
-    provider: 'groq',
-    model: '',
+    promptMode: 'simple',
+    prompt: BOT_STRATEGY,
   };
 }
 
 function buildFighterFromProfile(profile) {
   if (!isProfileReady(profile)) return null;
-  const strategy = profile.strategyMode === 'advanced'
+  const promptMode = profile.strategyMode === 'advanced' ? 'advanced' : 'simple';
+  const prompt = promptMode === 'advanced'
     ? profile.strategyAdvanced
     : profile.strategySimple;
   return {
     id: `player-${Date.now()}`,
     name: profile.handle || 'YOU',
     character: profile.charId,
-    prompt: buildPromptFromStrategy(profile.charId, strategy),
-    provider: 'groq',
-    apiKey: '',
-    model: '',
+    promptMode,
+    prompt,
   };
 }
 
@@ -126,23 +126,17 @@ function CharGrid({ selected, onSelect }) {
 function SetupScreen({ onFight }) {
   const [name, setName] = useState('');
   const [character, setCharacter] = useState('');
+  const [mode, setMode] = useState('simple'); // 'simple' | 'advanced'
   const [strategy, setStrategy] = useState('');
   const [prompt, setPrompt] = useState('');
-  const [provider, setProvider] = useState('groq');
-  const [apiKey, setApiKey] = useState('');
   const [nameError, setNameError] = useState('');
   const [charError, setCharError] = useState('');
 
   function handleCharacterSelect(charId) {
     setCharacter(charId);
     setCharError('');
-    setPrompt(getCharacterTemplate(charId) || DEFAULT_PROMPT);
-    setStrategy('');
-  }
-
-  function handleStrategyChange(newStrategy, fullPrompt) {
-    setStrategy(newStrategy);
-    setPrompt(fullPrompt);
+    // Seed the advanced editor with the default template once a character exists.
+    if (!prompt) setPrompt(getCharacterTemplate(charId));
   }
 
   function handleFight() {
@@ -151,15 +145,14 @@ function SetupScreen({ onFight }) {
     if (!character) { setCharError('Pick a character'); ok = false; }
     if (!ok) return;
 
-    const finalPrompt = prompt || buildPromptFromStrategy(character, strategy);
     onFight({
       id: `player-${Date.now()}`,
       name: name.trim(),
       character,
-      prompt: finalPrompt,
-      provider,
-      apiKey,
-      model: '',
+      promptMode: mode,
+      prompt: mode === 'advanced'
+        ? (prompt || getCharacterTemplate(character))
+        : (strategy.trim() || DEFAULT_SIMPLE_STRATEGY),
     });
   }
 
@@ -200,44 +193,25 @@ function SetupScreen({ onFight }) {
           </div>
         </section>
 
-        {/* Strategy + API */}
+        {/* Strategy */}
         <section className="arena-panel" style={{ padding: '1rem', borderRadius: 6 }}>
-          <label className="section-label" style={{ display: 'block', marginBottom: '0.75rem' }}>Strategy</label>
-          <PromptEditorSimple
-            character={character}
-            strategy={strategy}
-            onChange={handleStrategyChange}
-          />
-
-          <div className="arena-divider" style={{ marginTop: '1rem' }} />
-
-          <div className="flex flex-col gap-3 mt-3">
-            <div className="flex flex-col gap-1">
-              <label className="section-label">AI Provider</label>
-              <div className="flex gap-1 mt-1 flex-wrap">
-                {[['groq', 'Groq'], ['openai', 'OpenAI'], ['anthropic', 'Anthropic']].map(([key, label]) => (
-                  <button key={key} onClick={() => setProvider(key)}
-                    className={`provider-tab ${provider === key ? 'active' : ''}`}>
-                    {label}{key === 'groq' && <span className="ml-1 text-xs opacity-60">(free)</span>}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="section-label">API Key</label>
-              <input
-                type="password"
-                className="arena-input mt-1"
-                placeholder="Leave blank for random moves (testing)"
-                value={apiKey}
-                onChange={e => setApiKey(e.target.value)}
-                autoComplete="off"
-              />
-              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                No key? Random moves will be used. Your key never leaves your browser.
-              </p>
+          <div className="flex items-center justify-between" style={{ marginBottom: '0.75rem' }}>
+            <label className="section-label">Strategy</label>
+            <div className="flex gap-1">
+              {[['simple', 'Simple'], ['advanced', 'Advanced']].map(([key, label]) => (
+                <button key={key} type="button" onClick={() => setMode(key)}
+                  className={`provider-tab ${mode === key ? 'active' : ''}`}>
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
+
+          {mode === 'simple' ? (
+            <PromptEditorSimple strategy={strategy} onChange={setStrategy} />
+          ) : (
+            <PromptEditorAdvanced prompt={prompt} onChange={setPrompt} />
+          )}
         </section>
 
         {/* Fight button */}
@@ -280,6 +254,7 @@ export default function BotMatchPage() {
         fightConfig={{ n: 3, maxBatches: 20 }}
         onFightEnd={() => {}}
         mode="host"
+        randomBackground
       />
     </div>
   );

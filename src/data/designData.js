@@ -44,14 +44,14 @@ const RANKS = ['S', 'A', 'A', 'B', 'B', 'C'];
 function rankFor(i) { return RANKS[i % RANKS.length]; }
 
 const TAGLINES = {
-  captainVex:  'Disciplined frontline soldier. Closes fast, punishes hesitation.',
+  soldierBoy:  'Disciplined frontline soldier. Closes fast, punishes hesitation.',
   beast:       'Hulking brawler. Rockets in and crashes down.',
-  pixelDash:   'Glitchy speedster. Gone before you react.',
-  boyPlat:     'Hot-headed gunner. Sets the ring alight.',
-  toonStriker: 'Cartoon scrapper. Hits harder than physics allow.',
-  novaQuinn:   'Cosmic markswoman. Rains starlight from range.',
-  veraStorm:   'Tempest channeler. Freezes opponents mid-combo.',
-  jaxSteele:   'Armored heavy. Soaks punishment, answers in steel.',
+  speedKid:    'Glitchy speedster. Gone before you react.',
+  gunBoy:      'Hot-headed gunner. Sets the ring alight.',
+  cartoonBoy:  'Cartoon scrapper. Hits harder than physics allow.',
+  spaceGirl:   'Cosmic markswoman. Rains starlight from range.',
+  stormGirl:   'Tempest channeler. Freezes opponents mid-combo.',
+  ironKnight:  'Armored heavy. Soaks punishment, answers in steel.',
   madScientist: 'Mad scientist. Overloads the arena with lightning.',
   skater:      'Reckless skater. Board run smashes through guards.',
   monkey:      'Trickster. Spears from range, somersaults skyward.',

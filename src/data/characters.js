@@ -37,8 +37,6 @@
 //   hits          multi-hit multiplier
 //   heals         HP healed on landing
 //   selfDamage    HP cost to self
-//   statusApplied status type inflicted on opponent (see STATUS_EFFECTS)
-//   selfRisk      status type applied to self
 //   reflectsNext / blocksNext / ignoresDodge / unblockable / gainMeter /
 //   critVsLowHp / empowerNextMelees — situational flags read by damageEngine
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,9 +66,9 @@ function pngAnimations({ gunIdle, jetpack, ultKey, climb = 'Climb' }) {
 
 export const CHARACTERS = {
   // ── PNG fighters ──────────────────────────────────────────────────────────
-  captainVex: {
-    id: 'captainVex',
-    name: 'Captain Vex',
+  soldierBoy: {
+    id: 'soldierBoy',
+    name: 'Soldier Boy',
     archetype: 'striker',
     description: 'A disciplined frontline soldier who closes distance fast and punishes hesitation.',
     renderMode: 'png',
@@ -117,9 +115,9 @@ export const CHARACTERS = {
     ],
   },
 
-  pixelDash: {
-    id: 'pixelDash',
-    name: 'Pixel Dash',
+  speedKid: {
+    id: 'speedKid',
+    name: 'Speed Kid',
     archetype: 'acrobat',
     description: 'A glitchy speedster who blinks in and out of the fight before you can react.',
     renderMode: 'png',
@@ -139,9 +137,9 @@ export const CHARACTERS = {
     ],
   },
 
-  boyPlat: {
-    id: 'boyPlat',
-    name: 'Rico Blaze',
+  gunBoy: {
+    id: 'gunBoy',
+    name: 'Gun Boy',
     archetype: 'striker',
     description: 'A hot-headed gunner who sets the ring alight with every charge.',
     renderMode: 'png',
@@ -157,13 +155,13 @@ export const CHARACTERS = {
     jetExhaust: { type: 'smoke' },
     animations: pngAnimations({ gunIdle: 'IdleWithGun', jetpack: 'Jetpack', ultKey: 'ultimate_infernorush' }),
     ultimates: [
-      { key: 'ultimate_infernorush', name: 'Inferno Rush', meterCost: 100, damage: 26, airborne: true, statusApplied: 'burn' },
+      { key: 'ultimate_infernorush', name: 'Inferno Rush', meterCost: 100, damage: 26, airborne: true },
     ],
   },
 
-  toonStriker: {
-    id: 'toonStriker',
-    name: 'Toon Striker',
+  cartoonBoy: {
+    id: 'cartoonBoy',
+    name: 'Cartoon Boy',
     archetype: 'striker',
     description: 'A cartoon scrapper whose cartoon physics make every blow land harder than it should.',
     renderMode: 'png',
@@ -183,9 +181,9 @@ export const CHARACTERS = {
     ],
   },
 
-  novaQuinn: {
-    id: 'novaQuinn',
-    name: 'Nova Quinn',
+  spaceGirl: {
+    id: 'spaceGirl',
+    name: 'Space Girl',
     archetype: 'ranger',
     description: 'A cosmic markswoman who rains starlight on anyone who keeps their distance.',
     renderMode: 'png',
@@ -205,11 +203,11 @@ export const CHARACTERS = {
     ],
   },
 
-  veraStorm: {
-    id: 'veraStorm',
-    name: 'Vera Storm',
+  stormGirl: {
+    id: 'stormGirl',
+    name: 'Storm Girl',
     archetype: 'mage',
-    description: 'A tempest-channeling fighter who freezes opponents solid mid-combo.',
+    description: 'A tempest-channeling mage who batters opponents with raw storm force.',
     renderMode: 'png',
     assetBase: `${BASE}/female-protagonist-character-sprites`,
     stats: { attack: 3, defense: 3 },
@@ -223,13 +221,13 @@ export const CHARACTERS = {
     jetExhaust: { type: 'smoke' },
     animations: pngAnimations({ gunIdle: 'IdleWithGun', jetpack: 'Jetpack', ultKey: 'ultimate_tempest' }),
     ultimates: [
-      { key: 'ultimate_tempest', name: 'Tempest Surge', meterCost: 100, damage: 24, airborne: true, statusApplied: 'freeze' },
+      { key: 'ultimate_tempest', name: 'Tempest Surge', meterCost: 100, damage: 24, airborne: true },
     ],
   },
 
-  jaxSteele: {
-    id: 'jaxSteele',
-    name: 'Jax Steele',
+  ironKnight: {
+    id: 'ironKnight',
+    name: 'Iron Knight',
     archetype: 'tank',
     description: 'An armored heavy who soaks up punishment and answers with a steel barrage.',
     renderMode: 'png',
@@ -251,7 +249,7 @@ export const CHARACTERS = {
 
   madScientist: {
     id: 'madScientist',
-    name: 'Dr. Volt',
+    name: 'Mad Scientist',
     archetype: 'mage',
     description: 'A mad scientist who overloads the arena with arcing electricity.',
     renderMode: 'png',
@@ -267,7 +265,7 @@ export const CHARACTERS = {
     jetExhaust: { type: 'smoke' },
     animations: pngAnimations({ gunIdle: 'IdleWithGun', jetpack: 'Jetpack', ultKey: 'ultimate_teslaoverload' }),
     ultimates: [
-      { key: 'ultimate_teslaoverload', name: 'Tesla Overload', meterCost: 100, damage: 22, airborne: true, statusApplied: 'stun' },
+      { key: 'ultimate_teslaoverload', name: 'Tesla Overload', meterCost: 100, damage: 22, airborne: true },
     ],
   },
 
@@ -414,7 +412,7 @@ export const CHARACTERS = {
     id: 'womanHero',
     name: 'Woman Hero',
     archetype: 'ranger',
-    description: 'An archer who jump-shoots ice arrows that pierce a guard and unleashes a venom volley.',
+    description: 'An archer who jump-shoots ice arrows that pierce a guard and unleashes a piercing arrow volley.',
     renderMode: 'spine',
     assetBase: `${BASE}/woman-hero-game-character-sprite`,
     skeletonJson: 'Archy.json',
@@ -485,7 +483,7 @@ export const CHARACTERS = {
       ultimate_poison: 'PoisonShoot1',
     },
     ultimates: [
-      { key: 'ultimate_poison', name: 'Venom Volley', meterCost: 100, damage: 20, statusApplied: 'poison' },
+      { key: 'ultimate_poison', name: 'Venom Volley', meterCost: 100, damage: 20 },
     ],
   },
 };
@@ -511,14 +509,6 @@ export const METER = {
   GAIN_ON_DODGE: 8,
   GAIN_ON_BLOCK: 10,
   GAIN_ON_JUMP_EVADE: 8,
-};
-
-// Status effects. damagePerTurn → DoT; skipsAction → frozen/stunned skip turn.
-export const STATUS_EFFECTS = {
-  burn:   { damagePerTurn: 3, duration: 3, skipsAction: false },
-  poison: { damagePerTurn: 2, duration: 4, skipsAction: false },
-  freeze: { damagePerTurn: 0, duration: 1, skipsAction: true },
-  stun:   { damagePerTurn: 0, duration: 1, skipsAction: true },
 };
 
 // ── Ultimate lookup helpers ─────────────────────────────────────────────────

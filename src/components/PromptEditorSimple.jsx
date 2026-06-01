@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { CHARACTER_TEMPLATES } from '../data/promptTemplates.js';
+import { DEFAULT_SIMPLE_STRATEGY } from '../data/promptTemplates.js';
 
+// Variables the engine fills in automatically around the player's strategy in
+// Simple mode (matches the wrapper in engine/prompts.js).
 const VARIABLE_TOOLTIPS = {
-  '{N}': 'Number of moves per turn',
-  '{hp}': 'Current HP values for both fighters',
-  '{meter}': 'Your super meter (0–100)',
-  '{moveset}': 'Your character\'s full abilities and Ultimates',
-  '{opponent_moveset}': 'Opponent\'s abilities and Ultimates',
-  '{previous_actions}': 'Last turn\'s moves and outcomes',
-  '{game_rules}': 'Full game rules injected automatically',
+  '{game_rules}': 'Full game rules — injected automatically',
+  '{self_info}': 'Your fighter: story, archetype, super_move effect',
+  '{opponent_info}': "Opponent's story and super_move effect",
+  '{self_hp}': 'Your current HP',
+  '{opponent_hp}': "Opponent's current HP",
+  '{self_super_move_is_available}': 'Whether your super_move is charged (true/false)',
+  '{action_history}': 'Every move so far this game',
 };
 
 function VarChip({ variable }) {
@@ -27,38 +29,20 @@ function VarChip({ variable }) {
   );
 }
 
-function buildPromptFromStrategy(character, strategy) {
-  const template = CHARACTER_TEMPLATES[character];
-  if (!template) {
-    return strategy
-      ? `STRATEGY:\n${strategy}\n\nReturn ONLY a JSON array of exactly {N} action strings.\n{game_rules}`
-      : `Return ONLY a JSON array of exactly {N} action strings.\n{game_rules}`;
-  }
-  // Inject the user's strategy into the template by replacing the STRATEGY: section
-  const strategySection = strategy
-    ? `STRATEGY:\n${strategy}`
-    : template.match(/STRATEGY:[^]*?(?=\n\nCurrent state|\n\nReturn|$)/)?.[0] || 'STRATEGY:\n- Use your abilities wisely';
-  return template.replace(/STRATEGY:[^]*?(?=\n\nCurrent state|\n\nReturn|$)/, strategySection);
-}
-
-export default function PromptEditorSimple({ character, strategy, onChange, disabled }) {
-  function handleStrategyChange(e) {
-    const newStrategy = e.target.value;
-    const fullPrompt = buildPromptFromStrategy(character, newStrategy);
-    onChange(newStrategy, fullPrompt);
-  }
-
+// Simple mode: the player writes ONLY a strategy. engine/prompts.js wraps it
+// with the rules, fighter info and live state. onChange receives the raw text.
+export default function PromptEditorSimple({ strategy, onChange, disabled }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <div className="section-label mb-1">Auto-injected variables</div>
+        <div className="section-label mb-1">Auto-injected for you</div>
         <div className="flex flex-wrap gap-1">
           {Object.keys(VARIABLE_TOOLTIPS).map(v => (
             <VarChip key={v} variable={v} />
           ))}
         </div>
         <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-          These are automatically filled in — just write your strategy below.
+          Rules, your fighter, the opponent and live state are added automatically — just write your strategy.
         </p>
       </div>
 
@@ -69,14 +53,12 @@ export default function PromptEditorSimple({ character, strategy, onChange, disa
         <textarea
           className="arena-input arena-textarea"
           style={{ minHeight: 120 }}
-          placeholder={`Describe how your fighter should play...\n\nExample:\n- Spam ranged attacks to build meter\n- Save Ultimate for when opponent is below 40 HP\n- Dodge when meter is full`}
+          placeholder={`Describe how your fighter should play...\n\nExample:\n${DEFAULT_SIMPLE_STRATEGY}`}
           value={strategy}
-          onChange={handleStrategyChange}
+          onChange={e => onChange(e.target.value)}
           disabled={disabled}
         />
       </div>
     </div>
   );
 }
-
-export { buildPromptFromStrategy };

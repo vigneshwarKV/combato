@@ -1,41 +1,28 @@
-import { DEFAULT_PROMPT, CHARACTER_OPTIONS, getCharacterTemplate } from '../data/promptTemplates.js';
-import { CHARACTERS, METER } from '../data/characters.js';
-
-const PROVIDER_DEFAULTS = {
-  groq:      { label: 'Groq',      placeholder: 'llama-3.3-70b-versatile' },
-  openai:    { label: 'OpenAI',    placeholder: 'gpt-4o-mini' },
-  anthropic: { label: 'Anthropic', placeholder: 'claude-sonnet-4-20250514' },
-};
+import { DEFAULT_PROMPT, CHARACTER_OPTIONS, getCharacterTemplate, ADVANCED_VARIABLES } from '../data/promptTemplates.js';
+import { CHARACTERS } from '../data/characters.js';
 
 const BASE_ACTION_RULES = [
-  { action: 'idle',   damage: '0',       note: 'Stand still — no damage, no meter change' },
-  { action: 'jump',   damage: '0',       note: 'Evades hit; still hittable by shoot + ultimates; +3 meter on evade' },
-  { action: 'hit',    damage: '10 dmg',  note: 'Close-range; +10 meter on hit; missed by jump/slide; blocked by defend' },
-  { action: 'shoot',  damage: '8 dmg',   note: 'Projectile; +8 meter on hit; missed by slide; blocked by defend (hits jumpers)' },
-  { action: 'slide',  damage: '0',       note: 'Evades hit AND shoot; half damage from ultimates; +5 meter' },
-  { action: 'defend', damage: '0',       note: 'Blocks ALL hit + shoot; ultimates pierce full damage; +7 meter on block' },
+  { action: 'idle',       damage: '0',       note: 'Stand still — no damage, no meter change' },
+  { action: 'jump',       damage: '0',       note: 'Evades hit; still hittable by shoot + super_move; +3 meter on evade' },
+  { action: 'hit',        damage: '10 dmg',  note: 'Close-range; +10 meter on hit; missed by jump/slide; blocked by defend' },
+  { action: 'shoot',      damage: '8 dmg',   note: 'Projectile; +8 meter on hit; missed by slide; blocked by defend (hits jumpers)' },
+  { action: 'slide',      damage: '0',       note: 'Evades hit AND shoot; half damage from super_move; +5 meter' },
+  { action: 'defend',     damage: '0',       note: 'Blocks ALL hit + shoot; super_move pierces full damage; +7 meter on block' },
+  { action: 'super_move', damage: 'varies',  note: 'Your character special — only usable when charged' },
 ];
 
-const TEMPLATE_VARS = [
-  { variable: '{N}',                description: 'Number of actions to return per turn.' },
-  { variable: '{previous_actions}', description: 'Last batch moves as JSON [{Me, Opponent}].' },
-  { variable: '{hp}',               description: 'Current HP for both fighters.' },
-  { variable: '{meter}',            description: `Your current meter / ${METER.MAX}.` },
-  { variable: '{moveset}',          description: "Your character's base actions + Ultimates." },
-  { variable: '{opponent_moveset}', description: "Opponent's character and Ultimates." },
-  { variable: '{game_rules}',       description: 'Full game rules text.' },
-];
+const TEMPLATE_VARS = ADVANCED_VARIABLES.map(v => ({ variable: v.token, description: v.desc }));
 
 /**
  * Controlled prompt editor — no DB calls. All values passed as props.
  *
  * Props:
- *   name, prompt, character, provider, apiKey, model  — controlled values
- *   onChange(field, value)                             — called on any change
- *   disabled                                           — lock all inputs
- *   n                                                  — actions per turn (display only)
+ *   name, prompt, character  — controlled values
+ *   onChange(field, value)   — called on any change
+ *   disabled                 — lock all inputs
+ *   n                        — actions per turn (display only)
  */
-export default function PromptEditor({ prompt, character, provider, apiKey, model, onChange, disabled, n = 3 }) {
+export default function PromptEditor({ prompt, character, onChange, disabled, n = 3 }) {
   const currentChar = character ? CHARACTERS[character] : null;
 
   function handleCharacterChange(newCharId) {
@@ -81,15 +68,13 @@ export default function PromptEditor({ prompt, character, provider, apiKey, mode
             </div>
             <p className="text-xs" style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>{currentChar.description}</p>
             <div className="flex flex-col gap-0.5">
-              <span className="section-label mb-0.5">Ultimates</span>
-              {currentChar.ultimates.map(u => (
+              <span className="section-label mb-0.5">super_move</span>
+              {currentChar.ultimates.slice(0, 1).map(u => (
                 <div key={u.key} className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
-                  <span style={{ color: 'var(--neon-gold)' }}>{u.name}</span>
-                  <span> · cost </span>
-                  <span style={{ color: 'var(--neon-blue, #00bfff)' }}>{u.meterCost}</span>
+                  <span style={{ color: 'var(--neon-gold)' }}>super_move</span>
                   <span> · </span>
                   <span style={{ color: 'var(--neon-red)' }}>{u.damage} dmg</span>
-                  {u.statusApplied && <span style={{ color: '#22cc66' }}> + {u.statusApplied}</span>}
+                  {u.heals && <span style={{ color: '#22cc66' }}> + heal {u.heals}</span>}
                 </div>
               ))}
             </div>
@@ -143,54 +128,6 @@ export default function PromptEditor({ prompt, character, provider, apiKey, mode
           onChange={e => onChange('prompt', e.target.value)}
           disabled={disabled}
           spellCheck={false}
-        />
-      </div>
-
-      {/* Provider */}
-      <div className="flex flex-col gap-1">
-        <label className="section-label">AI Provider</label>
-        <div className="flex gap-1">
-          {Object.entries(PROVIDER_DEFAULTS).map(([key, cfg]) => (
-            <button
-              key={key}
-              onClick={() => onChange('provider', key)}
-              disabled={disabled}
-              className={`provider-tab ${provider === key ? 'active' : ''}`}
-            >
-              {cfg.label}
-              {key === 'groq' && <span className="ml-1 text-xs opacity-60">(free)</span>}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* API Key */}
-      <div className="flex flex-col gap-1">
-        <label className="section-label">API Key</label>
-        <input
-          type="password"
-          className="arena-input"
-          placeholder={`Your ${PROVIDER_DEFAULTS[provider]?.label || ''} API key`}
-          value={apiKey || ''}
-          onChange={e => onChange('apiKey', e.target.value)}
-          disabled={disabled}
-          autoComplete="off"
-        />
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          Your key never leaves your browser.
-        </p>
-      </div>
-
-      {/* Model */}
-      <div className="flex flex-col gap-1">
-        <label className="section-label">Model <span style={{ color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
-        <input
-          type="text"
-          className="arena-input font-mono text-sm"
-          placeholder={PROVIDER_DEFAULTS[provider]?.placeholder}
-          value={model || ''}
-          onChange={e => onChange('model', e.target.value)}
-          disabled={disabled}
         />
       </div>
     </div>

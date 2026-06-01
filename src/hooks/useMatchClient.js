@@ -12,9 +12,7 @@ export function useMatchClient(matchCode) {
     color: '#FF4444',
     prompt: '',
     strategy: '',
-    provider: 'groq',
-    apiKey: '',
-    model: '',
+    promptMode: 'advanced',
     ready: false,
   });
   const [connected, setConnected] = useState(false);
@@ -61,9 +59,7 @@ export function useMatchClient(matchCode) {
           name: cfg.name,
           character: cfg.character,
           prompt: cfg.prompt,
-          provider: cfg.provider,
-          apiKey: cfg.apiKey,
-          model: cfg.model,
+          promptMode: cfg.promptMode || 'advanced',
           hp: role === 'A' ? ctx.hpA : ctx.hpB,
         };
         const opponentData = {
@@ -82,7 +78,7 @@ export function useMatchClient(matchCode) {
 
         callAI(fighterData, buildFighterPrompt(fighterData, opponentData, fightState), {})
           .then(moves => {
-            const validMoves = Array.isArray(moves) && moves.length === ctx.n ? moves : getFallback(ctx.n, cfg.character);
+            const validMoves = Array.isArray(moves) && moves.length === ctx.n ? moves : getFallback(ctx.n, cfg.character, fightState.meter);
             sendMessage(hostConnRef.current, 'SUBMIT_MOVES', {
               batchNumber: msg.batchNumber,
               moves: validMoves,
@@ -90,7 +86,7 @@ export function useMatchClient(matchCode) {
             });
           })
           .catch(() => {
-            const fallback = getFallback(ctx.n, cfg.character);
+            const fallback = getFallback(ctx.n, cfg.character, fightState.meter);
             sendMessage(hostConnRef.current, 'SUBMIT_MOVES', {
               batchNumber: msg.batchNumber,
               moves: fallback,

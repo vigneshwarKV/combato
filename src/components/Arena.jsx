@@ -21,7 +21,7 @@ const DESIGN_H = 760;
 
 // mode="host"      → runs its own fight via useFight (getMoves from fightConfig for P2P)
 // mode="spectator" → renders fight events from fightEvents prop via useFightRenderer
-export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd, onForceNext, mode = 'host', fightEvents = [] }) {
+export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd, onForceNext, mode = 'host', fightEvents = [], randomBackground = false }) {
   // Keep a ref to the broadcast function so the fight loop always uses the latest
   // value without needing it in useCallback deps (avoids stale-closure issues).
   const broadcastRef = useRef(null);
@@ -41,6 +41,9 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
   // safety net for iOS Safari's mid-rotate layout settle.
   const stageWrapperRef = useRef(null);
   const [stageScale, setStageScale] = useState(1);
+  // Responsive action-callout font size: ~28px on desktop, shrinking on
+  // narrow (mobile-landscape) arenas so the verb doesn't dwarf the fighters.
+  const [calloutSize, setCalloutSize] = useState(28);
   useLayoutEffect(() => {
     if (!stageWrapperRef.current) return;
     let raf = 0;
@@ -55,6 +58,7 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
       if (w <= 0 || h <= 0) return;
       const s = Math.min(w / DESIGN_W, h / DESIGN_H, 1);
       setStageScale(s);
+      setCalloutSize(Math.max(14, Math.min(28, Math.round(w / 32))));
     };
     const schedule = () => {
       if (raf) cancelAnimationFrame(raf);
@@ -84,7 +88,7 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
   const {
     status, batchNumber, hpA, hpB,
     meterA, meterB, statusA, statusB,
-    movesA, movesB, currentTurnIndex,
+    movesA, movesB, currentTurnIndex, completedTurns,
     winner,
     animClassA, animClassB, animKeyA, animKeyB,
     hitClassA, hitClassB, hitKeyA, hitKeyB,
@@ -94,6 +98,17 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
 
   const currentActionA = currentTurnIndex >= 0 && movesA[currentTurnIndex] ? movesA[currentTurnIndex] : null;
   const currentActionB = currentTurnIndex >= 0 && movesB[currentTurnIndex] ? movesB[currentTurnIndex] : null;
+
+  // A super_move requested without a full meter is coerced to idle by the
+  // engine (see damageEngine.coerceAction). When the planned move was a super
+  // but the actually-executed action this turn isn't, the callout strikes the
+  // SUPERMOVE label through to read as "attempted, wasted".
+  const turnResult = currentTurnIndex >= 0
+    ? completedTurns?.find(t => t.index === currentTurnIndex)
+    : null;
+  const isSuper = (a) => typeof a === 'string' && a.startsWith('ultimate_');
+  const wastedA = isSuper(currentActionA) && !!turnResult && !isSuper(turnResult.actionA);
+  const wastedB = isSuper(currentActionB) && !!turnResult && !isSuper(turnResult.actionB);
 
   // ArenaStage signals readiness after sprites finish loading. Host fight start
   // is gated on this so the first batch's animations aren't dispatched before
@@ -200,7 +215,7 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
           arena (`cover`). It's anchored to the top so the sky/horizon stays in
           frame; the clip happens at the bottom (where the ground continues). */}
       <div ref={stageWrapperRef} className="flex-1 relative min-h-0 overflow-hidden">
-        <ArenaBackground seed={bgSeed} fit="cover" position="center top">
+        <ArenaBackground seed={bgSeed} random={randomBackground} fit="cover" position="center top">
 
           {/* Status bars */}
           <div style={{
@@ -215,22 +230,24 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
             <StatusBars fighter={fighterB} hp={hpB} meter={meterB} status={statusB} side="B" />
           </div>
 
-          {/* Action labels — each label sits above its fighter (left-half /
-              right-half columns roughly track the sprite x positions chosen
-              by ArenaStage). */}
+          {/* Action callouts — Speed Streak verbs on each fighter's OUTER
+              side (A pinned left, B pinned right), vertically around the
+              fighter's torso. Replaces the old top-centre placement. */}
           {hasSpriteA && hasSpriteB && (
-            <div style={{
-              position: 'absolute', top: '14%', left: 0, right: 0,
-              display: 'flex',
-              pointerEvents: 'none', zIndex: 15,
-            }}>
-              <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-                <ActionLabel action={currentActionA} characterId={fighterA.character} side="A" />
+            <>
+              <div style={{
+                position: 'absolute', top: '70%', left: '16%',
+                pointerEvents: 'none', zIndex: 15,
+              }}>
+                <ActionLabel action={currentActionA} characterId={fighterA.character} side="A" size={calloutSize} struck={wastedA} />
               </div>
-              <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-                <ActionLabel action={currentActionB} characterId={fighterB.character} side="B" />
+              <div style={{
+                position: 'absolute', top: '70%', right: '16%',
+                pointerEvents: 'none', zIndex: 15,
+              }}>
+                <ActionLabel action={currentActionB} characterId={fighterB.character} side="B" size={calloutSize} struck={wastedB} />
               </div>
-            </div>
+            </>
           )}
 
           {/* Fighters — canvas renders at fixed DESIGN_W×DESIGN_H and the

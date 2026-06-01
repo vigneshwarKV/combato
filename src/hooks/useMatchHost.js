@@ -123,7 +123,7 @@ export function useMatchHost(matchCode, opts = {}) {
   const [lobbyState, setLobbyState] = useState({ fighters: [], phase: 'lobby', matchCode, tournamentName });
   const [myConfig, setMyConfig] = useState({
     name: 'Host', character: null, prompt: '',
-    strategy: '', provider: 'groq', apiKey: '', model: '',
+    strategy: '', promptMode: 'advanced',
   });
   const [connected, setConnected] = useState(false);
   const [error, setError]         = useState(null);
@@ -412,8 +412,7 @@ export function useMatchHost(matchCode, opts = {}) {
         const opp    = role === 'A' ? fB : fA;
 
         const fighterData = {
-          ...fighter, prompt: cfg.prompt, provider: cfg.provider,
-          apiKey: cfg.apiKey, model: cfg.model, hp,
+          ...fighter, prompt: cfg.prompt, promptMode: cfg.promptMode || 'advanced', hp,
         };
         const fightState = {
           n: context.n, batchNumber,

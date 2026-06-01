@@ -7,7 +7,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 /**
  * Run a complete fight between two fighters.
  *
- * @param {object} fighterA - { id, name, hp, prompt, color, provider, apiKey, model, character }
+ * @param {object} fighterA - { id, name, hp, prompt, promptMode, color, character }
  * @param {object} fighterB - same shape
  * @param {object} fightConfig - { n, maxBatches, getDelay, pauseRef, forceNextRef, defaults }
  * @param {function} onEvent - callback for each fight event
@@ -92,12 +92,12 @@ export async function runFight(fighterA, fighterB, fightConfig, onEvent) {
       ]);
     }
 
-    const resolveMoves = (raw, charId) => {
-      if (!raw || !Array.isArray(raw) || raw.length !== n) return getFallback(n, charId);
+    const resolveMoves = (raw, charId, meter) => {
+      if (!raw || !Array.isArray(raw) || raw.length !== n) return getFallback(n, charId, meter);
       return raw;
     };
-    const movesA = resolveMoves(rawA, charIdA);
-    const movesB = resolveMoves(rawB, charIdB);
+    const movesA = resolveMoves(rawA, charIdA, meterA);
+    const movesB = resolveMoves(rawB, charIdB, meterB);
 
     if (!rawA || !Array.isArray(rawA) || rawA.length !== n) {
       onEvent({ type: 'api_error', fighter: 'A', fallbackUsed: true });

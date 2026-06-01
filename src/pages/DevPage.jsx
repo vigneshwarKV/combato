@@ -2,6 +2,7 @@ import { useState, useCallback, useLayoutEffect, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import ArenaStage from '../components/ArenaStage.jsx';
 import ArenaBackground from '../components/ArenaBackground.jsx';
+import ActionLabel from '../components/ActionLabel.jsx';
 import { CHARACTERS, METER } from '../data/characters.js';
 import { resolveActions, validActionsForCharacter } from '../engine/damageEngine.js';
 import { computeAttackTiming } from '../engine/animResolution.js';
@@ -142,7 +143,7 @@ function FighterPanel({ side, charId, onCharChange, onSelect, selectedAction }) 
 
 export default function DevPage() {
   const [charAId, setCharAId] = useState('monkey');
-  const [charBId, setCharBId] = useState('boyPlat');
+  const [charBId, setCharBId] = useState('gunBoy');
 
   const [animClassA, setAnimClassA] = useState('anim-idle');
   const [animClassB, setAnimClassB] = useState('anim-idle');
@@ -150,6 +151,11 @@ export default function DevPage() {
   const [animKeyB, setAnimKeyB] = useState(0);
   const [selectedA, setSelectedA] = useState('idle');
   const [selectedB, setSelectedB] = useState('idle');
+  // Action callouts (Speed Streak verbs) — shown on each fighter's outer side
+  // while an action plays, cleared when the fighter returns to idle. Mirrors
+  // the live Arena placement.
+  const [calloutA, setCalloutA] = useState(null);
+  const [calloutB, setCalloutB] = useState(null);
   const [lastOutcome, setLastOutcome] = useState(null);
   const [isLooping, setIsLooping] = useState(false);
   // All scheduled timers for the current sequence (reactions + clears). Any
@@ -193,6 +199,8 @@ export default function DevPage() {
     setAnimKeyA(k => k + 1);
     setAnimClassB(`anim-${timing.initialAnimB}`);
     setAnimKeyB(k => k + 1);
+    setCalloutA(actA);
+    setCalloutB(actB);
     setLastOutcome({
       actionA: result.actualActionA,
       actionB: result.actualActionB,
@@ -237,14 +245,16 @@ export default function DevPage() {
         });
       }, timing.reactionAtB);
     }
-    // t=clear: each fighter back to idle independently.
+    // t=clear: each fighter back to idle independently; clear its callout.
     schedule(() => {
       setAnimClassA('anim-idle');
       setAnimKeyA(k => k + 1);
+      setCalloutA(null);
     }, timing.clearA);
     schedule(() => {
       setAnimClassB('anim-idle');
       setAnimKeyB(k => k + 1);
+      setCalloutB(null);
     }, timing.clearB);
 
     return Math.max(timing.clearA, timing.clearB);
@@ -261,6 +271,8 @@ export default function DevPage() {
       loopTimerRef.current = null;
     }
     setIsLooping(false);
+    setCalloutA(null);
+    setCalloutB(null);
   }, []);
 
   const startRandomLoop = useCallback(() => {
@@ -292,6 +304,7 @@ export default function DevPage() {
     setSelectedA('idle');
     setAnimClassA('anim-idle');
     setAnimKeyA(k => k + 1);
+    setCalloutA(null);
     setLastOutcome(null);
   }, [stopRandomLoop]);
 
@@ -302,6 +315,7 @@ export default function DevPage() {
     setSelectedB('idle');
     setAnimClassB('anim-idle');
     setAnimKeyB(k => k + 1);
+    setCalloutB(null);
     setLastOutcome(null);
   }, [stopRandomLoop]);
 
@@ -313,6 +327,8 @@ export default function DevPage() {
   // and debounces with requestAnimationFrame for iOS Safari rotation settle.
   const arenaWrapperRef = useRef(null);
   const [stageScale, setStageScale] = useState(1);
+  // Responsive action-callout font size — matches Arena.jsx.
+  const [calloutSize, setCalloutSize] = useState(28);
   useLayoutEffect(() => {
     if (!arenaWrapperRef.current) return;
     let raf = 0;
@@ -325,6 +341,7 @@ export default function DevPage() {
       if (w <= 0 || h <= 0) return;
       const s = Math.min(w / DEV_DESIGN_W, h / DEV_DESIGN_H, 1);
       setStageScale(s);
+      setCalloutSize(Math.max(14, Math.min(28, Math.round(w / 32))));
     };
     const schedule = () => {
       if (raf) cancelAnimationFrame(raf);
@@ -377,7 +394,21 @@ export default function DevPage() {
 
       {/* Arena */}
       <div ref={arenaWrapperRef} style={{ flex: 1, position: 'relative', minHeight: 0, overflow: 'hidden' }}>
-        <ArenaBackground seed={bgSeed} fit="cover" position="center top">
+        <ArenaBackground seed={bgSeed} random fit="cover" position="center top">
+          {/* Action callouts — outer side of each fighter, same as Arena.jsx. */}
+          <div style={{
+            position: 'absolute', top: '70%', left: '16%',
+            pointerEvents: 'none', zIndex: 15,
+          }}>
+            <ActionLabel action={calloutA} side="A" size={calloutSize} />
+          </div>
+          <div style={{
+            position: 'absolute', top: '70%', right: '16%',
+            pointerEvents: 'none', zIndex: 15,
+          }}>
+            <ActionLabel action={calloutB} side="B" size={calloutSize} />
+          </div>
+
           <div style={{
             position: 'absolute',
             inset: 0,

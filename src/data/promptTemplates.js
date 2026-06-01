@@ -1,58 +1,64 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// promptTemplates.js — default battle prompts + per-character starter templates.
+// promptTemplates.js — prompt authoring data for the two modes.
 //
-// Rebuilt from how it is consumed (PromptEditor, PromptEditorSimple, RoomPage,
-// BotMatchPage). The {variables} below are substituted at fight time by
-// engine/prompts.js: {N} {hp} {meter} {moveset} {opponent_moveset}
-// {previous_actions} {game_rules}.
+//   Simple   → the player writes only a strategy; engine/prompts.js wraps it.
+//   Advanced → the player writes the whole prompt using the {variables} below,
+//              substituted at fight time by engine/prompts.js.
+//
+// Variables: {game_rules} {self_info} {opponent_info} {self_hp} {opponent_hp}
+//            {self_super_move_is_available} {action_history} {n}
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { CHARACTERS } from './characters.js';
 
-// Generic fallback prompt used when no character-specific template applies.
-export const DEFAULT_PROMPT = `You are an AI fighter in a turn-based battle.
+// Variables a player can drop into an Advanced prompt (label + what it expands to).
+export const ADVANCED_VARIABLES = [
+  { token: '{game_rules}', desc: 'Full game rules (action system, meter, status)' },
+  { token: '{self_info}', desc: 'Your fighter: story, archetype, super_move effect' },
+  { token: '{opponent_info}', desc: "Opponent's story, archetype, super_move effect" },
+  { token: '{self_hp}', desc: 'Your current HP' },
+  { token: '{opponent_hp}', desc: "Opponent's current HP" },
+  { token: '{self_super_move_is_available}', desc: 'true / false — is your super_move charged' },
+  { token: '{action_history}', desc: 'JSON of every move so far this game' },
+];
 
-{moveset}
+// Default Advanced template — a complete, editable prompt the player can tweak.
+export const DEFAULT_ADVANCED_TEMPLATE = `You are an AI fighter in a 1v1 combat game. Choose your next {n} moves.
+
+GAME RULES:
+{game_rules}
+
+YOU:
+{self_info}
+
+OPPONENT:
+{opponent_info}
+
+CURRENT STATE:
+- Your HP: {self_hp}
+- Opponent HP: {opponent_hp}
+- Your super_move available: {self_super_move_is_available}
+
+ACTION HISTORY (entire game so far): {action_history}
 
 STRATEGY:
 - Read the opponent's recent moves and counter them.
-- Spend meter on your Ultimate when it will land or swing the round.
+- Use super_move when it is available and will land or swing the round.
 - Mix up your actions so you are hard to predict.
 
-Current state:
-- Your HP: {hp}
-- Your meter: {meter}
-- Recent actions: {previous_actions}
+Valid moves: hit, defend, shoot, slide, jump, idle, super_move.
+Return ONLY a JSON array of exactly {n} move strings, e.g. ["hit", "defend", "super_move"].`;
 
-Return ONLY a JSON array of exactly {N} action strings.
-{game_rules}`;
+// Back-compat alias (older imports expect DEFAULT_PROMPT).
+export const DEFAULT_PROMPT = DEFAULT_ADVANCED_TEMPLATE;
 
-// Build a per-character template by injecting its identity into DEFAULT_PROMPT.
-function makeTemplate(char) {
-  return `You are ${char.name}.
-
-{moveset}
-
-STRATEGY:
-- Play to ${char.name}'s strengths.
-- Spend meter on your Ultimate when it will land or swing the round.
-- Read the opponent's recent moves and counter them.
-
-Current state:
-- Your HP: {hp}
-- Your meter: {meter}
-- Recent actions: {previous_actions}
-
-Return ONLY a JSON array of exactly {N} action strings.
-{game_rules}`;
-}
-
-// character id → starter template string.
+// Per-character Advanced starter. Identity is carried by {self_info}, so every
+// character shares the same starter template.
 export const CHARACTER_TEMPLATES = Object.fromEntries(
-  Object.values(CHARACTERS).map(c => [c.id, makeTemplate(c)])
+  Object.values(CHARACTERS).map(c => [c.id, DEFAULT_ADVANCED_TEMPLATE])
 );
 
-// Options list for the <select> in PromptEditor.
+// Options list for character pickers.
 export const CHARACTER_OPTIONS = Object.values(CHARACTERS).map(c => ({
   id: c.id,
   name: c.name,
@@ -60,5 +66,8 @@ export const CHARACTER_OPTIONS = Object.values(CHARACTERS).map(c => ({
 }));
 
 export function getCharacterTemplate(charId) {
-  return CHARACTER_TEMPLATES[charId] || null;
+  return CHARACTER_TEMPLATES[charId] || DEFAULT_ADVANCED_TEMPLATE;
 }
+
+// Default Simple-mode strategy text (shown as a starting point / placeholder).
+export const DEFAULT_SIMPLE_STRATEGY = `Spam ranged attacks to build meter, then use super_move when it's available. Defend when the opponent is aggressive and read their patterns to counter.`;

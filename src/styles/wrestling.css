@@ -1,6 +1,8 @@
 /* Wrestling Arena Theme */
 
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+/* Anton — used by the Speed Streak action callouts (see ActionLabel.jsx) */
+@import url('https://fonts.googleapis.com/css2?family=Anton&display=swap');
 
 :root {
   --arena-bg: #08000d;

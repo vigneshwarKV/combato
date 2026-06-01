@@ -1,4 +1,4 @@
-import { CHARACTERS, STATUS_EFFECTS, METER, BASE_DAMAGE, getUltimate, isAirborneUltimate } from '../data/characters.js';
+import { CHARACTERS, METER, BASE_DAMAGE, getUltimate, isAirborneUltimate } from '../data/characters.js';
 
 export const BASE_ACTIONS = ['idle', 'jump', 'hit', 'shoot', 'slide', 'defend'];
 
@@ -20,38 +20,29 @@ export const ALL_ACTIONS = [...BASE_ACTIONS, 'none'];
  * Resolve one simultaneous turn between two fighters under the new action system.
  *
  * Inputs describe each fighter's state *before* the turn's effects apply.
- * Output describes damage dealt, meter changes, status effects, and the
- * action actually executed (may differ from the requested action due to
- * freeze/stun coercion or insufficient-meter fallback).
+ * Output describes damage dealt, meter changes, and the action actually
+ * executed (may differ from the requested action when an Ultimate is chosen
+ * without enough meter, or an invalid action is requested).
  *
  * Turn sequence:
- *   1. Pre-tick DoT damage (burn, poison) for each fighter.
- *   2. Coerce actions: frozen/stunned → idle; Ultimate without meter → melee.
- *   3. Resolve damage matrix based on actual actions.
- *   4. Apply Ultimate special effects (heal, status, reflect, etc.).
- *   5. Pay Ultimate meter cost (from attacker's meter).
- *   6. Grant meter gains from landing hits / taking damage / evasion.
- *   7. Decrement status effect durations; drop expired ones.
+ *   1. Coerce actions: Ultimate without meter → melee; invalid → idle.
+ *   2. Resolve damage matrix based on actual actions.
+ *   3. Apply Ultimate side-effects (self-heal, self-damage).
+ *   4. Pay Ultimate meter cost (from attacker's meter).
+ *   5. Grant meter gains from landing hits / taking damage / evasion.
  */
 export function resolveActions(
   requestedA, requestedB,
   characterA, characterB,
-  meterA = 0, meterB = 0,
-  statusA = [], statusB = []
+  meterA = 0, meterB = 0
 ) {
   const events = [];
 
-  // 1. Pre-tick DoT
-  const { totalDamage: dotDamageA, nextStatus: statusAAfterTick } = tickDot(statusA);
-  const { totalDamage: dotDamageB, nextStatus: statusBAfterTick } = tickDot(statusB);
-  if (dotDamageA > 0) events.push({ type: 'dot', victim: 'A', damage: dotDamageA });
-  if (dotDamageB > 0) events.push({ type: 'dot', victim: 'B', damage: dotDamageB });
-
-  // 2. Action coercion
+  // 1. Action coercion (Ultimate without meter → melee; invalid → idle).
   const { action: actualA, reason: coerceReasonA } =
-    coerceAction(requestedA, characterA, meterA, statusAAfterTick);
+    coerceAction(requestedA, characterA, meterA);
   const { action: actualB, reason: coerceReasonB } =
-    coerceAction(requestedB, characterB, meterB, statusBAfterTick);
+    coerceAction(requestedB, characterB, meterB);
 
   if (coerceReasonA) events.push({ type: 'coerced', fighter: 'A', from: requestedA, to: actualA, reason: coerceReasonA });
   if (coerceReasonB) events.push({ type: 'coerced', fighter: 'B', from: requestedB, to: actualB, reason: coerceReasonB });
@@ -106,21 +97,12 @@ export function resolveActions(
   let damageToA = dmgFromB;
   let damageToB = dmgFromA;
 
-  // Apply pre-tick DoT on top of attack damage
-  damageToA += dotDamageA;
-  damageToB += dotDamageB;
-
-  // 4. Apply Ultimate side-effects (self-heal, self-damage, status effects)
-  let newStatusA = statusAAfterTick;
-  let newStatusB = statusBAfterTick;
-
+  // 4. Apply Ultimate side-effects (self-heal, self-damage).
   if (isUltimateKey(actualA) && resultA.ultimate) {
     const ult = getUltimate(characterA, actualA);
     if (ult) {
       if (ult.heals && aHit) { damageToA -= ult.heals; events.push({ type: 'heal', fighter: 'A', amount: ult.heals }); }
       if (ult.selfDamage) { damageToA += ult.selfDamage; events.push({ type: 'self_damage', fighter: 'A', amount: ult.selfDamage }); }
-      if (ult.statusApplied && aHit) { newStatusB = addStatus(newStatusB, ult.statusApplied); events.push({ type: 'status', fighter: 'B', effect: ult.statusApplied }); }
-      if (ult.selfRisk && aHit) { newStatusA = addStatus(newStatusA, ult.selfRisk); events.push({ type: 'status', fighter: 'A', effect: ult.selfRisk, selfRisk: true }); }
     }
   }
   if (isUltimateKey(actualB) && resultB.ultimate) {
@@ -128,8 +110,6 @@ export function resolveActions(
     if (ult) {
       if (ult.heals && bHit) { damageToB -= ult.heals; events.push({ type: 'heal', fighter: 'B', amount: ult.heals }); }
       if (ult.selfDamage) { damageToB += ult.selfDamage; events.push({ type: 'self_damage', fighter: 'B', amount: ult.selfDamage }); }
-      if (ult.statusApplied && bHit) { newStatusA = addStatus(newStatusA, ult.statusApplied); events.push({ type: 'status', fighter: 'A', effect: ult.statusApplied }); }
-      if (ult.selfRisk && bHit) { newStatusB = addStatus(newStatusB, ult.selfRisk); events.push({ type: 'status', fighter: 'B', effect: ult.selfRisk, selfRisk: true }); }
     }
   }
 
@@ -172,22 +152,24 @@ export function resolveActions(
     actualActionB: actualB,
     newMeterA,
     newMeterB,
-    newStatusA,
-    newStatusB,
+    // Status effects were removed — supers are damage-only now. These stay
+    // empty so the HUD status row and downstream consumers keep working.
+    newStatusA: [],
+    newStatusB: [],
     events,
   };
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-function coerceAction(requested, charId, meter, status) {
-  if (hasSkipStatus(status)) {
-    return { action: 'idle', reason: 'frozen_or_stunned' };
-  }
+function coerceAction(requested, charId, meter) {
   if (isUltimateKey(requested)) {
     const ult = getUltimate(charId, requested);
-    if (!ult) return { action: 'hit', reason: 'unknown_ultimate' };
-    if (meter < ult.meterCost) return { action: 'hit', reason: 'insufficient_meter' };
+    if (!ult) return { action: 'idle', reason: 'unknown_ultimate' };
+    // Super requested without a full meter → the turn is wasted on idle (not a
+    // melee hit), so an over-eager super pick reads as "stalled" rather than
+    // masquerading as a grounded hit.
+    if (meter < ult.meterCost) return { action: 'idle', reason: 'insufficient_meter' };
     return { action: requested, reason: null };
   }
   if (!BASE_ACTIONS.includes(requested) && requested !== 'none') {
@@ -408,29 +390,6 @@ function isSlowProjectileShot(shooterCharId, rusherCharId, rusherAction = 'slide
   const defaultFwd = rusherAction === 'slide' ? 320 : 220;
   const rusherFwdMs = rusher?.motionOverrides?.[rusherAction]?.fwdMs ?? defaultFwd;
   return shooterDelay >= rusherFwdMs;
-}
-
-function tickDot(statusList) {
-  let totalDamage = 0;
-  const nextStatus = [];
-  for (const s of statusList) {
-    const def = STATUS_EFFECTS[s.type];
-    if (def?.damagePerTurn) totalDamage += def.damagePerTurn;
-    if (s.duration > 1) nextStatus.push({ ...s, duration: s.duration - 1 });
-  }
-  return { totalDamage, nextStatus };
-}
-
-function addStatus(statusList, effectType) {
-  const def = STATUS_EFFECTS[effectType];
-  if (!def) return statusList;
-  // Refresh duration if already present
-  const filtered = statusList.filter(s => s.type !== effectType);
-  return [...filtered, { type: effectType, duration: def.duration }];
-}
-
-function hasSkipStatus(statusList) {
-  return statusList.some(s => STATUS_EFFECTS[s.type]?.skipsAction);
 }
 
 function applyMeterGains(currentMeter, { landedHit, landedShot, tookDamage, slidPast, blockedAttack, evadedByJump }) {
