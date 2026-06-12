@@ -7,6 +7,7 @@ import PromptEditorAdvanced from '../components/PromptEditorAdvanced.jsx';
 import CharacterPreview from '../components/CharacterPreview.jsx';
 import Arena from '../components/Arena.jsx';
 import { loadProfile, isProfileReady } from '../data/designData.js';
+import { unlockAudio } from '../engine/soundEngine.js';
 
 const ARCHETYPE_GLYPH = { tank: 'T', striker: 'S', mage: 'M', acrobat: 'A', ranger: 'R' };
 
@@ -144,6 +145,10 @@ function SetupScreen({ onFight }) {
     if (!name.trim()) { setNameError('Enter your fighter name'); ok = false; }
     if (!character) { setCharError('Pick a character'); ok = false; }
     if (!ok) return;
+
+    // This click is a user gesture — unlock audio now so the fight that mounts
+    // right after has a live AudioContext (and the theme starts).
+    unlockAudio();
 
     onFight({
       id: `player-${Date.now()}`,

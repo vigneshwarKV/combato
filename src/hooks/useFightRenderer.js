@@ -1,9 +1,8 @@
 import { useReducer, useCallback } from 'react';
 import { flushSync } from 'react-dom';
-import { isUltimateKey } from '../engine/damageEngine.js';
 import { CHARACTERS } from '../data/characters.js';
 import { hasUltimateHit, computeAttackTiming } from '../engine/animResolution.js';
-import { playSound } from '../engine/soundEngine.js';
+import { planCombatSounds, playCombatPlan, preloadCombatClips, playWinnerSound } from '../engine/combatSounds.js';
 
 const initialState = {
   status: 'idle',
@@ -25,19 +24,6 @@ const initialState = {
   isPaused: false,
   speedMultiplier: 1,
 };
-
-// Returns the ms delay at which the impact sound should fire, or null when
-// nothing landed this turn. Aligns audio with the visible "ouch" — i.e. when
-// the victim swaps to hurt/death, which is normally the visual impact but is
-// deferred to landing time for projectile-hit-vs-jumper.
-function soundImpactDelay(timing) {
-  const { reactionA, reactionB, reactionAtA, reactionAtB } = timing;
-  const hits = [];
-  if (reactionA) hits.push(reactionAtA);
-  if (reactionB) hits.push(reactionAtB);
-  if (hits.length === 0) return null;
-  return Math.min(...hits);
-}
 
 function buildFeedEntries(turn, actionA, actionB, damageToA, damageToB, events) {
   const entries = [];
@@ -161,12 +147,10 @@ export function useFightRenderer() {
     const { type: _evType, ...rest } = event;
     switch (event.type) {
       case 'batch_start':
+        preloadCombatClips();   // warm the SFX cache so the first hit isn't delayed
         dispatch({ type: 'BATCH_START', ...rest });
         break;
       case 'action_result': {
-        if (isUltimateKey(event.actionA) || isUltimateKey(event.actionB)) {
-          playSound('supermove_charge');
-        }
         const charA = event.characterAId ? CHARACTERS[event.characterAId] : undefined;
         const charB = event.characterBId ? CHARACTERS[event.characterBId] : undefined;
         const timing = computeAttackTiming({
@@ -207,28 +191,26 @@ export function useFightRenderer() {
         if (event.hpB > 0) setTimeout(() => dispatch({ type: 'CLEAR_ANIM_B' }), timing.clearB);
         const hasUlt = event.events?.some(e => e.type === 'ultimate');
         setTimeout(() => dispatch({ type: 'CLEAR_HIT' }), hasUlt ? 1250 : 600);
-        // Sound fires at the earliest impact among damaging attacks (so it
-        // matches the visual reaction stagger).
-        const impactSound = soundImpactDelay(timing);
-        if (impactSound != null) {
-          setTimeout(() => {
-            if (hasUlt) playSound('super_hit');
-            else playSound('hit');
-          }, impactSound);
-        }
+        // Combat SFX (gunshots, hammer impacts, shield clangs). See combatSounds.
+        playCombatPlan(planCombatSounds({
+          events: event.events,
+          actionA: event.actionA, actionB: event.actionB,
+          charAId: event.characterAId, charBId: event.characterBId,
+          charA, charB, timing,
+        }));
         break;
       }
       case 'ko':
         dispatch({ type: 'KO', ...rest });
-        playSound('ko');
+        playWinnerSound();   // winner celebrates
         setTimeout(() => dispatch({ type: 'CLEAR_SHAKE' }), 800);
         break;
       case 'decision':
         dispatch({ type: 'DECISION', ...rest });
+        playWinnerSound();   // winner on HP celebrates
         break;
       case 'draw':
         dispatch({ type: 'DRAW', ...rest });
-        playSound('ko');
         break;
       case 'api_error':
         dispatch({ type: 'API_ERROR', ...rest });

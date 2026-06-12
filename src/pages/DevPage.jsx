@@ -6,6 +6,7 @@ import ActionLabel from '../components/ActionLabel.jsx';
 import { CHARACTERS, METER } from '../data/characters.js';
 import { resolveActions, validActionsForCharacter } from '../engine/damageEngine.js';
 import { computeAttackTiming } from '../engine/animResolution.js';
+import { planCombatSounds, playCombatPlan, preloadCombatClips } from '../engine/combatSounds.js';
 
 const CHARACTER_LIST = Object.values(CHARACTERS);
 
@@ -162,9 +163,13 @@ export default function DevPage() {
   // re-fire or character change cancels every pending entry so animations
   // never cross-fade from a previous sequence.
   const timersRef = useRef([]);
+  // Bumped on every cancellation so combat sounds scheduled by a superseded
+  // sequence (or before a character swap) are dropped at fire time.
+  const soundGenRef = useRef(0);
   const cancelTimers = () => {
     timersRef.current.forEach(clearTimeout);
     timersRef.current = [];
+    soundGenRef.current++;
   };
   const schedule = (fn, ms) => {
     const id = setTimeout(fn, ms);
@@ -193,6 +198,20 @@ export default function DevPage() {
     const charA = CHARACTERS[charAId];
     const charB = CHARACTERS[charBId];
     const timing = computeAttackTiming(result, charA, charB);
+
+    // Combat SFX — same plan as the live fight, guarded by the sound generation
+    // (cancelTimers above bumped it) so a re-fire/character swap drops pending
+    // sounds from the previous sequence.
+    preloadCombatClips();
+    const soundGen = soundGenRef.current;
+    playCombatPlan(
+      planCombatSounds({
+        events: result.events,
+        actionA: result.actualActionA, actionB: result.actualActionB,
+        charAId, charBId, charA, charB, timing,
+      }),
+      () => soundGenRef.current === soundGen,
+    );
 
     // t=0: both fighters play their initial anim (idle if launch is deferred).
     setAnimClassA(`anim-${timing.initialAnimA}`);

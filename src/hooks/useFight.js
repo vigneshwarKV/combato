@@ -1,8 +1,7 @@
 import { useReducer, useRef, useCallback } from 'react';
 import { flushSync } from 'react-dom';
 import { runFight } from '../engine/fightEngine.js';
-import { playSound } from '../engine/soundEngine.js';
-import { isUltimateKey } from '../engine/damageEngine.js';
+import { planCombatSounds, playCombatPlan, preloadCombatClips, playWinnerSound } from '../engine/combatSounds.js';
 import { CHARACTERS } from '../data/characters.js';
 import { computeAttackTiming } from '../engine/animResolution.js';
 import { reducer, initialState } from './useFightRenderer.js';
@@ -23,6 +22,7 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
     if (runningRef.current) return;
     runningRef.current = true;
     dispatch({ type: 'RESET' });
+    preloadCombatClips();   // warm the SFX cache so the first hit isn't delayed
 
     if (!runningRef.current) return;
     const thisGen = ++fightGenRef.current;
@@ -52,9 +52,6 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
           flushSync(() => dispatch({ type: 'BATCH_START', ...rest }));
           break;
         case 'action_result': {
-          if (isUltimateKey(event.actionA) || isUltimateKey(event.actionB)) {
-            playSound('supermove_charge');
-          }
           const charA = CHARACTERS[fA.character];
           const charB = CHARACTERS[fB.character];
           const timing = computeAttackTiming({
@@ -114,34 +111,31 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
           }
           const hasUlt = event.events?.some(e => e.type === 'ultimate');
           setTimeout(() => { if (fightGenRef.current === thisGen) dispatch({ type: 'CLEAR_HIT' }); }, hasUlt ? 1250 : 600);
-          // Sound at the earliest reaction moment — aligns the thump with the
-          // visible "ouch" (which is the landing for projectile-vs-jumper).
-          const impactSoundDelay = (() => {
-            const hits = [];
-            if (timing.reactionA) hits.push(timing.reactionAtA);
-            if (timing.reactionB) hits.push(timing.reactionAtB);
-            return hits.length ? Math.min(...hits) : null;
-          })();
-          if (impactSoundDelay != null) {
-            setTimeout(() => {
-              if (fightGenRef.current !== thisGen) return;
-              if (hasUlt) playSound('super_hit');
-              else playSound('hit');
-            }, impactSoundDelay);
-          }
+          // Combat SFX (gunshots, hammer impacts, shield clangs). Each entry is
+          // scheduled with the generation guard so a cancelled fight drops its
+          // still-pending sounds. See engine/combatSounds.
+          playCombatPlan(
+            planCombatSounds({
+              events: event.events,
+              actionA: event.actionA, actionB: event.actionB,
+              charAId: fA.character, charBId: fB.character,
+              charA, charB, timing,
+            }),
+            () => fightGenRef.current === thisGen,
+          );
           break;
         }
         case 'ko':
           flushSync(() => dispatch({ type: 'KO', ...rest }));
-          playSound('ko');
+          playWinnerSound();   // winner celebrates
           setTimeout(() => { if (fightGenRef.current === thisGen) dispatch({ type: 'CLEAR_SHAKE' }); }, 800);
           break;
         case 'decision':
           flushSync(() => dispatch({ type: 'DECISION', ...rest }));
+          playWinnerSound();   // winner on HP celebrates
           break;
         case 'draw':
           flushSync(() => dispatch({ type: 'DRAW', ...rest }));
-          playSound('ko');
           break;
         case 'api_error':
           flushSync(() => dispatch({ type: 'API_ERROR', ...rest }));

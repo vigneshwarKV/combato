@@ -218,8 +218,8 @@ export default function ArenaStage({
     }
 
     // Keep a visible defend shield braced over the new base position.
-    if (fa.shield?.visible) showShield(fa, app, fa.shield._mode);
-    if (fb.shield?.visible) showShield(fb, app, fb.shield._mode);
+    if (fa.shield?.visible) showShield(fa, fa.shield._mode);
+    if (fb.shield?.visible) showShield(fb, fb.shield._mode);
   }, [width, height]);
 
   // Mirror plannedAction* onto sprites so fireProjectile can inspect what the
@@ -247,7 +247,7 @@ export default function ArenaStage({
     // natural flight finishes after the shoot anim ends.
     if (action === 'hurt' || action === 'death' || action === 'knockback') cancelActiveProjectiles(fa);
     fa.sprite._currentAction = action;
-    if (action === 'defend_high' || action === 'defend_low') showShield(fa, appRef.current, action === 'defend_low' ? 'low' : 'high');
+    if (action === 'defend_high' || action === 'defend_low') showShield(fa, action === 'defend_low' ? 'low' : 'high');
     else hideShield(fa);
     playAction(fa, fighterBRef.current, action, appRef.current);
     raiseAttacker(fa.sprite, action);
@@ -264,7 +264,7 @@ export default function ArenaStage({
     const action = (animClassB || 'anim-idle').replace(/^anim-/, '');
     if (action === 'hurt' || action === 'death' || action === 'knockback') cancelActiveProjectiles(fb);
     fb.sprite._currentAction = action;
-    if (action === 'defend_high' || action === 'defend_low') showShield(fb, appRef.current, action === 'defend_low' ? 'low' : 'high');
+    if (action === 'defend_high' || action === 'defend_low') showShield(fb, action === 'defend_low' ? 'low' : 'high');
     else hideShield(fb);
     playAction(fb, fighterARef.current, action, appRef.current);
     raiseAttacker(fb.sprite, action);
@@ -288,18 +288,10 @@ export default function ArenaStage({
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-// Physical defend shield — the metal/spiked shield art is raised OVER the head
-// at an incline (like bracing against an overhead blow) while the fighter holds
-// their idle pose. Rendered as a Pixi.Sprite from a single PNG so it needs no
-// per-frame drawing; positioned + tilted per fighter in showShield(). The
-// texture loads async — until it resolves the sprite simply has no texture and
-// stays invisible.
-const SHIELD_TEXTURE = '/assets/shields/shield_26.png';
-
 // ── Combined defend art ──────────────────────────────────────────────────────
-// Some characters swap to a single "character + shield" PNG while defending,
-// instead of the procedural metal-shield overlay. This works for ANY sprite
-// type (PNG or Spine) — the real sprite is hidden and the PNG stands in.
+// While defending, a character swaps to a single "character + shield" PNG. This
+// works for ANY sprite type (PNG or Spine) — the real sprite is hidden and the
+// PNG stands in.
 //
 // Art lives at:  shields/<character_id>/shield_front.png   (low / front guard)
 //                shields/<character_id>/shield_top.png     (high / overhead guard)
@@ -341,79 +333,20 @@ function combinedDefendConfig(character) {
 
 function makeShield() {
   const shield = new PIXI.Sprite();
-  shield.anchor.set(0.5, 0.5);   // pivot at the shield centre so it tilts in place
-  PIXI.Assets.load(SHIELD_TEXTURE)
-    .then(tex => { shield.texture = tex; })
-    .catch(e => console.warn('[ArenaStage] shield texture load failed:', e));
+  shield.anchor.set(0.5, 0.5);
   return shield;
 }
 
-// Reveal the shield in one of two guard stances and run the appear + idle bob:
-//   'high' → braced over the head, leaning forward so an overhead/airborne blow
-//            glances off the face (blocks regular hit + airborne supers).
-//   'low'  → dropped in front of the body/legs, near-upright, to catch low-line
-//            attacks (shoot / slide / rush hit / grounded supers).
-// Both stances share the same texture, scale, and idle bob; only the position
-// and incline differ.
-function showShield(fighter, app, mode = 'high') {
+// Reveal the defend shield for one guard ('low' = front, 'high' = overhead).
+// Every character uses a combined character+shield PNG (see combinedDefendConfig);
+// characters with no `combinedDefend` block simply show nothing.
+function showShield(fighter, mode = 'high') {
   const shield = fighter?.shield;
   const sprite = fighter?.sprite;
   if (!shield || !sprite) return;
-  const ch = fighter.character;
   shield._mode = mode;
-  // Combined character+shield PNG replaces the sprite during defend, when the
-  // character is configured for it (per-guard art + tuning).
-  const combined = combinedDefendConfig(ch);
-  if (combined) { showCombinedDefend(fighter, combined, mode); return; }
-  const spriteH = Math.abs(sprite.height) || 200;
-  const dir = fighter.side === 'A' ? 1 : -1;   // facing direction (toward opponent)
-
-  // Fixed on-screen height so every fighter gets a comparably sized shield —
-  // sprite frame sizes vary wildly between packs. Tune per-character with
-  // `shieldHeight` / `shieldScale`.
-  const targetH = (ch.shieldHeight ?? 225) * (ch.shieldScale ?? 1);
-  const texH = shield.texture?.height || 512;
-  const s = targetH / texH;
-
-  let baseY, baseX, incline;
-  if (mode === 'low') {
-    // Low guard: shield held in front of the torso/legs, near-upright with a
-    // slight forward tip toward the opponent. Centre sits around mid-body.
-    baseY = fighter.baseY - spriteH * (ch.shieldLowBodyFraction ?? 0.42) + (ch.shieldLowOffsetY ?? 0);
-    baseX = fighter.baseX + (ch.shieldLowForwardOffset ?? 80) * dir;
-    incline = (ch.shieldLowIncline ?? 0.12) * dir;
-  } else {
-    // High guard: sit just above the head (anchor is feet at baseY, so head-top
-    // ≈ baseY - spriteH), pushed slightly toward the opponent. The wide top is
-    // raised up-and-forward so an overhead blow glances off its face. Mirror
-    // per side. Defaults tunable with shieldHeadFraction/Offset/Incline.
-    baseY = fighter.baseY - spriteH * (ch.shieldHeadFraction ?? 0.82) + (ch.shieldOffsetY ?? 0);
-    baseX = fighter.baseX + (ch.shieldForwardOffset ?? -20) * dir;
-    incline = (ch.shieldIncline ?? 0.55) * -dir;
-  }
-
-  // Flip the art horizontally for the right-side fighter (B faces left) so the
-  // shield is a true mirror image, not just a rotated copy — the incline above
-  // is already mirrored per side, so negating scale.x completes the reflection.
-  const mirror = fighter.side === 'A' ? 1 : -1;
-
-  shield._targetScale = s;
-  shield._mirror = mirror;
-  shield._baseY = baseY;
-  shield._baseX = baseX;
-  shield._baseRot = incline;
-
-  shield.x = baseX;
-  shield.y = baseY;
-  shield.rotation = incline;
-  shield.alpha = 0;
-  shield.scale.set(s * 0.7 * mirror, s * 0.7);
-  shield.visible = true;
-  // Guarantee the shield draws above the fighter — raiseAttacker permanently
-  // lifts a sprite to the top of the stage when it attacks, so a fighter that
-  // attacked earlier would otherwise sit on top of its own defend shield.
-  if (shield.parent) shield.parent.setChildIndex(shield, shield.parent.children.length - 1);
-  animateShieldIn(shield, app);
+  const combined = combinedDefendConfig(fighter.character);
+  if (combined) showCombinedDefend(fighter, combined, mode);
 }
 
 // Show a combined character+shield image in place of the fighter for one guard.
@@ -460,36 +393,6 @@ function hideShield(fighter) {
     shield.anchor.set(0.5, 0.5);
     if (fighter.sprite) fighter.sprite.visible = true;
   }
-}
-
-// Appear (scale-up + fade-in over 220ms) then a slow idle bob/sway — a subtle
-// vertical drift and rotation wobble so the raised shield reads as physically
-// held, not pasted on. Reads shield._targetScale / _baseY / _baseRot set in
-// showShield().
-function animateShieldIn(shield, app) {
-  if (!app) return;
-  if (shield._shieldCleanup) { try { shield._shieldCleanup(); } catch { /* ignore */ } }
-  const start = performance.now();
-  const APPEAR_MS = 220;
-  const s = shield._targetScale ?? 1;
-  const m = shield._mirror ?? 1;   // horizontal flip for the right-side fighter
-  const tick = () => {
-    const elapsed = performance.now() - start;
-    if (elapsed <= APPEAR_MS) {
-      const t = easeOut(elapsed / APPEAR_MS);
-      const k = s * (0.7 + 0.3 * t);
-      shield.scale.set(k * m, k);
-      shield.alpha = t;
-    } else {
-      shield.scale.set(s * m, s);
-      shield.alpha = 1;
-      const osc = Math.sin((elapsed - APPEAR_MS) / 1300 * Math.PI); // ~2.6s period
-      shield.y = (shield._baseY ?? shield.y) + osc * 2.5;            // gentle bob
-      shield.rotation = (shield._baseRot ?? 0) + osc * 0.03;          // slight wobble
-    }
-  };
-  app.ticker.add(tick);
-  shield._shieldCleanup = () => app.ticker.remove(tick);
 }
 
 // Pick the projectile sprite for a given action. Ultimate shoots use elemental

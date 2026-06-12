@@ -1,7 +1,17 @@
 /**
- * Synthesized sound effects via Web Audio API.
- * No audio files — all procedurally generated.
- * AudioContext is lazily created on first playSound() call (browser requires user gesture).
+ * Recorded sound-effect playback via the Web Audio API.
+ *
+ * All combat SFX are real audio files under /assets/sound (the old
+ * procedurally-synthesized tones have been removed). Each play spins up its own
+ * BufferSource so sounds can overlap.
+ *
+ * Autoplay policy: browsers won't let an AudioContext START until a user
+ * gesture. We therefore (a) NEVER create the context during preload — preload
+ * only fetches the raw bytes — and (b) create + resume the context on the first
+ * pointer/key/touch anywhere on the page (the "unlock" listeners below). By the
+ * time a fight starts (always reached via a click), the context is already
+ * live, so timer-scheduled clips play without the "not allowed to start"
+ * warning.
  */
 
 let audioCtx = null;
@@ -13,85 +23,154 @@ function getCtx() {
   return audioCtx;
 }
 
-function playTone({ freq = 440, type = 'sine', gain = 0.3, duration = 0.15, decay = 0.12 }) {
-  const ctx = getCtx();
-  const osc = ctx.createOscillator();
-  const gainNode = ctx.createGain();
-  osc.connect(gainNode);
-  gainNode.connect(ctx.destination);
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, ctx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(Math.max(freq * 0.4, 20), ctx.currentTime + duration);
-  gainNode.gain.setValueAtTime(gain, ctx.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration + decay);
-  osc.start(ctx.currentTime);
-  osc.stop(ctx.currentTime + duration + decay + 0.01);
+const rawClips = new Map();     // url -> Promise<ArrayBuffer | null>   (no context needed)
+const decodedClips = new Map(); // url -> AudioBuffer | Promise<AudioBuffer | null>
+
+function fetchRaw(url) {
+  if (!rawClips.has(url)) {
+    rawClips.set(url, fetch(url).then(res => res.arrayBuffer()).catch(() => null));
+  }
+  return rawClips.get(url);
 }
 
-function playNoiseBurst({ gain = 0.3, duration = 0.08, highpass = 800 }) {
+// Decode requires a context, so this is only ever called once one exists
+// (from playClip or the gesture unlock). Cached so each clip decodes once.
+function decodeClip(url) {
+  if (decodedClips.has(url)) return decodedClips.get(url);
   const ctx = getCtx();
-  const bufferSize = Math.ceil(ctx.sampleRate * duration);
-  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-
-  const source = ctx.createBufferSource();
-  source.buffer = buffer;
-
-  const filter = ctx.createBiquadFilter();
-  filter.type = 'highpass';
-  filter.frequency.value = highpass;
-
-  const gainNode = ctx.createGain();
-  gainNode.gain.setValueAtTime(gain, ctx.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-
-  source.connect(filter);
-  filter.connect(gainNode);
-  gainNode.connect(ctx.destination);
-  source.start();
+  const p = Promise.resolve(fetchRaw(url))
+    // slice(0) so decodeAudioData detaches a copy, leaving the cached raw intact
+    .then(raw => (raw ? ctx.decodeAudioData(raw.slice(0)) : null))
+    .then(buffer => { if (buffer) decodedClips.set(url, buffer); return buffer; })
+    .catch(() => { decodedClips.delete(url); return null; });
+  decodedClips.set(url, p);
+  return p;
 }
 
-export function playSound(type) {
+// Warm the cache. Only fetches bytes (and decodes if a context already exists,
+// e.g. after the first gesture) — never creates the context on its own.
+export function preloadClips(urls = []) {
+  for (const url of urls) {
+    fetchRaw(url);
+    if (audioCtx) decodeClip(url);
+  }
+}
+
+export function playClip(url, { gain = 1 } = {}) {
+  // Never CREATE the context here — only the gesture unlock does that. Before
+  // the first gesture audioCtx is null, so a sound that fires from an effect or
+  // a timer is simply dropped (no audio is allowed pre-gesture anyway) instead
+  // of spawning a suspended context and tripping the autoplay warning.
+  if (!audioCtx) return;
   try {
-    switch (type) {
-      case 'hit':
-        // Light snap — quick noise + dull thud
-        playNoiseBurst({ gain: 0.30, duration: 0.05, highpass: 900 });
-        playTone({ freq: 160, type: 'square', gain: 0.10, duration: 0.06, decay: 0.04 });
-        break;
-
-      case 'super_hit':
-        // Massive explosion — deep boom + crunch + sub bass rumble
-        playNoiseBurst({ gain: 0.95, duration: 0.22, highpass: 60 });
-        playNoiseBurst({ gain: 0.6, duration: 0.14, highpass: 400 });
-        playTone({ freq: 55, type: 'sawtooth', gain: 0.55, duration: 0.45, decay: 0.5 });
-        playTone({ freq: 90, type: 'square', gain: 0.38, duration: 0.35, decay: 0.4 });
-        playTone({ freq: 140, type: 'sawtooth', gain: 0.22, duration: 0.2, decay: 0.2 });
-        break;
-
-      case 'supermove_charge':
-        // Rising power-up whoosh before the blast
-        playTone({ freq: 180, type: 'sine', gain: 0.22, duration: 0.5, decay: 0.08 });
-        playTone({ freq: 360, type: 'sine', gain: 0.16, duration: 0.4, decay: 0.06 });
-        playTone({ freq: 720, type: 'sine', gain: 0.10, duration: 0.3, decay: 0.05 });
-        break;
-
-      case 'block':
-        playNoiseBurst({ gain: 0.28, duration: 0.05, highpass: 1400 });
-        playTone({ freq: 340, type: 'triangle', gain: 0.14, duration: 0.06, decay: 0.04 });
-        break;
-
-      case 'ko':
-        playNoiseBurst({ gain: 0.65, duration: 0.22, highpass: 90 });
-        playTone({ freq: 100, type: 'sawtooth', gain: 0.42, duration: 0.42, decay: 0.32 });
-        playTone({ freq: 58, type: 'square', gain: 0.28, duration: 0.65, decay: 0.42 });
-        break;
-
-      default:
-        break;
-    }
+    const ctx = audioCtx;
+    if (ctx.state === 'suspended') ctx.resume();
+    Promise.resolve(decodeClip(url)).then(buffer => {
+      if (!buffer) return;
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = gain;
+      source.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      source.start();
+    }).catch(() => { /* decode failed — silent */ });
   } catch {
     // AudioContext unavailable or blocked — silent fail
   }
 }
+
+// ── Background music ─────────────────────────────────────────────────────────
+// One looping track that plays for the whole session. Can't START before a
+// user gesture (autoplay policy), so registration just stashes the request and
+// the gesture-unlock below actually starts it.
+let musicUrl = null;
+let musicOpts = { gain: 0.25, loop: true };
+let musicStarted = false;
+
+function startMusicNow() {
+  if (musicStarted || !musicUrl) return;
+  if (!audioCtx) return;               // no context yet — the gesture unlock will retry
+  musicStarted = true;
+  const url = musicUrl;
+  const ctx = getCtx();
+  if (ctx.state === 'suspended') ctx.resume();
+  // Decode is async, so by the time the source starts the resume has taken
+  // effect even if the context still read 'suspended' a moment ago.
+  Promise.resolve(decodeClip(url)).then(buffer => {
+    if (!buffer) { musicStarted = false; return; }
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = musicOpts.loop ?? true;
+    const gainNode = ctx.createGain();
+    gainNode.gain.value = musicOpts.gain ?? 0.25;
+    source.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    source.start();
+  }).catch(() => { musicStarted = false; });
+}
+
+// Register the always-on theme. Fetches the bytes immediately (no context
+// needed) and starts playback as soon as audio is unlocked by a gesture.
+export function startBackgroundMusic(url, { gain = 0.25, loop = true } = {}) {
+  musicUrl = url;
+  musicOpts = { gain, loop };
+  fetchRaw(url);
+  startMusicNow();
+}
+
+// Create + resume the AudioContext, decode any already-prefetched clips, and
+// kick off the background music. MUST be called from within a user gesture
+// (click/key/tap) — that's the only time the browser lets the context start.
+// Safe to call repeatedly; it's a no-op once the context is running.
+// True once a user gesture has created + resumed the AudioContext — i.e. a clip
+// will actually play right now. False before the first gesture this page-load,
+// and also while the context is merely 'suspended' (idle / backgrounded). Use
+// `audioGestured()` for the looser "has the user interacted at all" question.
+export function isAudioUnlocked() {
+  return !!audioCtx && audioCtx.state === 'running';
+}
+
+// Browser-native: has the user made ANY gesture since this page loaded? Returns
+// false until the first click/tap/key, then true for the document's lifetime.
+// Falls back to our own context state where navigator.userActivation is absent
+// (older Safari).
+export function audioGestured() {
+  if (typeof navigator !== 'undefined' && navigator.userActivation) {
+    return navigator.userActivation.hasBeenActive;
+  }
+  return !!audioCtx;
+}
+
+export function unlockAudio() {
+  try {
+    const ctx = getCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    for (const url of rawClips.keys()) decodeClip(url);
+    startMusicNow();
+  } catch { /* ignore */ }
+  return audioCtx;
+}
+
+// Auto-unlock on the first interaction ANYWHERE on the page. Registered in the
+// CAPTURE phase so it fires before any descendant that calls stopPropagation()
+// on the gesture, and we keep listening until the context is confirmed
+// 'running' so a blocked first attempt is retried on the next interaction.
+//
+// Note: a page that auto-starts a fight on mount (e.g. /bot when a saved
+// profile skips the FIGHT! screen) can't make sound until the FIRST gesture —
+// no audio is allowed before one. Screens that begin on an explicit click
+// (FIGHT!, Attack) call unlockAudio() directly so their fight has sound.
+function installAudioUnlock() {
+  if (typeof window === 'undefined') return;
+  const events = ['pointerdown', 'mousedown', 'touchstart', 'keydown', 'click'];
+  const handler = () => {
+    unlockAudio();
+    if (audioCtx && audioCtx.state === 'running') {
+      events.forEach(e => window.removeEventListener(e, handler, true));
+    }
+  };
+  events.forEach(e => window.addEventListener(e, handler, { capture: true, passive: true }));
+}
+
+installAudioUnlock();
