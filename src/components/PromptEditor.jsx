@@ -4,11 +4,12 @@ import { CHARACTERS } from '../data/characters.js';
 const BASE_ACTION_RULES = [
   { action: 'idle',       damage: '0',       note: 'Stand still — no damage, no meter change' },
   { action: 'jump',       damage: '0',       note: 'Evades hit; still hittable by shoot + super_move; +3 meter on evade' },
-  { action: 'hit',        damage: '10 dmg',  note: 'Close-range; +10 meter on hit; missed by jump/slide; blocked by defend' },
-  { action: 'shoot',      damage: '8 dmg',   note: 'Projectile; +8 meter on hit; missed by slide; blocked by defend (hits jumpers)' },
-  { action: 'slide',      damage: '0',       note: 'Evades hit AND shoot; half damage from super_move; +5 meter' },
-  { action: 'defend',     damage: '0',       note: 'Blocks ALL hit + shoot; super_move pierces full damage; +7 meter on block' },
-  { action: 'super_move', damage: 'varies',  note: 'Your character special — only usable when charged' },
+  { action: 'hit',         damage: '10 dmg', note: 'Close-range (HIGH line); +10 meter on hit; missed by jump/slide; blocked by defend_high (rush/projectile hits are LOW → defend_low)' },
+  { action: 'shoot',       damage: '8 dmg',  note: 'Projectile (LOW line); +8 meter on hit; missed by jump; blocked by defend_low' },
+  { action: 'slide',       damage: '0',      note: 'Low tackle (LOW line); evades hit; caught by fast shoot; blocked by defend_low; +5 meter' },
+  { action: 'defend_high', damage: '0',      note: 'HIGH guard — blocks regular hit + AIRBORNE supers; +7 meter on block' },
+  { action: 'defend_low',  damage: '0',      note: 'LOW guard — blocks shoot, slide, rush/projectile hits + GROUNDED supers; +7 meter on block' },
+  { action: 'super_move',  damage: 'varies', note: 'Your character special — blocked by the matching guard (airborne→defend_high, grounded→defend_low); only usable when charged' },
 ];
 
 const TEMPLATE_VARS = ADVANCED_VARIABLES.map(v => ({ variable: v.token, description: v.desc }));

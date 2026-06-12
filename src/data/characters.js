@@ -46,9 +46,9 @@ const BASE = '/assets/characters';
 // Standard action→folder map for PNG packs. Gun-idle, jetpack, and climb folder
 // names vary between packs, so they're passed in.
 //
-// `defend` points at the climb/ladder animation (looking-back pose). The
-// renderer freezes the sprite on `defendStaticFrame` (default 0), so visually
-// this is a single still frame of the climb pose — no movement.
+// Both guard stances (`defend_low` / `defend_high`) freeze on the climb/ladder
+// pose (defendStaticFrame) with a shield overlay drawn on top (high = braced
+// overhead, low = dropped to the body).
 function pngAnimations({ gunIdle, jetpack, ultKey, climb = 'Climb' }) {
   return {
     idle:      'Idle',
@@ -56,7 +56,8 @@ function pngAnimations({ gunIdle, jetpack, ultKey, climb = 'Climb' }) {
     hit:       'Hit',
     shoot:     gunIdle,
     slide:     'Slide',
-    defend:    climb,         // freeze-frame on the climb pose
+    defend_low:  climb,       // freeze-frame on the climb pose + low shield
+    defend_high: climb,       // freeze-frame on the climb pose + overhead shield
     hurt:      'GetHit',
     death:     'Die',         // ← MUST be 'death' (engine hardcodes this key)
     celebrate: 'Celebrate',   // ← MUST be 'celebrate' (loop check in spritePlayer)
@@ -68,6 +69,11 @@ export const CHARACTERS = {
   // ── PNG fighters ──────────────────────────────────────────────────────────
   soldierBoy: {
     id: 'soldierBoy',
+    combinedDefend: {
+      scale:  { low: 1.15, high: 1.5 },
+      width:  { high: 1, low: 1 },
+      offset: { low: { x: 11, y: 20 }, high: { x: 22, y: 30 } },
+    },
     name: 'Soldier Boy',
     archetype: 'striker',
     description: 'A disciplined frontline soldier who closes distance fast and punishes hesitation.',
@@ -90,6 +96,11 @@ export const CHARACTERS = {
 
   beast: {
     id: 'beast',
+    combinedDefend: {
+      scale:  { low: 1.2, high: 1.4 },
+      width:  { high: 1.1 },
+      offset: { low: { x: 22, y: 18 }, high: { x: 22, y: 40 } },
+    },
     name: 'Beast',
     archetype: 'tank',
     description: 'A hulking brawler who rockets across the arena and crashes down on opponents.',
@@ -117,6 +128,11 @@ export const CHARACTERS = {
 
   speedKid: {
     id: 'speedKid',
+    combinedDefend: {
+      scale:  { low: 1.2, high: 1.1 },
+      width:  { high: 1.1, low: 1.1 },
+      offset: { low: { x: 11, y: 50 }, high: { x: 22, y: 18 } },
+    },
     name: 'Speed Kid',
     archetype: 'acrobat',
     description: 'A glitchy speedster who blinks in and out of the fight before you can react.',
@@ -139,6 +155,11 @@ export const CHARACTERS = {
 
   gunBoy: {
     id: 'gunBoy',
+    combinedDefend: {
+      scale:  { low: 1.1, high: 1.1 },
+      width:  { high: 1.1, low: 1 },
+      offset: { low: { x: 0, y: 20 }, high: { x: 22, y: 18 } },
+    },
     name: 'Gun Boy',
     archetype: 'striker',
     description: 'A hot-headed gunner who sets the ring alight with every charge.',
@@ -161,6 +182,11 @@ export const CHARACTERS = {
 
   cartoonBoy: {
     id: 'cartoonBoy',
+    combinedDefend: {
+      scale:  { low: 1.1, high: 1.45 },
+      width:  { high: 1, low: 1 },
+      offset: { low: { x: 5, y: 10 }, high: { x: 0, y: 10 } },
+    },
     name: 'Cartoon Boy',
     archetype: 'striker',
     description: 'A cartoon scrapper whose cartoon physics make every blow land harder than it should.',
@@ -183,6 +209,11 @@ export const CHARACTERS = {
 
   spaceGirl: {
     id: 'spaceGirl',
+    combinedDefend: {
+      scale:  { low: 1, high: 1 },
+      width:  { high: 1, low: 1 },
+      offset: { low: { x: 11, y: 50 }, high: { x: 22, y: 18 } },
+    },
     name: 'Space Girl',
     archetype: 'ranger',
     description: 'A cosmic markswoman who rains starlight on anyone who keeps their distance.',
@@ -205,6 +236,11 @@ export const CHARACTERS = {
 
   stormGirl: {
     id: 'stormGirl',
+    combinedDefend: {
+      scale:  { low: 1.3, high: 1.35 },
+      width:  { high: 1.05, low: 1.05 },
+      offset: { low: { x: 11, y: 50 }, high: { x: 0, y: 12 } },
+    },
     name: 'Storm Girl',
     archetype: 'mage',
     description: 'A tempest-channeling mage who batters opponents with raw storm force.',
@@ -227,6 +263,11 @@ export const CHARACTERS = {
 
   ironKnight: {
     id: 'ironKnight',
+    combinedDefend: {
+      scale:  { low: 1.07, high: 1.45 },
+      width:  { high: 1, low: 1 },
+      offset: { low: { x: 0, y: 10 }, high: { x: 15, y: 20 } },
+    },
     name: 'Iron Knight',
     archetype: 'tank',
     description: 'An armored heavy who soaks up punishment and answers with a steel barrage.',
@@ -249,6 +290,11 @@ export const CHARACTERS = {
 
   madScientist: {
     id: 'madScientist',
+    combinedDefend: {
+      scale:  { low: 1.2, high: 1.1 },
+      width:  { high: 1.1, low: 1.1 },
+      offset: { low: { x: 11, y: 50 }, high: { x: 22, y: 18 } },
+    },
     name: 'Mad Scientist',
     archetype: 'mage',
     description: 'A mad scientist who overloads the arena with arcing electricity.',
@@ -272,6 +318,11 @@ export const CHARACTERS = {
   // ── Spine fighters ──────────────────────────────────────────────────────────
   skater: {
     id: 'skater',
+    combinedDefend: {
+      scale:  { low: 1.5, high: 2 },
+      width:  { high: 1, low: 1 },
+      offset: { low: { x: 11, y: 50 }, high: { x: -5, y: 70 } },
+    },
     name: 'Skater Kid',
     archetype: 'acrobat',
     description: 'A reckless skateboarder whose board run smashes straight through a raised guard.',
@@ -311,7 +362,8 @@ export const CHARACTERS = {
       hit:   'OnSkateboard',
       shoot: 'IdleShoot',
       slide: 'roll',
-      defend: 'Idle',
+      defend_low: 'Idle',
+      defend_high: 'Idle',
       hurt:  'GetHit',
       death: 'Dead',
       ultimate_roll: 'JetPack',
@@ -323,6 +375,11 @@ export const CHARACTERS = {
 
   monkey: {
     id: 'monkey',
+    combinedDefend: {
+      scale:  { low: 1.2, high: 1.6 },
+      width:  { high: 1, low: 1 },
+      offset: { low: { x: 11, y: 30 }, high: { x: 22, y: 40 } },
+    },
     name: 'Monkey King',
     archetype: 'striker',
     description: 'A trickster who hurls a spear from range and somersaults skyward on a flying staff.',
@@ -358,7 +415,8 @@ export const CHARACTERS = {
       hit:   'Hit',
       shoot: 'Throw',
       slide: 'Roll',
-      defend: 'onLadder',
+      defend_low: 'onLadder',
+      defend_high: 'onLadder',
       hurt:  'GetHit',
       death: 'Death',
       celebrate: 'Celebrates',
@@ -371,6 +429,11 @@ export const CHARACTERS = {
 
   turtle: {
     id: 'turtle',
+    combinedDefend: {
+      scale:  { low: 1.7, high: 1.5 },
+      width:  { high: 1, low: 1.1 },
+      offset: { low: { x: 11, y: 60 }, high: { x: 10, y: -5 } },
+    },
     name: 'Iron Turtle',
     archetype: 'tank',
     description: 'A slow, armored bruiser who throws a heavy spear and spins into a defensive cyclone.',
@@ -393,7 +456,8 @@ export const CHARACTERS = {
       hit:   'HammerHit',
       shoot: 'Throw',
       slide: 'Roll',
-      defend: 'Climb',
+      defend_low: 'Climb',
+      defend_high: 'Climb',
       hurt:  'GetHit',
       death: 'Die',
       celebrate: 'Celebrates',
@@ -410,6 +474,11 @@ export const CHARACTERS = {
 
   womanHero: {
     id: 'womanHero',
+    combinedDefend: {
+      scale:  { low: 1.6, high: 1.4 },
+      width:  { high: 1, low: 1 },
+      offset: { low: { x: 11, y: 60 }, high: { x: 22, y: 18 } },
+    },
     name: 'Woman Hero',
     archetype: 'ranger',
     description: 'An archer who jump-shoots ice arrows that pierce a guard and unleashes a piercing arrow volley.',
@@ -477,7 +546,8 @@ export const CHARACTERS = {
       hit:   'IceShoot1',
       shoot: 'FireShoot1',
       slide: 'Roll',
-      defend: 'OnLadder',
+      defend_low: 'OnLadder',
+      defend_high: 'OnLadder',
       hurt:  'GetHit',
       death: 'Die',
       ultimate_poison: 'PoisonShoot1',
@@ -498,7 +568,8 @@ export const BASE_DAMAGE = {
   hit: 10,
   shoot: 12,
   slide: 6,
-  defend: 0,
+  defend_low: 0,
+  defend_high: 0,
 };
 
 export const METER = {

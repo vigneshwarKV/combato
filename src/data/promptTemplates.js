@@ -46,8 +46,8 @@ STRATEGY:
 - Use super_move when it is available and will land or swing the round.
 - Mix up your actions so you are hard to predict.
 
-Valid moves: hit, defend, shoot, slide, jump, idle, super_move.
-Return ONLY a JSON array of exactly {n} move strings, e.g. ["hit", "defend", "super_move"].`;
+Valid moves: hit, shoot, slide, jump, idle, defend_high, defend_low, super_move.
+Return ONLY a JSON array of exactly {n} move strings, e.g. ["hit", "defend_high", "super_move"].`;
 
 // Back-compat alias (older imports expect DEFAULT_PROMPT).
 export const DEFAULT_PROMPT = DEFAULT_ADVANCED_TEMPLATE;

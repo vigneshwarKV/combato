@@ -16,11 +16,12 @@ const SUPER_SYNONYMS = new Set(['super_move', 'supermove', 'super move', 'super'
 export const GAME_RULES = `ACTION SYSTEM:
   idle    → stand still, 0 dmg, no meter change
   jump    → evades shoot AND projectile-based hits (Woman Hero's Ice Arrow — straight-line shot); MELEE hit lands on a jumper (knocks them out of the air immediately); still hittable by Ultimates; +${METER.GAIN_ON_JUMP_EVADE} meter on each successful evade
-  hit     → ${BASE_DAMAGE.hit} dmg close-range attack; +${METER.GAIN_ON_MELEE_HIT} meter on landed hit; MISSED by slide; melee hit LANDS on jumpers (knocks down mid-air); BLOCKED by defend (UNLESS the attacker's hit is RUSH-style — Skater Kid's skateboard run breaks through defend, OR PROJECTILE-style — Woman Hero's IceShoot arrows pierce a shield raised for melee); CLASHES with opposing hit when BOTH are melee (no HP loss — fighters visually collide mid-lunge and fall back with death anim); MELEE hitter rushing into a FAST shoot gets STOPPED — bullet catches them mid-lunge and throws them back (rush-style hits get the same slide-vs-shoot throwback timing). Against a SLOW thrower (Iron Turtle's spear, Monkey King's spear) the lunge LANDS — hitter reaches the thrower before the projectile spawns. PROJECTILE-style hits (Woman Hero's IceShoot — she jumpShoots an ice arrow): MISS jumpers (straight-line shot, jumper evades); arrow always aims at the opponent's IDLE position regardless of their movement; vs SLIDE the arrow LANDS — slider dodges momentarily but the arrow catches them once they finish the glide and return to base (deferred hurt). WH's hit MISSES if the opponent is also hitting (their melee lunge interrupts her arrow release while their hit lands on her); WH vs Skater Kid hit → both miss (both end up airborne)
-  shoot   → ${BASE_DAMAGE.shoot} dmg straight-line projectile; +${METER.GAIN_ON_RANGED_HIT} meter on landed hit; MISSED by jump, airborne Ultimates (jet-pack/flyHit ults), OR a projectile-hit attacker (Woman Hero's IceShoot — her jumpShoot lifts her out of the bullet's path); defend does NOT block shoot. Fast shoots HIT a sliding defender (slider thrown back); SLOW throws (Iron Turtle's spear, Monkey King's spear — long spawn delay) get RUSHED — the slider reaches the thrower before the projectile releases and the slide damage lands on the thrower instead
-  slide   → ${BASE_DAMAGE.slide} dmg low tackle; evades hit (melee attackers clipped at the legs and thrown back) AND fast shoot is the one that catches the slider; deals damage to defenders/idle/melee-hit/slow-throwers; MISSED by jump and by airborne hit attackers (Woman Hero's jumpShoot); SLIDE-vs-SLIDE collides at the centre — both take ${BASE_DAMAGE.slide} dmg and are thrown back; slide CANNOT damage an opponent who is mid-Ultimate; +${METER.GAIN_ON_MELEE_HIT} meter on landed slide, +${METER.GAIN_ON_DODGE} on successful evade
-  defend  → blocks hit AND Ultimates only (0 dmg); does NOT block shoot or slide (defender gets HURT through); +${METER.GAIN_ON_BLOCK} meter on successful block
-  super_move → your character-specific special (cost meter); deals heavy damage (some also heal you); BLOCKED by defend (unless 'unblockable'); CLASH only when BOTH supers occupy the same lane — both airborne (collide mid-flight, fall with death anim, no HP loss) OR both grounded (silent clash, no HP loss, meter still spent). MIXED airborne-vs-grounded does NOT clash. ALL supers LAND on a sliding defender (slider takes full damage). MELEE hit INTERRUPTS a super — hitter's lunge clips the super-er mid-windup, they take the hit damage and the super never connects.
+  hit     → ${BASE_DAMAGE.hit} dmg close-range attack; +${METER.GAIN_ON_MELEE_HIT} meter on landed hit; MISSED by slide; melee hit LANDS on jumpers (knocks down mid-air); a REGULAR melee hit is HIGH — BLOCKED by defend_high (defend_low gets hit). RUSH-style (Skater Kid's skateboard run) and PROJECTILE-style (Woman Hero's IceShoot) hits are LOW — BLOCKED by defend_low (defend_high gets hit); CLASHES with opposing hit when BOTH are melee (no HP loss — fighters visually collide mid-lunge and fall back with death anim); MELEE hitter rushing into a FAST shoot gets STOPPED — bullet catches them mid-lunge and throws them back (rush-style hits get the same slide-vs-shoot throwback timing). Against a SLOW thrower (Iron Turtle's spear, Monkey King's spear) the lunge LANDS — hitter reaches the thrower before the projectile spawns. PROJECTILE-style hits (Woman Hero's IceShoot — she jumpShoots an ice arrow): MISS jumpers (straight-line shot, jumper evades); arrow always aims at the opponent's IDLE position regardless of their movement; vs SLIDE the arrow LANDS — slider dodges momentarily but the arrow catches them once they finish the glide and return to base (deferred hurt). WH's hit MISSES if the opponent is also hitting (their melee lunge interrupts her arrow release while their hit lands on her); WH vs Skater Kid hit → both miss (both end up airborne)
+  shoot   → ${BASE_DAMAGE.shoot} dmg straight-line projectile; +${METER.GAIN_ON_RANGED_HIT} meter on landed hit; MISSED by jump, airborne Ultimates (jet-pack/flyHit ults), OR a projectile-hit attacker (Woman Hero's IceShoot — her jumpShoot lifts her out of the bullet's path); shoot is LOW — BLOCKED by defend_low (low guard catches the bullet on the shield), but defend_high does NOT block it (bullet goes under). Fast shoots HIT a sliding defender (slider thrown back); SLOW throws (Iron Turtle's spear, Monkey King's spear — long spawn delay) get RUSHED — the slider reaches the thrower before the projectile releases and the slide damage lands on the thrower instead
+  slide   → ${BASE_DAMAGE.slide} dmg low tackle; evades hit (melee attackers clipped at the legs and thrown back) AND fast shoot is the one that catches the slider; slide is LOW — BLOCKED by defend_low (low guard catches the tackle), but defend_high gets swept (takes full slide dmg); deals damage to idle/melee-hit/slow-throwers; MISSED by jump and by airborne hit attackers (Woman Hero's jumpShoot); SLIDE-vs-SLIDE collides at the centre — both take ${BASE_DAMAGE.slide} dmg and are thrown back; slide CANNOT damage an opponent who is mid-Ultimate; +${METER.GAIN_ON_MELEE_HIT} meter on landed slide, +${METER.GAIN_ON_DODGE} on successful evade
+  defend_high → HIGH guard, braces overhead (0 dmg when it blocks); BLOCKS regular melee hit AND AIRBORNE supers (jet-pack / flyHit / sky-dive ults). Does NOT block shoot, slide, rush-style hit (Skater Kid), projectile hit (Woman Hero), or grounded supers — those go UNDER it and HURT you. +${METER.GAIN_ON_BLOCK} meter on a successful block
+  defend_low  → LOW guard, drops the shield to the body/legs (0 dmg when it blocks); BLOCKS shoot, slide, rush-style hit (Skater Kid), projectile hit (Woman Hero), AND grounded supers. Does NOT block a regular melee hit or an AIRBORNE super — those come over the top and HURT you. +${METER.GAIN_ON_BLOCK} meter on a successful block
+  super_move → your character-specific special (cost meter); deals heavy damage (some also heal you); BLOCKED by the MATCHING guard — an AIRBORNE super is stopped by defend_high, a GROUNDED super by defend_low (wrong guard = full damage; there are no unblockable supers anymore). CLASH only when BOTH supers occupy the same lane — both airborne (collide mid-flight, fall with death anim, no HP loss) OR both grounded (silent clash, no HP loss, meter still spent). MIXED airborne-vs-grounded does NOT clash. ALL supers LAND on a sliding defender (slider takes full damage). MELEE hit INTERRUPTS a super — hitter's lunge clips the super-er mid-windup, they take the hit damage and the super never connects.
 
 SUPER METER:
   Meter fills from 0→${METER.MAX} during the fight by landing hits, sliding, jumping, or TAKING DAMAGE (+${METER.GAIN_ON_TAKING_DAMAGE} comeback bonus).
@@ -122,7 +123,7 @@ export function buildFighterPrompt(fighter, opponent, fightState) {
     : wrapSimpleStrategy(fighter.prompt || '');
 
   const system = substituteVariables(template, ctx);
-  const userMessage = `Respond now with ONLY a JSON array of exactly ${n} moves, e.g. ["hit", "defend", "super_move"].`;
+  const userMessage = `Respond now with ONLY a JSON array of exactly ${n} moves, e.g. ["hit", "defend_high", "super_move"].`;
 
   return { system, messages: [{ role: 'user', content: userMessage }] };
 }
@@ -152,8 +153,8 @@ ACTION HISTORY (entire game so far): {action_history}
 YOUR STRATEGY:
 ${strat}
 
-Valid moves: hit, defend, shoot, slide, jump, idle, super_move.
-Return ONLY a JSON array of exactly {n} move strings, e.g. ["hit", "defend", "super_move"].`;
+Valid moves: hit, shoot, slide, jump, idle, defend_high, defend_low, super_move.
+Return ONLY a JSON array of exactly {n} move strings, e.g. ["hit", "defend_high", "super_move"].`;
 }
 
 // ── Move mapping ─────────────────────────────────────────────────────────────
@@ -166,8 +167,12 @@ export function resolveSuperMove(charId) {
 /** Map one model-emitted token to a valid engine action for this character. */
 function mapModelMove(raw, charId) {
   if (typeof raw !== 'string') return 'none';
-  const t = raw.trim().toLowerCase();
+  const t = raw.trim().toLowerCase().replace(/[\s-]+/g, '_');
   if (SUPER_SYNONYMS.has(t) || isUltimateKey(t)) return resolveSuperMove(charId);
+  // Graceful aliases for the two guards: a bare 'defend' (old habit / generic
+  // block) defaults to the overhead HIGH guard; accept a few spellings.
+  if (t === 'defend' || t === 'block' || t === 'defend_h' || t === 'high_defend') return 'defend_high';
+  if (t === 'defend_l' || t === 'low_defend' || t === 'crouch_defend') return 'defend_low';
   if (BASE_ACTIONS.includes(t)) return t;
   return 'none';
 }

@@ -25,7 +25,8 @@ export const BASE_MOVES = [
   { key: 'hit',    name: 'Hit',    dmg: 10 },
   { key: 'shoot',  name: 'Shoot',  dmg: 12 },
   { key: 'slide',  name: 'Slide',  dmg: 6 },
-  { key: 'defend', name: 'Defend', dmg: 0 },
+  { key: 'defend_high', name: 'Guard High', dmg: 0 },
+  { key: 'defend_low',  name: 'Guard Low',  dmg: 0 },
 ];
 
 // Runtime variables a player can drop into an advanced strategy prompt.

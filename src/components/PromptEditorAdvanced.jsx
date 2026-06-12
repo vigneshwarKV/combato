@@ -62,7 +62,7 @@ export default function PromptEditorAdvanced({ prompt, onChange, disabled }) {
           spellCheck={false}
         />
         <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-          End with: return ONLY a JSON array of exactly 3 moves, e.g. ["hit", "defend", "super_move"].
+          End with: return ONLY a JSON array of exactly 3 moves, e.g. ["hit", "defend_high", "super_move"].
         </p>
       </div>
     </div>

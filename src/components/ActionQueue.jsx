@@ -3,7 +3,8 @@ const ACTION_ICONS = {
   kick: '🦵',
   jump: '↑',
   crouch: '↓',
-  defend: '🛡',
+  defend_high: '🛡',
+  defend_low: '🛡',
   supermove: '⚡',
   none: '💤'
 };
@@ -13,7 +14,8 @@ const ACTION_COLORS = {
   kick: '#a855f7',
   jump: '#3b82f6',
   crouch: '#10b981',
-  defend: '#6b7280',
+  defend_high: '#6b7280',
+  defend_low: '#6b7280',
   supermove: '#ef4444',
   none: '#4b5563'
 };
@@ -75,8 +77,9 @@ export default function ActionQueue({ movesA = [], movesB = [], currentIndex = -
   const getOutcome = (index, side) => {
     const turn = completedTurns[index];
     if (!turn) return null;
-    if (side === 'A') return { damageDealt: turn.damageToB, blocked: turn.damageToA === 0 && turn.actionB !== 'defend' };
-    return { damageDealt: turn.damageToA, blocked: turn.damageToB === 0 && turn.actionA !== 'defend' };
+    const isDefend = (a) => a === 'defend_low' || a === 'defend_high';
+    if (side === 'A') return { damageDealt: turn.damageToB, blocked: turn.damageToA === 0 && !isDefend(turn.actionB) };
+    return { damageDealt: turn.damageToA, blocked: turn.damageToB === 0 && !isDefend(turn.actionA) };
   };
 
   return (

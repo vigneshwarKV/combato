@@ -3,7 +3,8 @@ const ACTION_LABELS = {
   kick:      '🦵 KICK',
   jump:      '↑ JUMP',
   crouch:    '↓ CROUCH',
-  defend:    '🛡 DEFEND',
+  defend_high: '🛡 GUARD HIGH',
+  defend_low:  '🛡 GUARD LOW',
   supermove: '⚡ SUPER!',
   none:      '💤 NONE',
 };
@@ -13,7 +14,7 @@ const ACTION_LABELS = {
 export default function Fighter({ fighter, animClass = 'anim-idle', animKey = 0, hitClass = '', hitKey = 0, side = 'A', currentAction = null }) {
   const { color = '#6366f1', hp = 100 } = fighter;
   const isDead = hp <= 0;
-  const isDefending = animClass === 'anim-defend';
+  const isDefending = animClass === 'anim-defend_high' || animClass === 'anim-defend_low';
 
   const colorBack = color + 'aa';
 

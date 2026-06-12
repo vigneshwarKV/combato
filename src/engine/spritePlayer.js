@@ -86,7 +86,7 @@ export function playAnimation(sprite, character, actionKey) {
     try {
       const track = sprite.state.setAnimation(0, animationName, loop);
       if (track) {
-        if (actionKey === 'defend') {
+        if (actionKey === 'defend_low' || actionKey === 'defend_high') {
           track.trackTime = 0;     // freeze on first frame (matches idle position)
           track.timeScale = 0;     // freeze on that pose
         } else {

@@ -1,9 +1,45 @@
 import { CHARACTERS, METER, BASE_DAMAGE, getUltimate, isAirborneUltimate } from '../data/characters.js';
 
-export const BASE_ACTIONS = ['idle', 'jump', 'hit', 'shoot', 'slide', 'defend'];
+export const BASE_ACTIONS = ['idle', 'jump', 'hit', 'shoot', 'slide', 'defend_low', 'defend_high'];
+
+// The two guard stances. defend_high braces overhead (blocks high-line attacks:
+// regular melee hit + airborne supers); defend_low guards the body/legs (blocks
+// low-line attacks: shoot, slide, rush/projectile hits, grounded supers).
+// Guessing the wrong line = the attack lands for full damage.
+export const DEFEND_ACTIONS = ['defend_low', 'defend_high'];
+
+export function isDefendAction(action) {
+  return action === 'defend_low' || action === 'defend_high';
+}
 
 export function isUltimateKey(action) {
   return typeof action === 'string' && action.startsWith('ultimate_');
+}
+
+// Which guard line an offensive action travels on. 'high' attacks are stopped
+// only by defend_high, 'low' attacks only by defend_low. Returns null for
+// non-offensive actions (idle/jump/defend/none).
+//   hit  → 'high' normally; 'low' for rush-style (Skater Kid) or projectile-
+//          style (Woman Hero) hits.
+//   shoot/slide → always 'low'.
+//   ultimate → 'high' when airborne (flyHit/jet-pack), else 'low' (grounded).
+export function attackLine(action, attackerCharId) {
+  if (action === 'hit') {
+    const c = CHARACTERS[attackerCharId];
+    const isRush = !!c?.hitIsRushStyle;
+    const isProj = !!c?.extraProjectileActions?.includes('hit');
+    return (isRush || isProj) ? 'low' : 'high';
+  }
+  if (action === 'shoot' || action === 'slide') return 'low';
+  if (isUltimateKey(action)) return isAirborneUltimate(attackerCharId, action) ? 'high' : 'low';
+  return null;
+}
+
+// True when `defendAction` is the guard that stops an attack on `line`.
+function guardBlocks(defendAction, line) {
+  if (line === 'high') return defendAction === 'defend_high';
+  if (line === 'low') return defendAction === 'defend_low';
+  return false;
 }
 
 export function validActionsForCharacter(charId) {
@@ -127,13 +163,16 @@ export function resolveActions(
     if (ult?.gainMeter) newMeterB = Math.min(METER.MAX, newMeterB + ult.gainMeter);
   }
 
-  // 6. Meter gains from this turn's outcomes
+  // 6. Meter gains from this turn's outcomes. A successful block is recorded
+  // as a `blocked` event tagged with the DEFENDER's label.
+  const aBlocked = events.some(e => e.type === 'blocked' && e.defender === 'A');
+  const bBlocked = events.some(e => e.type === 'blocked' && e.defender === 'B');
   newMeterA = applyMeterGains(newMeterA, {
     landedHit: (actualA === 'hit' || actualA === 'slide') && aHit,
     landedShot: actualA === 'shoot' && aHit,
     tookDamage: damageToA > 0,
     slidPast: actualA === 'slide' && !aHit && (actualB === 'hit' || actualB === 'shoot'),
-    blockedAttack: actualA === 'defend' && (actualB === 'hit' || isUltimateKey(actualB)) && !bHit,
+    blockedAttack: aBlocked,
     evadedByJump: actualA === 'jump' && (actualB === 'hit' || actualB === 'shoot') && !bHit,
   });
   newMeterB = applyMeterGains(newMeterB, {
@@ -141,7 +180,7 @@ export function resolveActions(
     landedShot: actualB === 'shoot' && bHit,
     tookDamage: damageToB > 0,
     slidPast: actualB === 'slide' && !bHit && (actualA === 'hit' || actualA === 'shoot'),
-    blockedAttack: actualB === 'defend' && (actualA === 'hit' || isUltimateKey(actualA)) && !aHit,
+    blockedAttack: bBlocked,
     evadedByJump: actualB === 'jump' && (actualA === 'hit' || actualA === 'shoot') && !aHit,
   });
 
@@ -180,7 +219,7 @@ function coerceAction(requested, charId, meter) {
 
 function computeAttack(attacker, defender, attackerCharId, defenderCharId, events, attackerLabel, defenderLabel) {
   // Non-offensive actions (slide is offensive in the new matrix; handled below)
-  if (['idle', 'jump', 'defend', 'none'].includes(attacker)) {
+  if (['idle', 'jump', 'defend_low', 'defend_high', 'none'].includes(attacker)) {
     return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: false } };
   }
 
@@ -220,12 +259,13 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
       events.push({ type: 'miss', attacker: attackerLabel, reason: 'slid' });
       return hit(0, false);
     }
-    // Defend blocks regular melee hit, but NOT rush-style charges (Skater
-    // Kid's skateboard run carries too much momentum) and NOT projectile-
-    // style hits (Woman Hero's IceShoot — arrows pierce a shield raised for
-    // melee). Defender takes full hit damage in those cases.
-    if (defender === 'defend' && !attackerIsRushHit && !attackerIsProjHit) {
-      events.push({ type: 'blocked', defender: defenderLabel, kind: 'hit' });
+    // Guard block by line: a regular melee hit travels HIGH (stopped only by
+    // defend_high); a rush-style charge (Skater Kid) or projectile-style hit
+    // (Woman Hero) travels LOW (stopped only by defend_low). Guessing the
+    // wrong guard lets the hit land for full damage (falls through below).
+    if (isDefendAction(defender) && guardBlocks(defender, attackLine('hit', attackerCharId))) {
+      const kind = attackerIsRushHit ? 'rush' : (attackerIsProjHit ? 'projhit' : 'hit');
+      events.push({ type: 'blocked', defender: defenderLabel, kind });
       return hit(0, false);
     }
     // Melee hit attacker rushing forward gets stopped by an opposing FAST
@@ -245,8 +285,13 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
   }
 
   if (attacker === 'shoot') {
-    // Shoot travels straight — jump still evades. Defend does NOT block shoot
-    // (a shield is for melee/ultimate impact, not stopping projectiles).
+    // Shoot travels the LOW line — a low guard catches the projectile on the
+    // shield. A high guard leaves the body open, so the shot lands.
+    if (defender === 'defend_low') {
+      events.push({ type: 'blocked', defender: defenderLabel, kind: 'shoot' });
+      return hit(0, false);
+    }
+    // Shoot travels straight — jump still evades.
     if (defender === 'jump')  { events.push({ type: 'miss', attacker: attackerLabel, reason: 'jumped' }); return hit(0, false); }
     if (defender === 'slide') {
       // Fast bullets catch the slider mid-slide. Slow throws (turtle / monkey
@@ -297,6 +342,12 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
     // create an arrow rain the slider can't slide through. Projectile-style
     // hits (womanHero's IceShoot3 jumpShoot — she rises up to fire) put the
     // attacker out of leg-clip range too.
+    // A low tackle is caught by a low guard (shield dropped to the legs); a
+    // high guard is raised over the head and gets swept out from under.
+    if (defender === 'defend_low') {
+      events.push({ type: 'blocked', defender: defenderLabel, kind: 'slide' });
+      return hit(0, false);
+    }
     if (defender === 'jump') { events.push({ type: 'miss', attacker: attackerLabel, reason: 'jumped' }); return hit(0, false); }
     if (defender === 'hit' && CHARACTERS[defenderCharId]?.extraProjectileActions?.includes('hit')) {
       events.push({ type: 'miss', attacker: attackerLabel, reason: 'attacker_airborne' });
@@ -324,11 +375,15 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
     const ult = getUltimate(attackerCharId, attacker);
     if (!ult) return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: false } };
 
-    // Defend blocks Ultimates (only hit + ultimate are blockable per the matrix).
-    // Exception: `piercesShield` characters (Woman Hero) punch their ultimate
-    // straight through a raised guard for full damage — same way her hit pierces.
-    if (defender === 'defend' && !ult.unblockable && !CHARACTERS[attackerCharId]?.piercesShield) {
-      events.push({ type: 'blocked', defender: defenderLabel, kind: 'ultimate', name: ult.name });
+    // Guard block by line: an AIRBORNE super (flyHit / jet-pack) crashes down
+    // HIGH and is stopped by defend_high; a GROUNDED super runs in LOW and is
+    // stopped by defend_low. Either guard guessed wrong lets the super land for
+    // full damage. (`unblockable` / `piercesShield` no longer bypass a guard —
+    // the high/low guess is the only counter now.)
+    const ultLine = attackLine(attacker, attackerCharId);
+    if (isDefendAction(defender) && guardBlocks(defender, ultLine)) {
+      const kind = ultLine === 'high' ? 'ultimate_air' : 'ultimate_ground';
+      events.push({ type: 'blocked', defender: defenderLabel, kind, name: ult.name });
       return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: true, ult, blocked: true } };
     }
 

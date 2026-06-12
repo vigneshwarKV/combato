@@ -1,11 +1,11 @@
-import { isUltimateKey } from './damageEngine.js';
+import { isUltimateKey, isDefendAction } from './damageEngine.js';
 
 // Single source of truth for per-action animation durations. Imported by the
 // fight loop, the spectator renderer, and DevPage so they share one timing
 // budget. Keep keys aligned with `ACTION_KEYS` in `data/characters.js`.
 export const ANIM_DURATION = {
   idle: 500, jump: 900, hit: 800, shoot: 800,
-  slide: 950, defend: 700, hurt: 500, death: 800, none: 500, ultimate: 1550,
+  slide: 950, defend_low: 700, defend_high: 700, hurt: 500, death: 800, none: 500, ultimate: 1550,
   // Attacker thrown back (death pose) after a hit/ultimate is blocked by a
   // shield. Long enough for the backward throw + settle tween + death pose to
   // read (see ArenaStage.tweenKnockback).
@@ -431,11 +431,14 @@ export function computeAttackTiming(result, characterA, characterB) {
   // DEFENDER's label, so a block with defender 'B' means A's blow bounced off
   // B's shield → A is thrown (and vice-versa). `piercesShield` attackers
   // (Woman Hero) never produce a block event, so they're naturally exempt.
-  // The throw only overrides a fighter with no existing damage reaction.
-  const aThrownBack = !reactionA
-    && (result.events?.some(e => e.type === 'blocked' && e.defender === 'B') ?? false);
-  const bThrownBack = !reactionB
-    && (result.events?.some(e => e.type === 'blocked' && e.defender === 'A') ?? false);
+  // The throw only overrides a fighter with no existing damage reaction. A
+  // blocked SHOOT doesn't throw the attacker — the shooter stands still and the
+  // projectile simply dies on the shield — so those blocks are excluded.
+  const physicalBlock = (defenderLabel) => result.events?.some(
+    e => e.type === 'blocked' && e.defender === defenderLabel && e.kind !== 'shoot'
+  ) ?? false;
+  const aThrownBack = !reactionA && physicalBlock('B');
+  const bThrownBack = !reactionB && physicalBlock('A');
   const outReactionA = aThrownBack ? 'knockback' : reactionA;
   const outReactionB = bThrownBack ? 'knockback' : reactionB;
   const outReactionAtA = aThrownBack ? shieldThrowAt(actionA, characterA) : reactionAtA;
@@ -443,24 +446,31 @@ export function computeAttackTiming(result, characterA, characterB) {
   // Each fighter's "natural" anim duration accounts for the launch delay.
   const ownAnimEndA = launchAnimA ? launchAtA + durationFor(launchAnimA) : durationFor(initialAnimA);
   const ownAnimEndB = launchAnimB ? launchAtB + durationFor(launchAnimB) : durationFor(initialAnimB);
-  // Successful block: when defender blocks an opposing hit or Ultimate (no
-  // damage taken), they should hold the defend pose for the full duration of
-  // the attacker's animation — without this, the defender's defend ends at
-  // ANIM_DURATION.defend (700ms) while the attacker is still mid-swing/ult.
-  const aDefendBlocking = actionA === 'defend' && damageToA === 0
-    && (actionB === 'hit' || isUltimateKey(actionB));
-  const bDefendBlocking = actionB === 'defend' && damageToB === 0
-    && (actionA === 'hit' || isUltimateKey(actionA));
+  // Successful block: when a guard (defend_low / defend_high) stops an opposing
+  // attack (a `blocked` event tagged with the defender's label), the defender
+  // holds the guard pose for the full duration of the attacker's animation —
+  // without this the guard ends at ANIM_DURATION.defend (700ms) while the
+  // attacker is still mid-swing / mid-shot / mid-ult.
+  const aDefendBlocking = isDefendAction(actionA) && damageToA === 0
+    && (result.events?.some(e => e.type === 'blocked' && e.defender === 'A') ?? false);
+  const bDefendBlocking = isDefendAction(actionB) && damageToB === 0
+    && (result.events?.some(e => e.type === 'blocked' && e.defender === 'B') ?? false);
   // Victim clears at reaction + reaction-anim duration; non-victim clears at
   // the natural anim end (extended to opponent's anim when blocking, and to
   // the thrown attacker's knockback so the defender holds the shield until the
   // opponent finishes tumbling).
+  // Hold the guard until the attack actually CONNECTS, not just until its anim
+  // duration elapses — a slow thrower (Monkey / Turtle spear) releases late, so
+  // its projectile reaches the shield well after durationFor('shoot'). impact*
+  // already folds in the per-character spawn delay; +buffer keeps the guard up
+  // a beat past contact so it never drops before the weapon lands on it.
+  const BLOCK_HOLD_BUFFER = 150;
   const clearA = outReactionA ? outReactionAtA + durationFor(outReactionA)
-    : aDefendBlocking ? Math.max(ownAnimEndA, durationFor(actionB),
+    : aDefendBlocking ? Math.max(ownAnimEndA, durationFor(actionB), impactB + BLOCK_HOLD_BUFFER,
         bThrownBack ? outReactionAtB + durationFor('knockback') : 0)
     : ownAnimEndA;
   const clearB = outReactionB ? outReactionAtB + durationFor(outReactionB)
-    : bDefendBlocking ? Math.max(ownAnimEndB, durationFor(actionA),
+    : bDefendBlocking ? Math.max(ownAnimEndB, durationFor(actionA), impactA + BLOCK_HOLD_BUFFER,
         aThrownBack ? outReactionAtA + durationFor('knockback') : 0)
     : ownAnimEndB;
   return {
