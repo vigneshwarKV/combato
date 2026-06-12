@@ -81,48 +81,87 @@ export function playClip(url, { gain = 1 } = {}) {
 }
 
 // ── Background music ─────────────────────────────────────────────────────────
-// One looping track that plays for the whole session. Can't START before a
-// user gesture (autoplay policy), so registration just stashes the request and
-// the gesture-unlock below actually starts it.
+// One looping theme, played ONLY while a fight is on screen — the Arena drives
+// start (match begins) and stop (match ends / leave). Gated by a user on/off
+// preference, and it can't start before audio is unlocked by a gesture.
 let musicUrl = null;
-let musicOpts = { gain: 0.25, loop: true };
-let musicStarted = false;
+let musicGain = 0.25;
+let musicSource = null;    // the live looping BufferSource while playing
+let musicEnabled = true;   // user on/off preference
+const musicListeners = new Set();
 
-function startMusicNow() {
-  if (musicStarted || !musicUrl) return;
-  if (!audioCtx) return;               // no context yet — the gesture unlock will retry
-  musicStarted = true;
-  const url = musicUrl;
-  const ctx = getCtx();
-  if (ctx.state === 'suspended') ctx.resume();
-  // Decode is async, so by the time the source starts the resume has taken
-  // effect even if the context still read 'suspended' a moment ago.
-  Promise.resolve(decodeClip(url)).then(buffer => {
-    if (!buffer) { musicStarted = false; return; }
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.loop = musicOpts.loop ?? true;
-    const gainNode = ctx.createGain();
-    gainNode.gain.value = musicOpts.gain ?? 0.25;
-    source.connect(gainNode);
-    gainNode.connect(ctx.destination);
-    source.start();
-  }).catch(() => { musicStarted = false; });
+function notifyMusic() {
+  for (const cb of musicListeners) { try { cb(); } catch { /* ignore */ } }
 }
 
-// Register the always-on theme. Fetches the bytes immediately (no context
-// needed) and starts playback as soon as audio is unlocked by a gesture.
-export function startBackgroundMusic(url, { gain = 0.25, loop = true } = {}) {
+// Subscribe to music state changes (start / stop / enable toggle). Returns an
+// unsubscribe fn — lets a React toggle button re-render when music flips.
+export function onMusicChange(cb) {
+  musicListeners.add(cb);
+  return () => musicListeners.delete(cb);
+}
+
+// Register the theme track: fetch the bytes now (no playback, no context). Call
+// once at startup; playback is driven later by startMusic() / the toggle.
+export function setMusicTrack(url, { gain = 0.25 } = {}) {
   musicUrl = url;
-  musicOpts = { gain, loop };
+  musicGain = gain;
   fetchRaw(url);
-  startMusicNow();
 }
 
-// Create + resume the AudioContext, decode any already-prefetched clips, and
-// kick off the background music. MUST be called from within a user gesture
-// (click/key/tap) — that's the only time the browser lets the context start.
-// Safe to call repeatedly; it's a no-op once the context is running.
+export function isMusicEnabled() { return musicEnabled; }
+export function isMusicPlaying() { return !!musicSource; }
+
+// Start the looping theme. No-op if disabled, already playing, no track, or the
+// context isn't unlocked yet (no gesture) — so on a cold reload it silently
+// stays off until the user toggles it on.
+export function startMusic() {
+  if (!musicEnabled || !musicUrl || musicSource || !audioCtx) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  Promise.resolve(decodeClip(musicUrl)).then(buffer => {
+    // Re-check: a stop()/disable may have happened during the async decode.
+    if (!buffer || musicSource || !musicEnabled || !audioCtx) return;
+    const source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.value = musicGain;
+    source.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    source.start();
+    musicSource = source;
+    notifyMusic();
+  }).catch(() => { /* decode failed — silent */ });
+}
+
+export function stopMusic() {
+  if (!musicSource) return;
+  try { musicSource.stop(); } catch { /* ignore */ }
+  musicSource = null;
+  notifyMusic();
+}
+
+// User on/off preference. Disabling stops playback immediately; enabling does
+// not auto-start (the fight lifecycle / toggle decides when to actually play).
+export function setMusicEnabled(on) {
+  musicEnabled = !!on;
+  if (!musicEnabled) stopMusic();
+  notifyMusic();
+}
+
+// Themed on/off toggle handler — runs inside a user gesture, so it's also a
+// valid moment to unlock audio. Playing → mute; off → unlock + enable + play.
+export function toggleMusic() {
+  if (musicSource) {
+    setMusicEnabled(false);
+  } else {
+    unlockAudio();        // gesture: create/resume the context
+    musicEnabled = true;
+    startMusic();
+    notifyMusic();
+  }
+}
+
 // True once a user gesture has created + resumed the AudioContext — i.e. a clip
 // will actually play right now. False before the first gesture this page-load,
 // and also while the context is merely 'suspended' (idle / backgrounded). Use
@@ -142,12 +181,15 @@ export function audioGestured() {
   return !!audioCtx;
 }
 
+// Create + resume the AudioContext and decode any already-prefetched clips. MUST
+// be called from within a user gesture (click/key/tap) — the only time the
+// browser lets the context start. Safe to call repeatedly. Does NOT start music
+// (that's fight-driven now).
 export function unlockAudio() {
   try {
     const ctx = getCtx();
     if (ctx.state === 'suspended') ctx.resume();
     for (const url of rawClips.keys()) decodeClip(url);
-    startMusicNow();
   } catch { /* ignore */ }
   return audioCtx;
 }

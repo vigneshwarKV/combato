@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Icon from '../components/design/Icons.jsx';
 import { CharTile, CharDetail, MovesPanel } from '../components/design/DesignKit.jsx';
 import {
   CHARS, BASE_MOVES, STRAT_VARS,
   loadProfile, saveProfile, charById,
+  randomSimpleStrategy, randomAdvancedStrategy,
 } from '../data/designData.js';
 
 export default function CharSelectPage() {
@@ -14,13 +15,39 @@ export default function CharSelectPage() {
   const initialTab = (location.state?.tab === 'strategy' || queryTab === 'strategy') ? 'strategy' : 'fighter';
   const [tab, setTab] = useState(initialTab);
   const [savedFlash, setSavedFlash] = useState(false);
+
+  // First visit to the strategy tab with no saved strategy yet: prefill a random
+  // suggestion so the editor is never blank. This only touches the in-memory
+  // draft — it is persisted exclusively when the player clicks Save.
+  function withStrategyPrefill(profile) {
+    return {
+      ...profile,
+      strategySimple: profile.strategySimple || randomSimpleStrategy(),
+      strategyAdvanced: profile.strategyAdvanced || randomAdvancedStrategy(),
+    };
+  }
+
   const [draft, setDraft] = useState(() => {
     const p = loadProfile();
-    return {
+    const base = {
       ...p,
       charId: p.charId || CHARS.find(c => !c.locked)?.id || null,
     };
+    // Deep-linked straight onto the strategy tab → prefill right away.
+    return initialTab === 'strategy' ? withStrategyPrefill(base) : base;
   });
+
+  // True once the strategy editor has been prefilled, so we only do it once.
+  const prefilledRef = useRef(initialTab === 'strategy');
+
+  // Switch tabs, prefilling the strategy editor the first time it is opened.
+  function selectTab(t) {
+    if (t === 'strategy' && !prefilledRef.current) {
+      prefilledRef.current = true;
+      setDraft(withStrategyPrefill);
+    }
+    setTab(t);
+  }
 
   useEffect(() => {
     document.body.classList.add('pk-design');
@@ -42,7 +69,7 @@ export default function CharSelectPage() {
     setTimeout(() => {
       if (jumpToStrategy) {
         setSavedFlash(false);
-        setTab('strategy');
+        selectTab('strategy');
       } else {
         navigate('/');
       }
@@ -83,8 +110,8 @@ export default function CharSelectPage() {
         </div>
 
         <div className="settings-tabs">
-          <TabButton n="01" label="Fighter"  active={tab === 'fighter'}  ready={fighterReady}  onClick={() => setTab('fighter')} />
-          <TabButton n="02" label="Strategy" active={tab === 'strategy'} ready={strategyReady} onClick={() => setTab('strategy')} />
+          <TabButton n="01" label="Fighter"  active={tab === 'fighter'}  ready={fighterReady}  onClick={() => selectTab('fighter')} />
+          <TabButton n="02" label="Strategy" active={tab === 'strategy'} ready={strategyReady} onClick={() => selectTab('strategy')} />
         </div>
 
         {tab === 'fighter' && (

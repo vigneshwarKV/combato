@@ -4,12 +4,12 @@ import './index.css'
 import './styles/animations.css'
 import './styles/wrestling.css'
 import App from './App.jsx'
-import { startBackgroundMusic } from './engine/soundEngine.js'
+import { setMusicTrack } from './engine/soundEngine.js'
 
-// Always-on game theme — registered here (fetched immediately, started on the
-// first user gesture per the browser autoplay policy) so it loops across every
-// page for the whole session.
-startBackgroundMusic('/assets/sound/game_theme.mp3', { gain: 0.25, loop: true })
+// Register the game theme (fetches the bytes; no playback yet). The looping
+// music only plays DURING a fight — the Arena starts it when a match begins and
+// stops it when the match ends. A top-bar toggle lets the user turn it on/off.
+setMusicTrack('/assets/sound/game_theme.mp3', { gain: 0.25 })
 
 createRoot(document.getElementById('root')).render(
   <BrowserRouter>

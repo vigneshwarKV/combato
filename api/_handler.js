@@ -43,7 +43,7 @@ export async function handleAi(body, env = process.env) {
   }
 
   // FUTURE: credit check + decrement here (per-user metering) before forwarding.
-
+console.log("***** api calling*****")
   const res = await fetch(provider.url, {
     method: 'POST',
     headers: {
@@ -61,13 +61,16 @@ export async function handleAi(body, env = process.env) {
   });
 
   if (!res.ok) {
-    const detail = await res.text().catch(() => '');
+    const detail = await res.text().catch(() => {console.log("error")});
     const err = new Error(`Upstream ${providerKey} HTTP ${res.status}: ${detail.slice(0, 200)}`);
     err.status = 502;
     throw err;
   }
 
   const data = await res.json();
+
+    
   const text = data.choices?.[0]?.message?.content ?? '';
+    console.log("***** api calling end*****", text)
   return { text };
 }

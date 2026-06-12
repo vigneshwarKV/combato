@@ -20,17 +20,16 @@ function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// Built-in strategy so the bot opponent actually plays via the managed LLM.
-const BOT_STRATEGY = 'Pressure the opponent: build meter with shoot and hit, defend when they attack, and unleash super_move the moment it is available.';
-
+// The bot opponent never uses the AI proxy — `randomOnly` makes the engine
+// play random moves for it every turn, regardless of any API key. Only the
+// player's character calls the managed LLM.
 function buildBotFighter() {
   const char = pickRandom(CHARACTER_LIST);
   return {
     id: 'bot',
     name: pickRandom(BOT_NAMES),
     character: char.id,
-    promptMode: 'simple',
-    prompt: BOT_STRATEGY,
+    randomOnly: true,
   };
 }
 

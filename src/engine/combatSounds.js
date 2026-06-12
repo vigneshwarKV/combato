@@ -23,7 +23,7 @@
  *   8. clash (slide↔slide, hit↔hit, super↔super) → clash.mp3 at the collision.
  *
  * Only real recorded clips are scheduled — the old synthesized SFX are gone.
- * (Background music is handled separately in soundEngine.startBackgroundMusic.)
+ * (Background music is handled separately — see soundEngine startMusic/stopMusic.)
  */
 import { isUltimateKey } from './damageEngine.js';
 import { playClip, preloadClips } from './soundEngine.js';

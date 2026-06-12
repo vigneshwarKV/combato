@@ -7,6 +7,25 @@ import { LandscapeLock } from './design/DesignKit.jsx';
 import { useFight } from '../hooks/useFight.js';
 import { useFightRenderer } from '../hooks/useFightRenderer.js';
 import { CHARACTERS } from '../data/characters.js';
+import { startMusic, stopMusic, toggleMusic, isMusicPlaying, onMusicChange } from '../engine/soundEngine.js';
+
+// Top-bar music on/off toggle. Reflects whether the theme is actually playing
+// (so a cold reload, where audio isn't unlocked, shows OFF). Clicking unlocks
+// audio + starts the theme, or mutes it — see soundEngine.toggleMusic.
+function MusicToggle() {
+  const [playing, setPlaying] = useState(isMusicPlaying());
+  useEffect(() => onMusicChange(() => setPlaying(isMusicPlaying())), []);
+  return (
+    <button
+      onClick={toggleMusic}
+      className="btn-arena btn-arena-sm btn-arena-ghost"
+      title={playing ? 'Music on — click to mute' : 'Music off — click to play'}
+      aria-label={playing ? 'Mute music' : 'Play music'}
+    >
+      {playing ? '🔊' : '🔇'}
+    </button>
+  );
+}
 
 // Fixed canvas design dimensions. All fighter positioning, motion offsets
 // (PNG_MOTION) and projectile aim are tuned in this pixel space, so we render
@@ -21,7 +40,7 @@ const DESIGN_H = 760;
 
 // mode="host"      → runs its own fight via useFight (getMoves from fightConfig for P2P)
 // mode="spectator" → renders fight events from fightEvents prop via useFightRenderer
-export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd, onForceNext, mode = 'host', fightEvents = [], randomBackground = false }) {
+export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd, onForceNext, mode = 'host', fightEvents = [], randomBackground = false, onHome }) {
   // Keep a ref to the broadcast function so the fight loop always uses the latest
   // value without needing it in useCallback deps (avoids stale-closure issues).
   const broadcastRef = useRef(null);
@@ -80,20 +99,18 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
   const host = useFight(fighterA, fighterB, fightConfig, broadcastRef);
   const spectator = useFightRenderer();
 
-  const { fightState, startFight, cancelFight, pauseFight, resumeFight, forceNextBatch, setSpeed } = host;
+  const { fightState, startFight, cancelFight, forceNextBatch } = host;
   const { handleFightEvent } = spectator;
 
   const activeFightState = mode === 'spectator' ? spectator.fightState : fightState;
 
   const {
-    status, batchNumber, hpA, hpB,
+    status, hpA, hpB,
     meterA, meterB, statusA, statusB,
     movesA, movesB, currentTurnIndex, completedTurns,
-    winner,
     animClassA, animClassB, animKeyA, animKeyB,
     hitClassA, hitClassB, hitKeyA, hitKeyB,
     shakeScreen,
-    isPaused, speedMultiplier,
   } = activeFightState;
 
   const currentActionA = currentTurnIndex >= 0 && movesA[currentTurnIndex] ? movesA[currentTurnIndex] : null;
@@ -152,16 +169,16 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
     if (onForceNext) onForceNext.current = forceNextBatch;
   }, [forceNextBatch, onForceNext]);
 
-  const maxBatches = fightConfig.maxBatches || 20;
-  const progressPct = Math.round((batchNumber / maxBatches) * 100);
-
-  const statusLabel = () => {
-    if (status === 'idle' || status === 'calling') return 'Calling AI…';
-    if (status === 'ko') return winner === 'A' ? `${fighterA.name} WINS!` : `${fighterB.name} WINS!`;
-    if (status === 'decision') return winner === 'A' ? `${fighterA.name} wins on HP` : `${fighterB.name} wins on HP`;
-    if (status === 'draw') return 'DRAW — Both Eliminated!';
-    return `Round ${batchNumber}`;
-  };
+  // Music plays ONLY while a fight is on screen: start when a match becomes
+  // active (AI call / animating), stop when it ends (KO / decision / draw), and
+  // always stop when leaving the arena. Works for both bot and tournament since
+  // both render through this component. startMusic is a no-op until audio is
+  // unlocked, so a cold reload stays silent until the user toggles music on.
+  useEffect(() => () => stopMusic(), []);
+  useEffect(() => {
+    if (status === 'ko' || status === 'decision' || status === 'draw') stopMusic();
+    else if (status === 'calling' || status === 'animating') startMusic();
+  }, [status]);
 
   const hasSpriteA = !!(fighterA?.character && CHARACTERS[fighterA.character]);
   const hasSpriteB = !!(fighterB?.character && CHARACTERS[fighterB.character]);
@@ -190,25 +207,28 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
             </div>
           )}
         </div>
-        {mode === 'host' && (
-          <div className="flex gap-2">
-            <button
-              onClick={isPaused ? resumeFight : pauseFight}
-              className="btn-arena btn-arena-sm btn-arena-ghost"
-            >
-              {isPaused ? '▶ Resume' : '⏸ Pause'}
-            </button>
-            <button
-              onClick={() => setSpeed(speedMultiplier === 1 ? 2 : 1)}
-              className="btn-arena btn-arena-sm btn-arena-ghost"
-            >
-              {speedMultiplier === 1 ? '2x' : '1x'}
-            </button>
-          </div>
-        )}
-        {mode === 'spectator' && (
-          <span className="section-label">Spectating</span>
-        )}
+        <div className="flex items-center gap-2">
+          <MusicToggle />
+          {mode === 'host' && (
+            <>
+              <button
+                onClick={isPaused ? resumeFight : pauseFight}
+                className="btn-arena btn-arena-sm btn-arena-ghost"
+              >
+                {isPaused ? '▶ Resume' : '⏸ Pause'}
+              </button>
+              <button
+                onClick={() => setSpeed(speedMultiplier === 1 ? 2 : 1)}
+                className="btn-arena btn-arena-sm btn-arena-ghost"
+              >
+                {speedMultiplier === 1 ? '2x' : '1x'}
+              </button>
+            </>
+          )}
+          {mode === 'spectator' && (
+            <span className="section-label">Spectating</span>
+          )}
+        </div>
       </div>
 
       {/* Stage — the background is a single full-scene image that fills the

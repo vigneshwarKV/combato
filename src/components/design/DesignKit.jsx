@@ -150,17 +150,23 @@ const archToneVar = (cls) =>
 
 export function CharTile({ char, selected, onSelect, onInfo }) {
   const [hovered, setHovered] = useState(false);
-  const active = hovered || selected;
   const engineChar = ENGINE_CHARS[char.id];
   const isSpine = engineChar?.renderMode === 'spine';
+  const locked = !!char.locked;
+  const active = !locked && (hovered || selected);
   return (
     <div
-      className={`char-tile ${selected ? 'selected' : ''} ${hovered ? 'hovered' : ''}`}
+      className={`char-tile ${selected ? 'selected' : ''} ${active ? 'hovered' : ''} ${locked ? 'locked' : ''}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={() => onSelect(char.id)}
+      onClick={() => { if (!locked) onSelect(char.id); }}
     >
-      {onInfo && (
+      {locked && (
+        <div className="char-tile-lock" aria-label={`${char.name} locked`} title="Locked">
+          <Icon name="lock" size={20} />
+        </div>
+      )}
+      {onInfo && !locked && (
         <button
           className="char-tile-info"
           onClick={e => { e.stopPropagation(); onInfo(char.id); }}

@@ -70,24 +70,25 @@ export async function runFight(fighterA, fighterB, fightConfig, onEvent) {
       };
       [rawA, rawB] = await fightConfig.getMoves(batchNumber, context);
     } else {
+      // A `randomOnly` fighter (e.g. the bot opponent) never hits the AI proxy —
+      // it always plays the random fallback, regardless of any prompt/API key.
+      const aiOrRandom = (fighter, self, opp, state) =>
+        fighter.randomOnly
+          ? Promise.resolve(null)
+          : callAI(fighter, buildFighterPrompt(self, opp, state), defaults);
+
       [rawA, rawB] = await Promise.all([
-        callAI(
+        aiOrRandom(
           { ...fighterA, character: charIdA },
-          buildFighterPrompt(
-            { ...fighterA, hp: hpA, character: charIdA },
-            { ...fighterB, hp: hpB, character: charIdB },
-            fightStateA()
-          ),
-          defaults
+          { ...fighterA, hp: hpA, character: charIdA },
+          { ...fighterB, hp: hpB, character: charIdB },
+          fightStateA()
         ),
-        callAI(
+        aiOrRandom(
           { ...fighterB, character: charIdB },
-          buildFighterPrompt(
-            { ...fighterB, hp: hpB, character: charIdB },
-            { ...fighterA, hp: hpA, character: charIdA },
-            fightStateB()
-          ),
-          defaults
+          { ...fighterB, hp: hpB, character: charIdB },
+          { ...fighterA, hp: hpA, character: charIdA },
+          fightStateB()
         ),
       ]);
     }
@@ -99,10 +100,11 @@ export async function runFight(fighterA, fighterB, fightConfig, onEvent) {
     const movesA = resolveMoves(rawA, charIdA, meterA);
     const movesB = resolveMoves(rawB, charIdB, meterB);
 
-    if (!rawA || !Array.isArray(rawA) || rawA.length !== n) {
+    // A randomOnly fighter's null is an intentional random turn, not a failure.
+    if (!fighterA.randomOnly && (!rawA || !Array.isArray(rawA) || rawA.length !== n)) {
       onEvent({ type: 'api_error', fighter: 'A', fallbackUsed: true });
     }
-    if (!rawB || !Array.isArray(rawB) || rawB.length !== n) {
+    if (!fighterB.randomOnly && (!rawB || !Array.isArray(rawB) || rawB.length !== n)) {
       onEvent({ type: 'api_error', fighter: 'B', fallbackUsed: true });
     }
 

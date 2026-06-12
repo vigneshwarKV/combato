@@ -39,6 +39,37 @@ export const STRAT_VARS = [
   { v: '{N}',                desc: 'Number of moves to return this turn' },
 ];
 
+// First-visit strategy suggestions. When a player opens the strategy editor for
+// the first time (no saved strategy yet), CharSelectPage prefills the textarea
+// with one of these at random so the field is never blank. They live only in the
+// in-memory draft — nothing is persisted unless the player hits Save.
+export const SAMPLE_SIMPLE_STRATEGIES = [
+  'Always try to defend first and hit hard when hp reduces.',
+  'Open aggressive — rush with hits and slides, then guard once you are ahead.',
+  'Bait their jumps and punish with shoots. Save your super_move for when they are low.',
+  'Play patient: read their pattern with high and low guards, then unleash super_move when charged.',
+  'Mirror the opponent — block what they throw, then counter with your strongest move.',
+];
+
+export const SAMPLE_ADVANCED_STRATEGIES = [
+  `Valid moves: hit, shoot, slide, jump, idle, defend_high, defend_low, super_move.
+Return ONLY a JSON array of exactly 3 move strings, e.g. ["hit", "defend_high", "super_move"].`,
+  `You are at {hp} HP with {meter} meter. Your opponent's moves: {opponent_moveset}.
+Punish their {previous_actions}, defend when you are low, and fire super_move the moment it is charged.
+Valid moves: hit, shoot, slide, jump, idle, defend_high, defend_low, super_move.
+Return ONLY a JSON array of exactly {N} move strings, e.g. ["hit", "defend_high", "super_move"].`,
+];
+
+function pickRandom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+/** A random plain-English strategy suggestion for the Simple editor. */
+export function randomSimpleStrategy() { return pickRandom(SAMPLE_SIMPLE_STRATEGIES); }
+
+/** A random full-prompt suggestion for the Advanced editor. */
+export function randomAdvancedStrategy() { return pickRandom(SAMPLE_ADVANCED_STRATEGIES); }
+
 // Simple deterministic per-character design stats (1–5 scale) derived from the
 // engine stats, plus a tagline + rank for the detail card.
 const RANKS = ['S', 'A', 'A', 'B', 'B', 'C'];
@@ -70,24 +101,35 @@ function thumbFor(c) {
   return `${c.assetBase}/frames/Idle/${prefix}Idle_000.png`;
 }
 
+// Temporary playable roster — only these fighters are unlocked for now;
+// every other character renders as locked in the loadout picker.
+const UNLOCKED_IDS = new Set([
+  'beast', 'madScientist', 'womanHero', 'monkey', 'turtle', 'spaceGirl', 'skater',
+]);
+
 // Build the design roster from the engine roster so the two never drift.
-export const CHARS = Object.values(CHARACTERS).map((c, i) => {
-  const atk = c.stats?.attack ?? 3;
-  const def = c.stats?.defense ?? 3;
-  const spd = Math.max(1, Math.min(5, 6 - Math.round((atk + def) / 2)));
-  const ult = c.ultimates?.[0];
-  return {
-    id: c.id,
-    name: c.name,
-    archetype: c.archetype,
-    locked: false,                 // all characters unlocked for now
-    rank: rankFor(i),
-    tagline: TAGLINES[c.id] || c.description || '',
-    thumb: thumbFor(c),
-    stats: { atk, def, spd },
-    ult: ult ? { name: ult.name, dmg: (ult.damage ?? 0) * (ult.hits ?? 1) } : null,
-  };
-});
+// Unlocked fighters are sorted to the front so the picker leads with what's
+// playable; locked ones follow. Sort is stable so engine order is preserved
+// within each group.
+export const CHARS = Object.values(CHARACTERS)
+  .map((c, i) => {
+    const atk = c.stats?.attack ?? 3;
+    const def = c.stats?.defense ?? 3;
+    const spd = Math.max(1, Math.min(5, 6 - Math.round((atk + def) / 2)));
+    const ult = c.ultimates?.[0];
+    return {
+      id: c.id,
+      name: c.name,
+      archetype: c.archetype,
+      locked: !UNLOCKED_IDS.has(c.id),   // temporarily lock all but the playable few
+      rank: rankFor(i),
+      tagline: TAGLINES[c.id] || c.description || '',
+      thumb: thumbFor(c),
+      stats: { atk, def, spd },
+      ult: ult ? { name: ult.name, dmg: (ult.damage ?? 0) * (ult.hits ?? 1) } : null,
+    };
+  })
+  .sort((a, b) => Number(a.locked) - Number(b.locked));
 
 export function charById(id) {
   return CHARS.find(c => c.id === id) || null;
@@ -114,9 +156,11 @@ export function loadProfile() {
     if (!raw) return defaultProfile();
     const profile = { ...defaultProfile(), ...JSON.parse(raw) };
     // A profile saved on another machine may reference a character id that no
-    // longer exists in the roster. Drop it so the UI prompts a fresh pick
-    // instead of trying to render a missing fighter.
-    if (profile.charId && !CHARACTERS[profile.charId]) profile.charId = null;
+    // longer exists in the roster, or one that's since been locked. Drop it so
+    // the UI prompts a fresh pick instead of rendering a missing/locked fighter.
+    if (profile.charId && (!CHARACTERS[profile.charId] || !UNLOCKED_IDS.has(profile.charId))) {
+      profile.charId = null;
+    }
     return profile;
   } catch {
     return defaultProfile();
