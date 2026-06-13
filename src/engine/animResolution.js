@@ -88,15 +88,16 @@ export function hasUltimateHit(events, victim) {
   return events?.some(e => e.type === 'ultimate' && e.victim === victim && (e.damage ?? 0) > 0) || false;
 }
 
-// resolveActions adds `ult.selfDamage` (e.g. Beast's Rocket Charge -5 HP) onto
-// the attacker's `damageTo*` total, but that's a status cost — NOT a hit from
-// the opponent. Reaction anims should only fire on opponent-inflicted damage,
-// otherwise Beast swaps to `hurt` mid-rocket-charge and clips its own ult.
+// resolveActions adds `ult.selfDamage` (e.g. Beast's Rocket Charge -5 HP) and
+// a shield-blocked super's backfire onto the attacker's `damageTo*` total, but
+// those are self-inflicted — NOT a hit from the opponent. Reaction anims should
+// only fire on opponent-inflicted damage, otherwise the attacker swaps to
+// `hurt` mid-ult and clips its own animation.
 function selfDamageFor(events, fighter) {
   if (!events?.length) return 0;
   let total = 0;
   for (const e of events) {
-    if (e.type === 'self_damage' && e.fighter === fighter) total += (e.amount ?? 0);
+    if ((e.type === 'self_damage' || e.type === 'super_backfire') && e.fighter === fighter) total += (e.amount ?? 0);
   }
   return total;
 }
@@ -202,6 +203,15 @@ const SHOOT_HIT_OFFSET_MS = 250;
 function shootSlideHitsAt(opponentImpact) {
   return Math.max(0, opponentImpact - SHOOT_HIT_OFFSET_MS);
 }
+
+// An interrupted slow thrower recoils just before its own spear would release,
+// so the pending projectile is cancelled. Fire SHOOT_INTERRUPT_LEAD before the
+// spawn delay (clamped to 0 for fast guns, though those never get interrupted).
+const SHOOT_INTERRUPT_LEAD = 80;
+function shotInterruptReactAt(interruptedChar) {
+  const spawn = interruptedChar?.projectileDelayByAction?.shoot ?? interruptedChar?.projectileDelayMs ?? 0;
+  return Math.max(0, spawn - SHOOT_INTERRUPT_LEAD);
+}
 function slideHoldFor(ownAction, ownDamage, opponentAction, opponentImpact, opponentChar) {
   // Rush-style hits (Skater Kid's skateboard run) get the slide-pattern
   // reaction TIMING, but skip the idle hold — their fwdMs is long enough
@@ -230,12 +240,34 @@ function hitVsShootReactAt(hitterChar) {
   return Math.round(fwdMs * HIT_VS_SHOOT_REACTION_RATIO);
 }
 
+// True when `action` is `character`'s ranged super (Woman Hero's arrow volley)
+// — one that fires from range and can't be interrupted by a charging melee hit.
+function isRangedSuper(action, character) {
+  if (!isUltimateKey(action)) return false;
+  return !!character?.ultimates?.find(u => u.key === action)?.rangedSuper;
+}
+
+// A melee hit charging into a ranged super pauses briefly so the volley fires
+// first, then the hitter gets clipped and thrown back. Hold the lunge so it
+// begins HIT_VS_SUPER_LUNGE_LEAD before the arrows hit (shootSlideHitsAt) —
+// a short forward lunge, then the throwback reaction at the volley's impact.
+const HIT_VS_SUPER_LUNGE_LEAD = 150;
+function hitSuperHoldFor(active, opponentImpact) {
+  if (!active) return 0;
+  const reactionAt = shootSlideHitsAt(opponentImpact);
+  return Math.max(0, reactionAt - HIT_VS_SUPER_LUNGE_LEAD);
+}
+
 // When a blocked attacker is thrown back, decide WHEN the throw fires.
 //   melee hit → at normal impact (the punch meets the shield and bounces).
-//   ultimate  → the super move flies all the way in and the hit lands FIRST;
-//               only after the forward flight + half the hold does the shield
-//               hurl the attacker away. So fire later than the normal ult
-//               impact (which is ~0.93·fwdMs, mid-descent).
+//   ultimate  → the super flies up and the descending hammer/roll meets the
+//               shield partway down — the attacker is hurled back THEN, before
+//               the slam fully lands.
+// Slam-style supers (Orbit Strike / Rocket Charge) descend onto a HIGH guard —
+// fire the throwback partway down so the hammer gets a bit of swing in before
+// the body bounces off the shield, but still before it reaches the ground
+// (which would read as punching through the shield).
+const SLAM_BLOCK_THROW_T = 0.95;
 function shieldThrowAt(action, character) {
   if (isUltimateKey(action)) {
     const fwd = fwdMsFor(action, character) ?? DEFAULT_FWD_MS.ult;
@@ -244,11 +276,7 @@ function shieldThrowAt(action, character) {
     // rolling-in-place. Fire the throwback right as fwd ends (small buffer
     // so the head contact registers visually).
     if (action === 'ultimate_roll') return fwd + 30;
-    // Other ults (slam-style) fly all the way in, the hit "lands" on the
-    // shield, then the throwback fires after half the hold — reads as
-    // "impact, brief contact, hurled away".
-    const hold = character?.motionOverrides?.[action]?.holdMs ?? 500;
-    return Math.round(fwd + hold * 0.5);
+    return Math.round(fwd * SLAM_BLOCK_THROW_T);
   }
   return impactDelayFor(action, character);
 }
@@ -296,10 +324,23 @@ export function computeAttackTiming(result, characterA, characterB) {
   // takes no damage in that pairing (slide rushes the thrower instead).
   // Airborne Ultimates also don't hold — the slider plays their full slide
   // and the reaction fires when the slide naturally completes.
+  // Normal melee hit charging into a RANGED super (Woman Hero's arrow volley):
+  // the engine lets the volley land and interrupts the hit. Give the lunge a
+  // slight pause (hold) so the arrows visibly fire first, then the hitter gets
+  // clipped and thrown back. Rush-style / projectile hits are handled by the
+  // shoot-pattern path, so this is scoped to plain melee hits.
+  const aHitVsRangedSuper = actionA === 'hit' && damageToA > 0
+    && !isProjectileHit(characterA) && !characterA?.hitIsRushStyle
+    && isRangedSuper(actionB, characterB);
+  const bHitVsRangedSuper = actionB === 'hit' && damageToB > 0
+    && !isProjectileHit(characterB) && !characterB?.hitIsRushStyle
+    && isRangedSuper(actionA, characterA);
   const launchAtA = jumpHoldFor(actionA, impactB)
-    || slideHoldFor(actionA, damageToA, actionB, impactB, characterB);
+    || slideHoldFor(actionA, damageToA, actionB, impactB, characterB)
+    || hitSuperHoldFor(aHitVsRangedSuper, impactB);
   const launchAtB = jumpHoldFor(actionB, impactA)
-    || slideHoldFor(actionB, damageToB, actionA, impactA, characterA);
+    || slideHoldFor(actionB, damageToB, actionA, impactA, characterA)
+    || hitSuperHoldFor(bHitVsRangedSuper, impactA);
   const initialAnimA = launchAtA > 0 ? 'idle' : actionA;
   const initialAnimB = launchAtB > 0 ? 'idle' : actionB;
   const launchAnimA = launchAtA > 0 ? actionA : null;
@@ -368,6 +409,15 @@ export function computeAttackTiming(result, characterA, characterB) {
   // the reaction at the lunge's forward-end (~220ms < monkey's 320 spawn).
   const aShooterHitByLunge = actionA === 'shoot' && damageToA > 0 && actionB === 'hit' && !isProjectileHit(characterB);
   const bShooterHitByLunge = actionB === 'shoot' && damageToB > 0 && actionA === 'hit' && !isProjectileHit(characterA);
+  // Shoot-vs-shoot where the slower thrower (monkey/turtle spear) is interrupted
+  // by the faster shooter's bullet (engine emits a 'interrupted_by_shot' miss).
+  // Like the lunge case above, the reaction must fire BEFORE the slow thrower's
+  // own spawn delay so cancelPendingProjectiles clears the spear before it
+  // releases — otherwise the spear visibly flies despite dealing no damage.
+  const aShotInterrupted = actionA === 'shoot'
+    && (result.events?.some(e => e.type === 'miss' && e.attacker === 'A' && e.reason === 'interrupted_by_shot') ?? false);
+  const bShotInterrupted = actionB === 'shoot'
+    && (result.events?.some(e => e.type === 'miss' && e.attacker === 'B' && e.reason === 'interrupted_by_shot') ?? false);
   // Same idea for melee hit vs melee hit — both lunge toward each other,
   // collide mid-fwd, throw back to base with the death anim. Skipped for
   // projectile-style hits (Woman Hero's IceShoot doesn't lunge — that
@@ -411,7 +461,9 @@ export function computeAttackTiming(result, characterA, characterB) {
         ? Math.min(shootSlideHitsAt(impactB), rushReactCapA)
         : shootSlideHitsAt(impactB))
     : aHitVsShoot ? hitVsShootReactAt(characterA)
+    : aHitVsRangedSuper ? shootSlideHitsAt(impactB)
     : aShooterHitByLunge ? (fwdMsFor('hit', characterB) ?? DEFAULT_FWD_MS.hit)
+    : aShotInterrupted ? shotInterruptReactAt(characterA)
     : aSlideUltAirborne ? ANIM_DURATION.slide
     : impactB;
   const reactionAtB = isAirborneUltClash ? ultClashAt
@@ -422,7 +474,9 @@ export function computeAttackTiming(result, characterA, characterB) {
         ? Math.min(shootSlideHitsAt(impactA), rushReactCapB)
         : shootSlideHitsAt(impactA))
     : bHitVsShoot ? hitVsShootReactAt(characterB)
+    : bHitVsRangedSuper ? shootSlideHitsAt(impactA)
     : bShooterHitByLunge ? (fwdMsFor('hit', characterA) ?? DEFAULT_FWD_MS.hit)
+    : bShotInterrupted ? shotInterruptReactAt(characterB)
     : bSlideUltAirborne ? ANIM_DURATION.slide
     : impactA;
   // ── Shield throwback ──────────────────────────────────────────────────
@@ -433,9 +487,13 @@ export function computeAttackTiming(result, characterA, characterB) {
   // (Woman Hero) never produce a block event, so they're naturally exempt.
   // The throw only overrides a fighter with no existing damage reaction. A
   // blocked SHOOT doesn't throw the attacker — the shooter stands still and the
-  // projectile simply dies on the shield — so those blocks are excluded.
+  // projectile simply dies on the shield. A projectile-style hit ('projhit',
+  // Woman Hero's jump-shoot Ice Arrow) is the same: she's airborne firing, so a
+  // blocked arrow dies on the shield and she just shoots — no knockback. Both
+  // ranged-block kinds are excluded; only physical (melee 'hit'/'rush'/ult)
+  // blocks throw the attacker back.
   const physicalBlock = (defenderLabel) => result.events?.some(
-    e => e.type === 'blocked' && e.defender === defenderLabel && e.kind !== 'shoot'
+    e => e.type === 'blocked' && e.defender === defenderLabel && e.kind !== 'shoot' && e.kind !== 'projhit'
   ) ?? false;
   const aThrownBack = !reactionA && physicalBlock('B');
   const bThrownBack = !reactionB && physicalBlock('A');

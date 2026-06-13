@@ -6,7 +6,7 @@ import PromptEditorSimple from '../components/PromptEditorSimple.jsx';
 import PromptEditorAdvanced from '../components/PromptEditorAdvanced.jsx';
 import CharacterPreview from '../components/CharacterPreview.jsx';
 import Arena from '../components/Arena.jsx';
-import { loadProfile, isProfileReady } from '../data/designData.js';
+import { loadProfile, isProfileReady, UNLOCKED_IDS } from '../data/designData.js';
 import { unlockAudio } from '../engine/soundEngine.js';
 
 const ARCHETYPE_GLYPH = { tank: 'T', striker: 'S', mage: 'M', acrobat: 'A', ranger: 'R' };
@@ -23,8 +23,11 @@ function pickRandom(arr) {
 // The bot opponent never uses the AI proxy — `randomOnly` makes the engine
 // play random moves for it every turn, regardless of any API key. Only the
 // player's character calls the managed LLM.
+// Bot only fields unlocked (playable) characters — never a locked one.
+const UNLOCKED_CHARACTERS = CHARACTER_LIST.filter(c => UNLOCKED_IDS.has(c.id));
+
 function buildBotFighter() {
-  const char = pickRandom(CHARACTER_LIST);
+  const char = pickRandom(UNLOCKED_CHARACTERS);
   return {
     id: 'bot',
     name: pickRandom(BOT_NAMES),

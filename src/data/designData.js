@@ -103,7 +103,7 @@ function thumbFor(c) {
 
 // Temporary playable roster — only these fighters are unlocked for now;
 // every other character renders as locked in the loadout picker.
-const UNLOCKED_IDS = new Set([
+export const UNLOCKED_IDS = new Set([
   'beast', 'madScientist', 'womanHero', 'monkey', 'turtle', 'spaceGirl', 'skater',
 ]);
 

@@ -607,13 +607,24 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
   // sailing into the body. Held constant speed by scaling duration to distance.
   const targetBlocksLowShoot = action === 'shoot' && matchesAction('defend_low');
   const restEndX = targetBaseX + (side === 'A' ? -40 : 40);
-  let endX = targetIsEvading ? targetBaseX + dir * PASS_THROUGH_PX : restEndX;
-  const endY = targetBaseY - 80 + endYOffset;
+  const aimEndY = targetBaseY - 80 + endYOffset;   // idle target (chest height)
+  let endX = restEndX;
+  let endY = aimEndY;
   if (targetIsEvading) {
-    // Add the extra flight time so bullet speed stays the same as before.
-    const baseDist = Math.max(1, Math.abs(restEndX - startX));
-    const extraMs = Math.round(duration * (PASS_THROUGH_PX / baseDist));
-    duration += extraMs;
+    // Fly past the defender along the SAME line as the idle aim: extend the
+    // endpoint along the start→idle-target ray so the firing ANGLE is identical
+    // whether or not the defender evades. (Before, the endpoint was pushed
+    // horizontally at chest height — that flattened Woman Hero's high-angle
+    // arrow so it tracked a jumper and pierced him instead of passing under at
+    // the same downward angle it would use against an idle opponent.)
+    const aimDX = restEndX - startX;
+    const aimDY = aimEndY - startY;
+    const aimLen = Math.hypot(aimDX, aimDY) || 1;
+    const totalLen = aimLen + PASS_THROUGH_PX;
+    endX = startX + (aimDX / aimLen) * totalLen;
+    endY = startY + (aimDY / aimLen) * totalLen;
+    // Keep the bullet speed constant: stretch flight time by the same ratio.
+    duration += Math.round(duration * (PASS_THROUGH_PX / aimLen));
   } else if (targetBlocksLowShoot) {
     const SHIELD_FACE_PX = 75;   // stop this far in front of the defender's base
     const blockEndX = targetBaseX - dir * SHIELD_FACE_PX;
@@ -1195,10 +1206,14 @@ function easeOut(t) {
 }
 
 // At this fraction of fwdMs the flyHit motion swaps to its phase2 animation
-// (Hit/roll/etc.) — the jetpack visibly fires only during the up-and-forward
-// arc before that. Jet exhaust uses the same threshold so smoke/fire ends
-// exactly as the body switches out of the Jetpack pose.
-const FLYHIT_PHASE2_T = 0.78;
+// (Hit/roll/etc.). The arc peaks at t=0.5, so swapping right AT the top means
+// the hammer comes out as the fighter reaches the apex and the slam plays
+// across the whole descent — instead of a late swing near the bottom. This
+// also lands the hammer at shield height against a HIGH guard rather than
+// after it has already dropped past the shield. Jet exhaust uses the same
+// threshold so smoke/fire ends exactly as the body switches out of the
+// Jetpack pose (at the top of the arc).
+const FLYHIT_PHASE2_T = 0.5;
 
 function playAction(fighter, opponent, action, app) {
   if (!fighter) return;
@@ -1218,7 +1233,7 @@ function playAction(fighter, opponent, action, app) {
     return;
   }
 
-  const DEFAULT_ULTIMATE_MOTION = { kind: 'flyHit', gap: 160, fwdMs: 900, holdMs: 500, retMs: 300, peakY: 400, phase2: 'hit' };
+  const DEFAULT_ULTIMATE_MOTION = { kind: 'flyHit', gap: 160, fwdMs: 900, holdMs: 500, retMs: 300, peakY: 330, phase2: 'hit' };
   const baseMotion = PNG_MOTION[action] ?? (action.startsWith('ultimate_') ? DEFAULT_ULTIMATE_MOTION : PNG_MOTION.idle);
   const override = fighter.character.motionOverrides?.[action];
   const motion = override ? { ...baseMotion, ...override } : baseMotion;
@@ -1291,12 +1306,13 @@ function playAction(fighter, opponent, action, app) {
       }
       break;
     case 'flyHit': {
-      // Roll-type ults (Skater Sky Grind, Monkey Cloud Somersault) default to
-      // continuing all the way to the ground (endYOffset 0). If the opponent
-      // is defending, stop at upper-body height (~180px above ground) so the
-      // roll reads as bouncing off the shield instead of slamming through it.
-      // Only the HIGH guard braces overhead to stop an airborne roll super; a
-      // low guard leaves the head open, so the roll slams all the way down.
+      // Airborne supers (hammer-slam ults like Orbit Strike / Rocket Charge AND
+      // roll-type ults like Sky Grind / Cloud Somersault) default to continuing
+      // all the way to the ground (endYOffset 0). If the opponent braces high,
+      // stop at upper-body height (~180px above ground) so the super reads as
+      // bouncing off the SHIELD instead of slamming straight through it. Only
+      // the HIGH guard stops an airborne super; a low guard leaves the head
+      // open, so the slam continues all the way down.
       const opponentDefending = opponent?.sprite?._plannedAction === 'defend_high';
       // `defendEndYOffset` and `defendPeakY` (per-character via motionOverrides)
       // trump the fallbacks — lets each character tune the head-stop height
@@ -1304,7 +1320,13 @@ function playAction(fighter, opponent, action, app) {
       // a ground slam; when bouncing off a shield at head height, that arc
       // sends them clipping off the top of the canvas. 220 keeps the arc
       // tidy above the head without clipping.
-      const flyMotion = (action === 'ultimate_roll' && opponentDefending)
+      // Hammer-slam supers (phase2 'hit') use the SAME motion whether or not the
+      // opponent guards — they fly up and slam down identically. The only
+      // difference when guarded HIGH is that the attacker is hurled back partway
+      // down (block → knockback reaction, timed in animResolution.shieldThrowAt)
+      // BEFORE the slam lands. Only roll-type supers (phase2 'slide') get the
+      // head-stop so they visibly bounce off the shield instead of through it.
+      const flyMotion = (opponentDefending && motion.phase2 !== 'hit')
         ? {
             ...motion,
             endYOffset: motion.defendEndYOffset ?? motion.endYOffset ?? 180,
@@ -1331,4 +1353,11 @@ function playAction(fighter, opponent, action, app) {
   // outside the canvas — push the sprite up to compensate).
   const yOffset = fighter.character.actionYOffsets?.[action];
   if (yOffset) fighter.sprite.y = fighter.baseY + yOffset;
+  // Per-action scale (e.g., a roll whose rig reads oversized). Applied every
+  // action — actionScale defaults to 1, so the sprite snaps back to its base
+  // displayScale on the next move. Preserve the mirror direction (B faces left,
+  // encoded as a negative scale.x).
+  const actionScale = fighter.character.actionScales?.[action] ?? 1;
+  const baseScale = fighter.character.displayScale ?? 1;
+  applyScale(fighter.sprite, baseScale * actionScale, fighter.sprite.scale.x < 0);
 }

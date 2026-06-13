@@ -4,7 +4,7 @@ import { runFight } from '../engine/fightEngine.js';
 import { planCombatSounds, playCombatPlan, preloadCombatClips, playWinnerSound } from '../engine/combatSounds.js';
 import { CHARACTERS } from '../data/characters.js';
 import { computeAttackTiming } from '../engine/animResolution.js';
-import { reducer, initialState } from './useFightRenderer.js';
+import { reducer, initialState, barCommitAt } from './useFightRenderer.js';
 
 export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = null) {
   const [fightState, dispatch] = useReducer(reducer, initialState);
@@ -67,6 +67,16 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
             initialAnimA: timing.initialAnimA,
             initialAnimB: timing.initialAnimB,
           }));
+          // Commit the hp / super-meter bars when the attack lands, not at the
+          // start of the movement.
+          setTimeout(() => {
+            if (fightGenRef.current === thisGen) dispatch({
+              type: 'COMMIT_BARS',
+              hpA: event.hpA, hpB: event.hpB,
+              meterA: event.meterA, meterB: event.meterB,
+              statusA: event.statusA, statusB: event.statusB,
+            });
+          }, barCommitAt(timing));
           // Deferred launches (e.g., jumper synced to incoming projectile peak).
           if (timing.launchAnimA) {
             setTimeout(() => {
@@ -109,8 +119,6 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
           if (event.hpB > 0) {
             setTimeout(() => { if (fightGenRef.current === thisGen) dispatch({ type: 'CLEAR_ANIM_B' }); }, timing.clearB);
           }
-          const hasUlt = event.events?.some(e => e.type === 'ultimate');
-          setTimeout(() => { if (fightGenRef.current === thisGen) dispatch({ type: 'CLEAR_HIT' }); }, hasUlt ? 1250 : 600);
           // Combat SFX (gunshots, hammer impacts, shield clangs). Each entry is
           // scheduled with the generation guard so a cancelled fight drops its
           // still-pending sounds. See engine/combatSounds.

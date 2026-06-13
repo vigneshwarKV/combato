@@ -11,7 +11,9 @@
  *   1. shoot            → shoot.mp3 at the projectile-spawn moment
  *   2. Skater Kid shoot → laserShoot.mp3 (his beam, not a gunshot)
  *   3. landed hit / slam-super that ends in a hit → hammer-hit.mp3 on impact,
- *      EXCEPT for the ranged / spear / rolling fighters (see HAMMER_EXCLUDED).
+ *      EXCEPT for the ranged / rolling fighters (see HAMMER_EXCLUDED). Spear
+ *      fighters (monkey/turtle) play it on their melee `hit` only — their
+ *      thrown shoot and rolling super stay non-hammer (see HAMMER_HIT_ONLY).
  *   4. ANY hit / super blocked by defend_high → shield-blocked.mp3 (the blow
  *      clangs off the raised guard) at the attacker's throwback moment. Not
  *      gated to hammer fighters — a block is about the defense, not the weapon.
@@ -41,9 +43,15 @@ export const COMBAT_SOUND_FILES = {
 };
 
 // Fighters whose hit / super is NOT a hammer-style strike: the archer
-// (womanHero), the spear throwers (monkey, turtle) and the rolling acrobat
-// (skater). They never trigger the hammer-hit impact.
-const HAMMER_EXCLUDED = new Set(['womanHero', 'monkey', 'skater', 'turtle']);
+// (womanHero) and the rolling acrobat (skater). They never trigger the
+// hammer-hit impact.
+const HAMMER_EXCLUDED = new Set(['womanHero', 'skater']);
+
+// Spear fighters: their thrown `shoot` is a projectile and their ultimate is a
+// roll (see ROLL_SUPER_CHARS), but their melee `hit` is a heavy staff/shell
+// strike that lands with the same impact as a hammer — so ONLY their `hit`
+// plays hammer-hit, never their super.
+const HAMMER_HIT_ONLY = new Set(['monkey', 'turtle']);
 
 // Fighters whose `slide` action is a roll (their slide animation tumbles) — use
 // roll.mp3 instead of slide.mp3 when they slide.
@@ -57,7 +65,9 @@ const ROLL_SUPER_CHARS = new Set(['skater', 'monkey', 'turtle']);
 // fighter's airborne ultimate ends in a 'hit' pose). Excluded fighters never
 // qualify, so a blocked-high check below is automatically restricted to them.
 function isHammerAttacker(charId, action) {
-  if (!charId || HAMMER_EXCLUDED.has(charId)) return false;
+  if (!charId) return false;
+  if (HAMMER_HIT_ONLY.has(charId)) return action === 'hit';
+  if (HAMMER_EXCLUDED.has(charId)) return false;
   return action === 'hit' || isUltimateKey(action);
 }
 

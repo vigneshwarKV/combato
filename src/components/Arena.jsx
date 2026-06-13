@@ -109,7 +109,6 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
     meterA, meterB, statusA, statusB,
     movesA, movesB, currentTurnIndex, completedTurns,
     animClassA, animClassB, animKeyA, animKeyB,
-    hitClassA, hitClassB, hitKeyA, hitKeyB,
     shakeScreen,
   } = activeFightState;
 

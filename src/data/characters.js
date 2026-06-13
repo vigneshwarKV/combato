@@ -27,6 +27,11 @@
 //     projectileDelayByAction { shoot: ms, hit: ms } per-action override
 //     motionOverrides         per-action { fwdMs, gap, kind } animation tuning
 //     displayScale            sprite scale multiplier (default 1)
+//     meterGain               { onHit, onDefend } super-meter gain rates
+//                             (default METER.GAIN_ON_HIT / GAIN_ON_DEFEND)
+//     actionYOffsets          per-action sprite Y nudge (e.g. { slide: -75 })
+//     actionScales            per-action scale multiplier on displayScale
+//                             (e.g. { slide: 0.8 }); default 1 per action
 //
 // Ultimate descriptor shape (all effect fields optional):
 //   key           must start with 'ultimate_' AND appear in animations
@@ -37,6 +42,11 @@
 //   hits          multi-hit multiplier
 //   heals         HP healed on landing
 //   selfDamage    HP cost to self
+//   blockBackfireMult  HP backfire multiplier when this super is shield-blocked
+//                      (default BLOCKED_SUPER_DAMAGE_MULTIPLIER)
+//   rangedSuper   fires from range — a charging melee hit can't interrupt it;
+//                 the super lands and the hitter is clipped/thrown instead
+
 //   reflectsNext / blocksNext / ignoresDodge / unblockable / gainMeter /
 //   critVsLowHp / empowerNextMelees — situational flags read by damageEngine
 // ─────────────────────────────────────────────────────────────────────────────
@@ -393,6 +403,14 @@ export const CHARACTERS = {
     // so silhouettes are roughly comparable. Tune to taste.
     displayScale: 1.5,
     defendOffsetX: 380,
+    // The 'Roll' (slide) spine track tucks the body BELOW the skeleton origin,
+    // so grounded at groundY (height-30) the roll clips off the bottom of the
+    // canvas. Lift the sprite during the slide so the tucked body clears the
+    // edge (negative = up). Turtle's Roll sits higher and needs no offset.
+    actionYOffsets: { slide: -75 },
+    // His 'Roll' rig reads oversized next to the others — shrink it during the
+    // slide only (1 = full displayScale). Feet-anchored, so it scales in place.
+    actionScales: { slide: 0.8 },
     // Throws a spear, not a bullet. projectileTexture() returns this for `shoot`.
     // Native PNG is 400×128 — scale down so it reads as a spear, not a log.
     projectile: '/assets/effects/monkey-spear.png',
@@ -475,7 +493,7 @@ export const CHARACTERS = {
   womanHero: {
     id: 'womanHero',
     combinedDefend: {
-      scale:  { low: 1.6, high: 1.15 },
+      scale:  { low: 1.6, high: 1.1 },
       width:  { high: 1, low: 1 },
       offset: { low: { x: 11, y: 60 }, high: { x: 10, y: 0 } },
     },
@@ -490,6 +508,10 @@ export const CHARACTERS = {
     motionProfile: true,
     displayScale: 1.5,
     defendOffsetX: 250,
+    // Her 'Roll' (slide) spine track tucks the body below the skeleton origin
+    // and clips the bottom of the canvas — lift the sprite during the slide so
+    // the roll clears the edge (negative = up). See monkey for the same fix.
+    actionYOffsets: { slide: -50 },
     extraProjectileActions: ['hit'],
     // Her arrows pierce a raised guard: both her hit (already projectile-style)
     // and her ultimate punch straight through a defending opponent's shield and
@@ -553,7 +575,9 @@ export const CHARACTERS = {
       ultimate_poison: 'PoisonShoot1',
     },
     ultimates: [
-      { key: 'ultimate_poison', name: 'Venom Volley', meterCost: 100, damage: 20 },
+      // rangedSuper: fires arrows from range — a charging melee hit can't
+      // interrupt it; the volley lands and clips/throws the hitter instead.
+      { key: 'ultimate_poison', name: 'Venom Volley', meterCost: 100, damage: 20, rangedSuper: true },
     ],
   },
 };
@@ -574,13 +598,29 @@ export const BASE_DAMAGE = {
 
 export const METER = {
   MAX: 100,
-  GAIN_ON_MELEE_HIT: 15,
-  GAIN_ON_RANGED_HIT: 15,
-  GAIN_ON_TAKING_DAMAGE: 10,
-  GAIN_ON_DODGE: 8,
-  GAIN_ON_BLOCK: 10,
-  GAIN_ON_JUMP_EVADE: 8,
+  // Default per-event meter gains. The super meter only fills on two events:
+  //   GAIN_ON_HIT    — landing an attack (hit / shoot / slide that connects)
+  //   GAIN_ON_DEFEND — successfully defending an incoming attack: a shield
+  //                    block, a jump/slide evade, or a defended super.
+  // Override per character via `meterGain: { onHit, onDefend }`.
+  GAIN_ON_HIT: 10,
+  GAIN_ON_DEFEND: 20,
 };
+
+// When a super_move is stopped by the opponent's SHIELD (correct guard line),
+// it backfires on the attacker — they take this multiple of the super's own
+// damage as HP loss. Override per ultimate via `blockBackfireMult`.
+export const BLOCKED_SUPER_DAMAGE_MULTIPLIER = 2;
+
+// Per-character super-meter gain rates, falling back to the global METER
+// defaults. Set `meterGain: { onHit, onDefend }` on a character to tune.
+export function getMeterGain(charId) {
+  const c = CHARACTERS[charId];
+  return {
+    onHit: c?.meterGain?.onHit ?? METER.GAIN_ON_HIT,
+    onDefend: c?.meterGain?.onDefend ?? METER.GAIN_ON_DEFEND,
+  };
+}
 
 // ── Ultimate lookup helpers ─────────────────────────────────────────────────
 export function getUltimate(charId, key) {

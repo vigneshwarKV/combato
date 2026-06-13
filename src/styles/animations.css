@@ -430,34 +430,6 @@
 
 
 /* ══════════════════════════════════════════════════
-   HIT REACTIONS — on fighter-character (separate node
-   from fighter-root so action + hit play simultaneously)
-══════════════════════════════════════════════════ */
-
-/* Normal hit (punch/kick lands) — white flash + stagger back */
-@keyframes hit-normal {
-  0%   { transform: translateX(0px);   filter: brightness(1); }
-  12%  { transform: translateX(-24px); filter: brightness(10) saturate(0); }
-  42%  { transform: translateX(-16px); filter: brightness(3.5) saturate(0.3); }
-  100% { transform: translateX(0px);   filter: brightness(1); }
-}
-.fighter-character.anim-hit-normal {
-  animation: hit-normal 550ms ease-out both !important;
-}
-
-/* Super hit — bright flash + big stagger */
-@keyframes hit-super {
-  0%   { transform: translateX(0px)   scale(1);    filter: brightness(1); }
-  8%   { transform: translateX(-28px) scale(1.08); filter: brightness(12) saturate(0); }
-  35%  { transform: translateX(-20px) scale(1.04); filter: brightness(2); }
-  100% { transform: translateX(0px)   scale(1);    filter: brightness(1); }
-}
-.fighter-character.anim-hit-super {
-  animation: hit-super 600ms ease-out 420ms both !important;
-}
-
-
-/* ══════════════════════════════════════════════════
    KO FALL — topple forward and stay down
 ══════════════════════════════════════════════════ */
 @keyframes ko-fall {

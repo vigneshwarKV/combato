@@ -1,7 +1,7 @@
 import { useReducer, useCallback } from 'react';
 import { flushSync } from 'react-dom';
 import { CHARACTERS } from '../data/characters.js';
-import { hasUltimateHit, computeAttackTiming } from '../engine/animResolution.js';
+import { computeAttackTiming } from '../engine/animResolution.js';
 import { planCombatSounds, playCombatPlan, preloadCombatClips, playWinnerSound } from '../engine/combatSounds.js';
 
 const initialState = {
@@ -18,8 +18,6 @@ const initialState = {
   feedEntries: [],
   animClassA: 'anim-idle', animClassB: 'anim-idle',
   animKeyA: 0, animKeyB: 0,
-  hitClassA: '', hitClassB: '',
-  hitKeyA: 0, hitKeyB: 0,
   shakeScreen: false,
   isPaused: false,
   speedMultiplier: 1,
@@ -57,6 +55,19 @@ function buildFeedEntries(turn, actionA, actionB, damageToA, damageToB, events) 
   return entries;
 }
 
+// When to commit the hp / meter bars for a turn: the moment the attack(s)
+// visually land — the later of the two victim reactions, floored by the
+// impact times so meter-only turns (no damage) still settle at contact rather
+// than at the start of the movement.
+function barCommitAt(timing) {
+  return Math.max(
+    timing.reactionA ? timing.reactionAtA : 0,
+    timing.reactionB ? timing.reactionAtB : 0,
+    timing.impactA || 0,
+    timing.impactB || 0,
+  );
+}
+
 function reducer(state, action) {
   switch (action.type) {
     case 'BATCH_START':
@@ -76,19 +87,12 @@ function reducer(state, action) {
         ],
       };
     case 'ACTION_RESULT': {
-      const { turn, batchTurn, actionA, actionB, damageToA, damageToB, events, hpA, hpB, meterA, meterB, statusA, statusB, initialAnimA, initialAnimB } = action;
+      // NB: hp/meter/status bars are NOT committed here — they're applied by a
+      // deferred COMMIT_BARS dispatch when the attack visually lands (impact /
+      // reaction time), so the bars drop at the climax of the movement rather
+      // than the instant it starts.
+      const { turn, batchTurn, actionA, actionB, damageToA, damageToB, events, initialAnimA, initialAnimB } = action;
       const newEntries = buildFeedEntries(turn, actionA, actionB, damageToA, damageToB, events);
-      const hasKO = hpA <= 0 || hpB <= 0;
-      const aGotUltHit = hasUltimateHit(events, 'A');
-      const bGotUltHit = hasUltimateHit(events, 'B');
-      // Subtract self-damage (e.g. Beast's Rocket Charge backlash) — only
-      // opponent-inflicted damage should trigger the red hit-flash.
-      const aSelfDmg = events?.filter(e => e.type === 'self_damage' && e.fighter === 'A').reduce((s, e) => s + (e.amount ?? 0), 0) ?? 0;
-      const bSelfDmg = events?.filter(e => e.type === 'self_damage' && e.fighter === 'B').reduce((s, e) => s + (e.amount ?? 0), 0) ?? 0;
-      const aOpponentDmg = damageToA - aSelfDmg;
-      const bOpponentDmg = damageToB - bSelfDmg;
-      const newHitClassA = aOpponentDmg > 0 ? (aGotUltHit ? 'anim-hit-super' : 'anim-hit-normal') : '';
-      const newHitClassB = bOpponentDmg > 0 ? (bGotUltHit ? 'anim-hit-super' : 'anim-hit-normal') : '';
       // The dispatcher passes `initialAnim*` so it can hold a jumper in idle
       // until they should launch (sync jump peak with a slow projectile).
       // Falls back to the requested action when no deferral is needed.
@@ -97,16 +101,21 @@ function reducer(state, action) {
       return {
         ...state, status: 'animating',
         currentTurnIndex: batchTurn,
-        hpA, hpB, meterA, meterB,
-        statusA: statusA || state.statusA, statusB: statusB || state.statusB,
         completedTurns: [...state.completedTurns, { index: batchTurn, actionA, actionB, damageToA, damageToB, events }],
         feedEntries: [...state.feedEntries, ...newEntries],
         animClassA: `anim-${animA}`, animClassB: `anim-${animB}`,
         animKeyA: state.animKeyA + 1, animKeyB: state.animKeyB + 1,
-        hitClassA: newHitClassA, hitClassB: newHitClassB,
-        hitKeyA: newHitClassA ? state.hitKeyA + 1 : state.hitKeyA,
-        hitKeyB: newHitClassB ? state.hitKeyB + 1 : state.hitKeyB,
-        shakeScreen: hasKO,
+      };
+    }
+    case 'COMMIT_BARS': {
+      // Apply the post-turn hp / super-meter / status values when the hit lands.
+      const hasKO = action.hpA <= 0 || action.hpB <= 0;
+      return {
+        ...state,
+        hpA: action.hpA, hpB: action.hpB,
+        meterA: action.meterA, meterB: action.meterB,
+        statusA: action.statusA || state.statusA, statusB: action.statusB || state.statusB,
+        shakeScreen: hasKO || state.shakeScreen,
       };
     }
     case 'LAUNCH_ACTION_A': return { ...state, animClassA: `anim-${action.anim}`, animKeyA: state.animKeyA + 1 };
@@ -115,7 +124,6 @@ function reducer(state, action) {
     case 'VICTIM_REACTION_B': return { ...state, animClassB: `anim-${action.reaction}`, animKeyB: state.animKeyB + 1 };
     case 'CLEAR_ANIM_A': return { ...state, animClassA: 'anim-idle', animKeyA: state.animKeyA + 1 };
     case 'CLEAR_ANIM_B': return { ...state, animClassB: 'anim-idle', animKeyB: state.animKeyB + 1 };
-    case 'CLEAR_HIT': return { ...state, hitClassA: '', hitClassB: '' };
     case 'CLEAR_SHAKE': return { ...state, shakeScreen: false };
     case 'KO':
       return { ...state, status: 'ko', winner: action.winner, hpA: action.hpA, hpB: action.hpB,
@@ -166,6 +174,14 @@ export function useFightRenderer() {
           initialAnimA: timing.initialAnimA,
           initialAnimB: timing.initialAnimB,
         });
+        // Commit the hp / super-meter bars when the attack lands, not at the
+        // start of the movement.
+        setTimeout(() => dispatch({
+          type: 'COMMIT_BARS',
+          hpA: event.hpA, hpB: event.hpB,
+          meterA: event.meterA, meterB: event.meterB,
+          statusA: event.statusA, statusB: event.statusB,
+        }), barCommitAt(timing));
         // Deferred launches (e.g., jumper synced to incoming projectile peak).
         if (timing.launchAnimA) {
           setTimeout(() => dispatch({ type: 'LAUNCH_ACTION_A', anim: timing.launchAnimA }), timing.launchAtA);
@@ -189,8 +205,6 @@ export function useFightRenderer() {
         // event sets them to anim-death; an interim idle flash would jar.
         if (event.hpA > 0) setTimeout(() => dispatch({ type: 'CLEAR_ANIM_A' }), timing.clearA);
         if (event.hpB > 0) setTimeout(() => dispatch({ type: 'CLEAR_ANIM_B' }), timing.clearB);
-        const hasUlt = event.events?.some(e => e.type === 'ultimate');
-        setTimeout(() => dispatch({ type: 'CLEAR_HIT' }), hasUlt ? 1250 : 600);
         // Combat SFX (gunshots, hammer impacts, shield clangs). See combatSounds.
         playCombatPlan(planCombatSounds({
           events: event.events,
@@ -223,4 +237,4 @@ export function useFightRenderer() {
   return { fightState, handleFightEvent, resetFight };
 }
 
-export { reducer, initialState };
+export { reducer, initialState, barCommitAt };

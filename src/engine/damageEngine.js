@@ -1,4 +1,4 @@
-import { CHARACTERS, METER, BASE_DAMAGE, getUltimate, isAirborneUltimate } from '../data/characters.js';
+import { CHARACTERS, METER, BASE_DAMAGE, getUltimate, isAirborneUltimate, getMeterGain, BLOCKED_SUPER_DAMAGE_MULTIPLIER } from '../data/characters.js';
 
 export const BASE_ACTIONS = ['idle', 'jump', 'hit', 'shoot', 'slide', 'defend_low', 'defend_high'];
 
@@ -149,6 +149,22 @@ export function resolveActions(
     }
   }
 
+  // 4b. A super stopped by the opponent's SHIELD backfires on the attacker —
+  // they eat a multiple of the super's own damage for the failed read. Only
+  // applies to a shield block (resultX.blocked), not a jump/slide dodge.
+  if (isUltimateKey(actualA) && resultA.blocked) {
+    const ult = getUltimate(characterA, actualA);
+    const mult = ult?.blockBackfireMult ?? BLOCKED_SUPER_DAMAGE_MULTIPLIER;
+    const backfire = (ult?.damage ?? 0) * mult;
+    if (backfire > 0) { damageToA += backfire; events.push({ type: 'super_backfire', fighter: 'A', amount: backfire }); }
+  }
+  if (isUltimateKey(actualB) && resultB.blocked) {
+    const ult = getUltimate(characterB, actualB);
+    const mult = ult?.blockBackfireMult ?? BLOCKED_SUPER_DAMAGE_MULTIPLIER;
+    const backfire = (ult?.damage ?? 0) * mult;
+    if (backfire > 0) { damageToB += backfire; events.push({ type: 'super_backfire', fighter: 'B', amount: backfire }); }
+  }
+
   // 5. Spend Ultimate meter cost
   let newMeterA = meterA;
   let newMeterB = meterB;
@@ -163,26 +179,19 @@ export function resolveActions(
     if (ult?.gainMeter) newMeterB = Math.min(METER.MAX, newMeterB + ult.gainMeter);
   }
 
-  // 6. Meter gains from this turn's outcomes. A successful block is recorded
-  // as a `blocked` event tagged with the DEFENDER's label.
-  const aBlocked = events.some(e => e.type === 'blocked' && e.defender === 'A');
-  const bBlocked = events.some(e => e.type === 'blocked' && e.defender === 'B');
-  newMeterA = applyMeterGains(newMeterA, {
-    landedHit: (actualA === 'hit' || actualA === 'slide') && aHit,
-    landedShot: actualA === 'shoot' && aHit,
-    tookDamage: damageToA > 0,
-    slidPast: actualA === 'slide' && !aHit && (actualB === 'hit' || actualB === 'shoot'),
-    blockedAttack: aBlocked,
-    evadedByJump: actualA === 'jump' && (actualB === 'hit' || actualB === 'shoot') && !bHit,
-  });
-  newMeterB = applyMeterGains(newMeterB, {
-    landedHit: (actualB === 'hit' || actualB === 'slide') && bHit,
-    landedShot: actualB === 'shoot' && bHit,
-    tookDamage: damageToB > 0,
-    slidPast: actualB === 'slide' && !bHit && (actualA === 'hit' || actualA === 'shoot'),
-    blockedAttack: bBlocked,
-    evadedByJump: actualB === 'jump' && (actualA === 'hit' || actualA === 'shoot') && !aHit,
-  });
+  // 6. Meter gains from this turn's outcomes. The super meter fills on two
+  // events only (rates are per character — see getMeterGain):
+  //   • LANDING an attack — a hit / shoot / slide that connects     → +onHit
+  //   • Successfully DEFENDING an incoming attack — the opponent made
+  //     an offensive move (hit / shoot / slide / super) and dealt 0
+  //     damage to you while you were guarding or evading (shield
+  //     block, jump, or slide dodge)                                → +onDefend
+  const aLandedAttack = (actualA === 'hit' || actualA === 'shoot' || actualA === 'slide') && aHit;
+  const bLandedAttack = (actualB === 'hit' || actualB === 'shoot' || actualB === 'slide') && bHit;
+  const aDefended = isOffensiveAction(actualB) && dmgFromB <= 0 && isDefensiveStance(actualA);
+  const bDefended = isOffensiveAction(actualA) && dmgFromA <= 0 && isDefensiveStance(actualB);
+  newMeterA = applyMeterGains(newMeterA, characterA, { landedAttack: aLandedAttack, defended: aDefended });
+  newMeterB = applyMeterGains(newMeterB, characterB, { landedAttack: bLandedAttack, defended: bDefended });
 
   return {
     damageToA: Math.max(0, damageToA),
@@ -280,6 +289,17 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
       events.push({ type: 'miss', attacker: attackerLabel, reason: 'shot_first' });
       return hit(0, false);
     }
+    // Melee hitter charging into a RANGED super (Woman Hero's arrow volley) —
+    // the super's projectiles fire from range and clip the hitter mid-lunge
+    // before the blow lands, like a fast shoot. The hit is interrupted (no
+    // damage); the super's damage + throwback land in the ult branch below.
+    // Projectile-style hitters (another Woman Hero) don't rush, so skip them.
+    if (isUltimateKey(defender)
+      && getUltimate(defenderCharId, defender)?.rangedSuper
+      && !CHARACTERS[attackerCharId]?.extraProjectileActions?.includes('hit')) {
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'interrupted_by_super' });
+      return hit(0, false);
+    }
     events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: BASE_DAMAGE.hit, kind: 'hit' });
     return hit(BASE_DAMAGE.hit, true);
   }
@@ -326,6 +346,16 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
       && !CHARACTERS[defenderCharId]?.extraProjectileActions?.includes('hit')
       && isSlowProjectileShot(attackerCharId, defenderCharId, 'hit')) {
       events.push({ type: 'miss', attacker: attackerLabel, reason: 'interrupted_by_hit' });
+      return hit(0, false);
+    }
+    // Shoot vs shoot — whoever releases first lands their shot before the other
+    // gets their weapon off. A slower thrower (longer spawn delay: monkey /
+    // turtle spear at 550ms) eats the faster shooter's projectile mid-windup,
+    // so their own throw never releases (no damage). Equal delays → both fire
+    // and trade hits (handled by the final landed-shot below).
+    if (defender === 'shoot'
+      && shootProjectileDelay(attackerCharId) > shootProjectileDelay(defenderCharId)) {
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'interrupted_by_shot' });
       return hit(0, false);
     }
     events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: BASE_DAMAGE.shoot, kind: 'shoot' });
@@ -390,8 +420,13 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
     // Melee hit attacker rushing forward clips the ult-er mid-windup before
     // the ult connects — ult is interrupted (no damage to the hitter). The
     // hit's damage still lands on the ult-er via the hit branch. Skipped
-    // for projectile-style hits (Woman Hero's IceShoot doesn't lunge).
-    if (defender === 'hit' && !CHARACTERS[defenderCharId]?.extraProjectileActions?.includes('hit')) {
+    // for projectile-style hits (Woman Hero's IceShoot doesn't lunge) AND for
+    // a RANGED super (Woman Hero's arrow volley): it fires from range, so a
+    // charging hitter can't interrupt it — instead the volley lands and the
+    // hit is stopped in the hit branch (matching the fast-shoot-vs-rush rule).
+    if (defender === 'hit'
+      && !ult.rangedSuper
+      && !CHARACTERS[defenderCharId]?.extraProjectileActions?.includes('hit')) {
       events.push({ type: 'miss', attacker: attackerLabel, reason: 'interrupted_by_hit', name: ult.name });
       return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: true, ult, missed: true } };
     }
@@ -436,6 +471,13 @@ function hit(damage, landed) {
 // 320) get rushed before they fire. Threshold is the rusher's own forward
 // phase length — they cover that distance in `fwdMs`, so any spawn delay
 // >= fwdMs means the rusher arrives first.
+// Per-character spawn delay (ms) before a `shoot` projectile is released. Fast
+// guns are 0; slow throwers (monkey / turtle spear) wind up for ~550ms.
+function shootProjectileDelay(charId) {
+  const c = CHARACTERS[charId];
+  return c?.projectileDelayByAction?.shoot ?? c?.projectileDelayMs ?? 0;
+}
+
 function isSlowProjectileShot(shooterCharId, rusherCharId, rusherAction = 'slide') {
   const shooter = CHARACTERS[shooterCharId];
   const rusher  = CHARACTERS[rusherCharId];
@@ -447,13 +489,22 @@ function isSlowProjectileShot(shooterCharId, rusherCharId, rusherAction = 'slide
   return shooterDelay >= rusherFwdMs;
 }
 
-function applyMeterGains(currentMeter, { landedHit, landedShot, tookDamage, slidPast, blockedAttack, evadedByJump }) {
+// Offensive actions that can both deal damage and (when they whiff against a
+// guarding/evading defender) count as the attack the defender defended.
+function isOffensiveAction(action) {
+  return action === 'hit' || action === 'shoot' || action === 'slide' || isUltimateKey(action);
+}
+
+// Stances that earn a defend bonus when they take zero damage from an incoming
+// attack: a shield guard (defend_low/high), a jump evade, or a slide dodge.
+function isDefensiveStance(action) {
+  return isDefendAction(action) || action === 'jump' || action === 'slide';
+}
+
+function applyMeterGains(currentMeter, charId, { landedAttack, defended }) {
+  const { onHit, onDefend } = getMeterGain(charId);
   let m = currentMeter;
-  if (landedHit)     m += METER.GAIN_ON_MELEE_HIT;
-  if (landedShot)    m += METER.GAIN_ON_RANGED_HIT;
-  if (tookDamage)    m += METER.GAIN_ON_TAKING_DAMAGE;
-  if (slidPast)      m += METER.GAIN_ON_DODGE;
-  if (blockedAttack) m += METER.GAIN_ON_BLOCK;
-  if (evadedByJump)  m += METER.GAIN_ON_JUMP_EVADE;
+  if (landedAttack) m += onHit;
+  if (defended)     m += onDefend;
   return Math.min(METER.MAX, m);
 }
