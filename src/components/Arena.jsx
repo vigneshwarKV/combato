@@ -190,41 +190,26 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
 
       <LandscapeLock />
 
-      {/* Controls bar */}
+      {/* Controls bar — kept intentionally minimal: just Home + sound. The
+          live status text (Calling AI / Round N / win label) and the batch
+          progress bar were removed; fight state already reads off the HUD. */}
       <div
         className="flex items-center justify-between px-6 py-2 shrink-0"
         style={{ background: 'rgba(8,0,13,0.85)', borderBottom: '1px solid var(--arena-panel-border)' }}
       >
-        <div className="flex items-center gap-4">
-          <span className="font-arena text-sm" style={{ color: 'var(--neon-gold)', letterSpacing: '0.1em' }}>
-            {statusLabel()}
-          </span>
-          {status === 'animating' && (
-            <div className="flex items-center gap-2">
-              <div className="w-32 h-1" style={{ background: 'var(--arena-panel-border)', borderRadius: 2, overflow: 'hidden' }}>
-                <div className="h-full transition-all duration-300" style={{ width: `${progressPct}%`, background: 'var(--neon-gold)' }} />
-              </div>
-            </div>
+        <div className="flex items-center gap-2">
+          {onHome && (
+            <button
+              onClick={onHome}
+              className="btn-arena btn-arena-sm btn-arena-ghost"
+              aria-label="Back to home"
+            >
+              ← Home
+            </button>
           )}
         </div>
         <div className="flex items-center gap-2">
           <MusicToggle />
-          {mode === 'host' && (
-            <>
-              <button
-                onClick={isPaused ? resumeFight : pauseFight}
-                className="btn-arena btn-arena-sm btn-arena-ghost"
-              >
-                {isPaused ? '▶ Resume' : '⏸ Pause'}
-              </button>
-              <button
-                onClick={() => setSpeed(speedMultiplier === 1 ? 2 : 1)}
-                className="btn-arena btn-arena-sm btn-arena-ghost"
-              >
-                {speedMultiplier === 1 ? '2x' : '1x'}
-              </button>
-            </>
-          )}
           {mode === 'spectator' && (
             <span className="section-label">Spectating</span>
           )}

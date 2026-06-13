@@ -244,22 +244,14 @@ export default function BotMatchPage() {
   }
 
   return (
-    <div className="relative">
-      <button
-        onClick={() => navigate('/')}
-        className="btn-arena btn-arena-sm btn-arena-ghost"
-        style={{ position: 'fixed', top: 12, left: 12, zIndex: 100 }}
-      >
-        ← Home
-      </button>
-      <Arena
-        fighterA={playerFighter}
-        fighterB={botFighter}
-        fightConfig={{ n: 3, maxBatches: 20 }}
-        onFightEnd={() => {}}
-        mode="host"
-        randomBackground
-      />
-    </div>
+    <Arena
+      fighterA={playerFighter}
+      fighterB={botFighter}
+      fightConfig={{ n: 3, maxBatches: 20 }}
+      onFightEnd={() => {}}
+      mode="host"
+      randomBackground
+      onHome={() => navigate('/')}
+    />
   );
 }

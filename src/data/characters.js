@@ -475,9 +475,9 @@ export const CHARACTERS = {
   womanHero: {
     id: 'womanHero',
     combinedDefend: {
-      scale:  { low: 1.6, high: 1.4 },
+      scale:  { low: 1.6, high: 1.15 },
       width:  { high: 1, low: 1 },
-      offset: { low: { x: 11, y: 60 }, high: { x: 22, y: 18 } },
+      offset: { low: { x: 11, y: 60 }, high: { x: 10, y: 0 } },
     },
     name: 'Woman Hero',
     archetype: 'ranger',
