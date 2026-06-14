@@ -13,8 +13,8 @@ const BASE_LABELS = {
   hit:    { text: 'HIT',    color: '#ff7a33' },
   shoot:  { text: 'SHOOT',  color: '#a78bfa' },
   slide:  { text: 'SLIDE',  color: '#28d3e8' },
-  defend_high: { text: 'GUARD HIGH', color: '#ffc23a' },
-  defend_low:  { text: 'GUARD LOW',  color: '#ffd76a' },
+  defend_high: { text: 'DEFEND HIGH', color: '#ffc23a' },
+  defend_low:  { text: 'DEFEND LOW',  color: '#ffd76a' },
 };
 
 const ULTIMATE_COLOR = '#ff5fae'; // OVERDRIVE pink

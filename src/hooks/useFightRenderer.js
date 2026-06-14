@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import { CHARACTERS } from '../data/characters.js';
 import { computeAttackTiming } from '../engine/animResolution.js';
 import { planCombatSounds, playCombatPlan, preloadCombatClips, playWinnerSound } from '../engine/combatSounds.js';
+import { FIGHT_TIME_LIMIT_MS } from '../engine/fightEngine.js';
 
 const initialState = {
   status: 'idle',
@@ -21,6 +22,7 @@ const initialState = {
   shakeScreen: false,
   isPaused: false,
   speedMultiplier: 1,
+  timeLimitMs: FIGHT_TIME_LIMIT_MS,
 };
 
 function buildFeedEntries(turn, actionA, actionB, damageToA, damageToB, events) {
@@ -70,6 +72,10 @@ function barCommitAt(timing) {
 
 function reducer(state, action) {
   switch (action.type) {
+    case 'FIGHT_START':
+      // Real fight-start instant — arms the HUD timer (and music) before the
+      // first batch. Carries the engine's authoritative time limit.
+      return { ...state, status: 'calling', timeLimitMs: action.timeLimitMs ?? state.timeLimitMs };
     case 'BATCH_START':
       return {
         ...state,
@@ -154,6 +160,9 @@ export function useFightRenderer() {
     if (!event?.type) return;
     const { type: _evType, ...rest } = event;
     switch (event.type) {
+      case 'fight_start':
+        dispatch({ type: 'FIGHT_START', ...rest });
+        break;
       case 'batch_start':
         preloadCombatClips();   // warm the SFX cache so the first hit isn't delayed
         dispatch({ type: 'BATCH_START', ...rest });

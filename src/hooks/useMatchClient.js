@@ -21,6 +21,9 @@ export function useMatchClient(matchCode) {
   const [matchRole, setMatchRole] = useState(null); // 'A' | 'B' | 'spectator'
   const [matchFighters, setMatchFighters] = useState(null);
   const [roomClosed, setRoomClosed] = useState(false);
+  // True when we connected after the tournament had already started: we watch
+  // as a spectator and may opt into the roster once it ends (see joinAsFighter).
+  const [isSpectator, setIsSpectator] = useState(false);
 
   const myConfigRef = useRef(myConfig);
   myConfigRef.current = myConfig;
@@ -31,6 +34,7 @@ export function useMatchClient(matchCode) {
     switch (msg.type) {
       case 'JOIN_ACK':
         setLobbyState(msg.lobbyState);
+        setIsSpectator(!!msg.spectator);
         break;
       case 'LOBBY_UPDATE':
         setLobbyState(msg.lobbyState);
@@ -148,6 +152,16 @@ export function useMatchClient(matchCode) {
     });
   }, []);
 
+  // Opt into the roster after watching as a spectator. The host only honors
+  // this between tournaments (lobby) or once one ends (champion).
+  const joinAsFighter = useCallback(() => {
+    const cfg = myConfigRef.current;
+    if (!hostConnRef.current) return;
+    sendMessage(hostConnRef.current, 'JOIN_AS_FIGHTER', {
+      fighterConfig: { name: cfg.name || 'Fighter', character: cfg.character, color: cfg.color },
+    });
+  }, []);
+
   return {
     connected,
     error,
@@ -158,6 +172,8 @@ export function useMatchClient(matchCode) {
     matchRole,
     matchFighters,
     roomClosed,
+    isSpectator,
+    joinAsFighter,
     myPeerId: peerRef.current?.id,
   };
 }

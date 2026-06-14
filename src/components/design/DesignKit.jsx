@@ -199,8 +199,8 @@ export function CharTile({ char, selected, onSelect, onInfo }) {
       <div className="char-tile-foot">
         <div className="char-tile-name">{char.name}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-end' }}>
-          <Pips value={char.stats.atk} tone="atk" max={5} />
-          <Pips value={char.stats.def} tone="def" max={5} />
+          <Pips value={Math.round(char.stats.atk / 20)} tone="atk" max={5} />
+          <Pips value={Math.round(char.stats.def / 20)} tone="def" max={5} />
         </div>
       </div>
     </div>
@@ -258,7 +258,7 @@ export function CharDetail({ char }) {
     }}>
       <div style={{
         position: 'relative',
-        height: 150,
+        height: 190,
         background:
           'radial-gradient(ellipse 80% 30% at 50% 95%, rgba(255,216,74,0.35), transparent 70%), linear-gradient(180deg, #1a1130, #050309)',
         display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
@@ -267,16 +267,11 @@ export function CharDetail({ char }) {
       }}>
         {ENGINE_CHARS[char.id]?.renderMode === 'spine'
           ? <div className="char-detail-spine">
-              <CharacterPreview characterId={char.id} width={260} height={150} mode="idle" />
+              <CharacterPreview characterId={char.id} width={240} height={190} mode="idle" />
             </div>
           : (char.thumb
-              ? <CharSprite char={char} active />
+              ? <CharSprite char={char} />
               : <div style={{ fontFamily: 'var(--f-display)', fontSize: 80, color: 'var(--ink-dim)' }}>?</div>)}
-        <div style={{
-          position: 'absolute', top: 6, left: 6,
-          fontFamily: 'var(--f-mono)', fontSize: 10, color: 'var(--gold)',
-          letterSpacing: '0.1em', background: 'rgba(7,5,13,0.6)', padding: '2px 6px',
-        }}>RANK·{char.rank}</div>
       </div>
       <div style={{ padding: '12px 14px 14px' }}>
         <div className="eyebrow" style={{ color: `var(--${archTone})` }}>{arch.label}</div>
@@ -286,42 +281,56 @@ export function CharDetail({ char }) {
         }}>{char.name}</h1>
         <p style={{ margin: '0 0 10px', color: 'var(--ink-soft)', fontSize: 12, lineHeight: 1.5 }}>{char.tagline}</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <Bar label="ATK" value={char.stats.atk * 20} red />
-          <Bar label="DEF" value={char.stats.def * 20} />
-          <Bar label="SPD" value={char.stats.spd * 20} gold />
+          <Bar label="ATK" value={char.stats.atk} red />
+          <Bar label="DEF" value={char.stats.def} />
+          <Bar label="SPM" value={char.stats.spm} gold />
         </div>
       </div>
     </div>
   );
 }
 
+// Two numbers per move: DMG and +SPM (super-meter). For attacks DMG is dealt to
+// the opponent; for a GUARD (defend_low/high) it's the small chip you still TAKE
+// when you correctly block a physical blow (shown as ▾chip). SPM is meter gained
+// on a hit/evade/guard; the super move shows its METER COST (–100) instead.
 export function MovesPanel({ char, moves }) {
+  const list = char.moves || moves || [];
+  const cols = '1fr 52px 56px';
   return (
-    <div style={{ marginTop: 12 }}>
-      <div className="eyebrow" style={{ marginBottom: 8 }}>MOVE SET · {char.ult ? '6 BASE + 1 ULT' : '6 BASE'}</div>
+    <div>
+      <div className="eyebrow" style={{ marginBottom: 8 }}>MOVE SET</div>
+      <div className="move-head" style={{ gridTemplateColumns: cols }}>
+        <span />
+        <span className="move-col">DMG</span>
+        <span className="move-col">SPM</span>
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {moves.map(m => (
-          <div key={m.key} className="move">
-            <div className="move-key">{m.key}</div>
-            <div style={{ minWidth: 0 }}>
+        {list.map(m => {
+          const isSuper = !!m.super || m.key === 'super_move';
+          const dmg = isSuper ? (char.ult?.dmg ?? m.dmg ?? 0) : (m.dmg ?? 0);
+          return (
+            <div
+              key={m.key}
+              className={`move ${isSuper ? 'ult' : ''} ${m.evade ? 'evade' : ''}`}
+              style={{ gridTemplateColumns: cols }}
+            >
               <div className="move-name">{m.name}</div>
+              <div className="move-dmg">
+                {m.guard
+                  ? (m.chip > 0
+                      ? <span className="chip" title="HP you still lose when you correctly block this line">▾{m.chip}</span>
+                      : <span className="lbl">–</span>)
+                  : (dmg > 0 ? dmg : <span className="lbl">–</span>)}
+              </div>
+              <div className={`move-spm ${isSuper ? 'cost' : ''}`}>
+                {isSuper
+                  ? '–100'
+                  : (m.spm > 0 ? `+${m.spm}` : <span className="lbl">–</span>)}
+              </div>
             </div>
-            <div className="move-dmg">
-              {m.dmg > 0
-                ? <>{m.dmg}<span className="lbl"> </span></>
-                : <span className="lbl">–</span>}
-            </div>
-          </div>
-        ))}
-        {char.ult && (
-          <div className="move ult">
-            <div className="move-key">ULT</div>
-            <div style={{ minWidth: 0 }}>
-              <div className="move-name">{char.ult.name}</div>
-            </div>
-            <div className="move-dmg">{char.ult.dmg}</div>
-          </div>
-        )}
+          );
+        })}
       </div>
     </div>
   );

@@ -769,6 +769,26 @@ body.pk-design {
   from { transform: translateY(8px); opacity: 0; }
   to   { transform: translateY(0); opacity: 1; }
 }
+/* Detail body: image card + move set. Stacked on mobile / tablet (incl. iPad
+   landscape); side-by-side once the viewport is wide enough for a desktop
+   layout. Adjust the breakpoint below to taste. */
+.char-preview-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+@media (min-width: 1100px) {
+  .char-preview-cols {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 18px;
+  }
+}
+.char-preview-pick {
+  margin-top: 12px;
+  width: 100%;
+}
+
 .char-preview-back {
   display: inline-flex;
   align-items: center;
@@ -872,6 +892,33 @@ body.pk-design {
 .move.ult .move-key { color: var(--gold); border-color: var(--gold); background: linear-gradient(180deg, rgba(255,216,74,0.18), #0a0612); }
 .move.ult .move-name { color: var(--gold); }
 .move.ult .move-dmg { color: var(--gold); }
+
+/* Two-number move rows: DMG dealt to the opponent + SPM (super-meter) gained. */
+.move-head {
+  display: grid;
+  gap: 8px;
+  align-items: center;
+  padding: 0 8px 2px;
+}
+.move-col {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  text-align: right;
+}
+.move-spm {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  text-align: right;
+}
+.move-spm .lbl { color: var(--ink-mute); font-size: 9px; letter-spacing: 0.14em; }
+.move-spm.cost { color: var(--red); }          /* super move spends the full meter */
+.move.evade .move-dmg { color: var(--ink-mute); } /* jump deals no damage */
+.move-dmg .chip { color: var(--cyan); }            /* chip HP a guard still takes on a block */
 
 /* ─── Strategy editor ────────────────────────────────────────────── */
 

@@ -6,7 +6,7 @@
 // this file holds the player-facing presentation layer + the saved profile.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { CHARACTERS } from './characters.js';
+import { CHARACTERS, BASE_DAMAGE, METER } from './characters.js';
 
 // Archetype presentation. `class` drives the accent colour in DesignKit
 // (atk→red, def→cyan, mage→plasma, range→green, else→gold).
@@ -18,16 +18,43 @@ export const ARCHETYPES = {
   acrobat: { label: 'ACROBAT', class: 'spd' },
 };
 
-// The six base moves, shown in the MovesPanel on the fighter detail card.
+// Ordered move template (key + display name) for the MovesPanel. Per-character
+// damage + super-meter gain are attached per fighter by buildMoves() below, so
+// the panel can show two numbers per move (DMG dealt / +SPM meter gained).
 export const BASE_MOVES = [
-  { key: 'idle',   name: 'Idle',   dmg: 0 },
-  { key: 'jump',   name: 'Jump',   dmg: 0 },
-  { key: 'hit',    name: 'Hit',    dmg: 10 },
-  { key: 'shoot',  name: 'Shoot',  dmg: 12 },
-  { key: 'slide',  name: 'Slide',  dmg: 6 },
-  { key: 'defend_high', name: 'Guard High', dmg: 0 },
-  { key: 'defend_low',  name: 'Guard Low',  dmg: 0 },
+  { key: 'hit',         name: 'Hit' },
+  { key: 'shoot',       name: 'Shoot' },
+  { key: 'slide',       name: 'Slide' },
+  { key: 'super_move',  name: 'Super Move' },
+  { key: 'jump',        name: 'Jump' },
+  { key: 'defend_low',  name: 'Defend Low' },
+  { key: 'defend_high', name: 'Defend High' },
 ];
+
+// Attach per-character combat numbers to each move:
+//   hit/shoot/slide → dmg dealt + spm gained on landing (from actionTable)
+//   super_move      → total ult damage + spm of -100 (it SPENDS the full meter)
+//   jump/defend     → dmg 0 + spm gained on a successful evade / guard
+// Falls back to the global BASE_DAMAGE / METER defaults for untuned fighters.
+function buildMoves(c) {
+  const t = c.actionTable || {};
+  const ult = c.ultimates?.[0];
+  const superDmg = ult ? (ult.damage ?? 0) * (ult.hits ?? 1) : 0;
+  return BASE_MOVES.map(m => {
+    switch (m.key) {
+      case 'hit':
+      case 'shoot':
+      case 'slide':
+        return { ...m, dmg: t[m.key]?.dmg ?? BASE_DAMAGE[m.key] ?? 0, spm: t[m.key]?.spm ?? METER.GAIN_ON_HIT };
+      case 'super_move':
+        return { ...m, dmg: superDmg, spm: -100, super: true };
+      case 'jump':
+        return { ...m, dmg: 0, spm: t.jump?.spm ?? METER.GAIN_ON_DEFEND, evade: true };
+      default: // defend_low / defend_high
+        return { ...m, dmg: 0, chip: t.defend?.chip ?? 0, spm: t.defend?.spm ?? METER.GAIN_ON_DEFEND, evade: true, guard: true };
+    }
+  });
+}
 
 // Runtime variables a player can drop into an advanced strategy prompt.
 export const STRAT_VARS = [
@@ -113,10 +140,16 @@ export const UNLOCKED_IDS = new Set([
 // within each group.
 export const CHARS = Object.values(CHARACTERS)
   .map((c, i) => {
-    const atk = c.stats?.attack ?? 3;
-    const def = c.stats?.defense ?? 3;
-    const spd = Math.max(1, Math.min(5, 6 - Math.round((atk + def) / 2)));
     const ult = c.ultimates?.[0];
+    // 0–100 player-facing bars come straight from the engine character (single
+    // source of truth — `def` also drives damage mitigation in damageEngine).
+    // Locked fighters have no `ratings`, so derive a rough fallback from their
+    // 1–5 engine stats so the bars still render something.
+    const stats = c.ratings ?? {
+      atk: (c.stats?.attack ?? 3) * 20,
+      def: (c.stats?.defense ?? 3) * 20,
+      spm: 50,
+    };
     return {
       id: c.id,
       name: c.name,
@@ -125,7 +158,8 @@ export const CHARS = Object.values(CHARACTERS)
       rank: rankFor(i),
       tagline: TAGLINES[c.id] || c.description || '',
       thumb: thumbFor(c),
-      stats: { atk, def, spd },
+      stats,                       // { atk, def, spm } on a 0–100 scale
+      moves: buildMoves(c),        // [{ key, name, dmg, spm, super?, evade? }]
       ult: ult ? { name: ult.name, dmg: (ult.damage ?? 0) * (ult.hits ?? 1) } : null,
     };
   })

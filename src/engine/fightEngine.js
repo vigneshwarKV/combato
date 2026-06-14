@@ -4,16 +4,21 @@ import { CHARACTERS } from '../data/characters.js';
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Hard fight length. With no round/batch cap, this is the ONLY automatic end
+// condition besides a KO: when it elapses (excluding paused time) the fight
+// goes to a decision — higher HP wins, equal HP draws.
+export const FIGHT_TIME_LIMIT_MS = 60_000; // 1 minute
+
 /**
  * Run a complete fight between two fighters.
  *
  * @param {object} fighterA - { id, name, hp, prompt, promptMode, color, character }
  * @param {object} fighterB - same shape
- * @param {object} fightConfig - { n, maxBatches, getDelay, pauseRef, forceNextRef, defaults }
+ * @param {object} fightConfig - { n, getDelay, pauseRef, forceNextRef, defaults }
  * @param {function} onEvent - callback for each fight event
  */
 export async function runFight(fighterA, fighterB, fightConfig, onEvent) {
-  const { n = 3, maxBatches = 20, getDelay = () => 800, pauseRef, forceNextRef, defaults = {} } = fightConfig;
+  const { n = 3, getDelay = () => 800, pauseRef, forceNextRef, defaults = {} } = fightConfig;
 
   const charIdA = fighterA.character || fallbackCharacter(fighterA);
   const charIdB = fighterB.character || fallbackCharacter(fighterB);
@@ -29,7 +34,7 @@ export async function runFight(fighterA, fighterB, fightConfig, onEvent) {
   const history = [];
   let winner = null;
 
-  const TIME_LIMIT = 60_000; // 1 minute
+  const TIME_LIMIT = FIGHT_TIME_LIMIT_MS;
   const fightStartTime = Date.now();
   let pausedTime = 0;
 
@@ -51,7 +56,11 @@ export async function runFight(fighterA, fighterB, fightConfig, onEvent) {
       })),
     }));
 
-  while (batchNumber < maxBatches && !winner && !isTimeUp()) {
+  // Announce the real start instant so the HUD countdown aligns with this
+  // engine clock. The match runs until a KO or the time limit — no round cap.
+  onEvent({ type: 'fight_start', timeLimitMs: TIME_LIMIT });
+
+  while (!winner && !isTimeUp()) {
     batchNumber++;
 
     while (pauseRef?.current) {

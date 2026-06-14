@@ -27,7 +27,6 @@ function MobSlot({ fighter, idx, isMe }) {
   const engineChar = fighter.character ? CHARACTERS[fighter.character] : null;
   const charName = designChar?.name || engineChar?.name || '—';
   const ready = fighter.isHost || fighter.ready === true;
-  const rank = designChar?.rank || '—';
 
   const classes = ['mob-slot'];
   if (fighter.isHost) classes.push('host');
@@ -43,8 +42,6 @@ function MobSlot({ fighter, idx, isMe }) {
         <div className="mob-slot-char">{charName.toUpperCase()}{isMe ? ' · YOU' : ''}</div>
         <div className="mob-slot-foot">
           <span className={`ready ${ready ? '' : 'pend'}`}>● {ready ? 'READY' : 'NOT READY'}</span>
-          <span className="sep">·</span>
-          <span className="rank">R{rank}</span>
         </div>
       </div>
     </div>

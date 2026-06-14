@@ -32,7 +32,6 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
 
     const result = await runFight(fA, fB, {
       n: fightConfig.n || 3,
-      maxBatches: fightConfig.maxBatches || 20,
       getDelay,
       pauseRef,
       forceNextRef,
@@ -48,6 +47,9 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
       broadcastRef?.current?.(tagged);
       const { type: _evType, ...rest } = tagged;
       switch (event.type) {
+        case 'fight_start':
+          dispatch({ type: 'FIGHT_START', ...rest });
+          break;
         case 'batch_start':
           flushSync(() => dispatch({ type: 'BATCH_START', ...rest }));
           break;

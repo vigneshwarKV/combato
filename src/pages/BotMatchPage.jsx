@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CHARACTER_LIST } from '../data/characters.js';
 import { getCharacterTemplate, DEFAULT_SIMPLE_STRATEGY } from '../data/promptTemplates.js';
@@ -15,6 +15,10 @@ const BOT_NAMES = [
   'THE MACHINE', 'IRON KOMBATANT', 'CIRCUIT BREAKER',
   'NULL POINTER', 'BYTE CRUSHER', 'STACK OVERFLOW',
 ];
+
+// After a bot match ends, how long the winner's celebration plays before we
+// auto-return to the home screen.
+const POST_FIGHT_CELEBRATION_MS = 5000;
 
 function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -242,6 +246,16 @@ export default function BotMatchPage() {
   const [playerFighter, setPlayerFighter] = useState(() => buildFighterFromProfile(loadProfile()));
   const [botFighter] = useState(buildBotFighter);
 
+  // After the match ends, let the winner's celebration play for a beat, then
+  // return to the home screen automatically. Cleared on unmount (and if the
+  // player taps Home first) so we never navigate twice.
+  const homeTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(homeTimerRef.current), []);
+  const handleFightEnd = useCallback(() => {
+    clearTimeout(homeTimerRef.current);
+    homeTimerRef.current = setTimeout(() => navigate('/'), POST_FIGHT_CELEBRATION_MS);
+  }, [navigate]);
+
   if (!playerFighter) {
     return <SetupScreen onFight={setPlayerFighter} />;
   }
@@ -250,8 +264,8 @@ export default function BotMatchPage() {
     <Arena
       fighterA={playerFighter}
       fighterB={botFighter}
-      fightConfig={{ n: 3, maxBatches: 20 }}
-      onFightEnd={() => {}}
+      fightConfig={{ n: 3 }}
+      onFightEnd={handleFightEnd}
       mode="host"
       randomBackground
       onHome={() => navigate('/')}

@@ -24,6 +24,35 @@
   --panel-glow: 0 0 0 1px #2a0040, 0 4px 24px rgba(0,0,0,0.8);
 }
 
+/* ─── Fight HUD timer (centered between the HP meters) ──────────────────── */
+
+.fight-timer {
+  font-family: var(--font-arena);
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  color: var(--neon-gold);
+  padding: 2px 12px;
+  border: 1px solid var(--neon-gold-dim);
+  border-radius: 4px;
+  background: rgba(8, 0, 13, 0.7);
+  text-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+  font-variant-numeric: tabular-nums;
+  min-width: 78px;
+  text-align: center;
+}
+.fight-timer.low {
+  color: var(--neon-red);
+  border-color: var(--neon-red-dim);
+  text-shadow: 0 0 10px rgba(255, 51, 51, 0.7);
+  animation: fight-timer-pulse 1s ease-in-out infinite;
+}
+.fight-timer.ended { opacity: 0.55; }
+@keyframes fight-timer-pulse {
+  0%, 100% { transform: scale(1);    opacity: 1; }
+  50%      { transform: scale(1.08); opacity: 0.75; }
+}
+
 /* ─── Base ──────────────────────────────────────────────────────────────── */
 
 body {

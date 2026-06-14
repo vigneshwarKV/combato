@@ -104,7 +104,13 @@ export function resolveActions(
   // flyer. Per-side computeAttack handles that.
   const aAirborneUlt = isUltA && isAirborneUltimate(characterA, actualA);
   const bAirborneUlt = isUltB && isAirborneUltimate(characterB, actualB);
-  const clashUlt   = isUltA && isUltB && (aAirborneUlt === bAirborneUlt);
+  // Ranged supers (arrow volleys) fire projectiles from range — they don't
+  // body-clash. Two ranged supers (e.g., Woman Hero mirror match) cross and
+  // BOTH land, so both fighters get hurt. Exclude them from the ult clash.
+  const aRangedSuper = isUltA && !!getUltimate(characterA, actualA)?.rangedSuper;
+  const bRangedSuper = isUltB && !!getUltimate(characterB, actualB)?.rangedSuper;
+  const clashUlt   = isUltA && isUltB && (aAirborneUlt === bAirborneUlt)
+    && !aRangedSuper && !bRangedSuper;
   const clashSlide = actualA === 'slide' && actualB === 'slide';
 
   let dmgFromA, dmgFromB, aHit, bHit, resultA, resultB;
@@ -119,9 +125,12 @@ export function resolveActions(
     // meter is still spent in step 5 because isUltimateKey(actual) is true.
     resultA = { ultimate: false }; resultB = { ultimate: false };
   } else if (clashSlide) {
-    const d = BASE_DAMAGE.slide ?? 6;
-    events.push({ type: 'clash', kind: 'slide', damage: d });
-    dmgFromA = d; dmgFromB = d; aHit = true; bHit = true;
+    // Head-on slide collision: each fighter takes the OTHER's slide force
+    // (mitigated by their own DEF below), so a heavier slider hurts more.
+    dmgFromA = actionDamage(characterA, 'slide');
+    dmgFromB = actionDamage(characterB, 'slide');
+    events.push({ type: 'clash', kind: 'slide', damage: Math.max(dmgFromA, dmgFromB) });
+    aHit = true; bHit = true;
     resultA = { ultimate: false }; resultB = { ultimate: false };
   } else {
     ({ attackerDamage: dmgFromB, attackerHit: bHit, attackResult: resultB } =
@@ -130,8 +139,10 @@ export function resolveActions(
       computeAttack(actualA, actualB, characterA, characterB, events, 'A', 'B'));
   }
 
-  let damageToA = dmgFromB;
-  let damageToB = dmgFromA;
+  // DEF mitigation: the damage each fighter TAKES is reduced by their own DEF
+  // rating. Heals / self-damage / blocked-super backfire (below) are NOT mitigated.
+  let damageToA = mitigatedDamage(dmgFromB, characterA);
+  let damageToB = mitigatedDamage(dmgFromA, characterB);
 
   // 4. Apply Ultimate side-effects (self-heal, self-damage).
   if (isUltimateKey(actualA) && resultA.ultimate) {
@@ -165,6 +176,23 @@ export function resolveActions(
     if (backfire > 0) { damageToB += backfire; events.push({ type: 'super_backfire', fighter: 'B', amount: backfire }); }
   }
 
+  // 4c. Block chip: a correctly-guarded PHYSICAL blow (melee hit / rush /
+  // projectile-hit / slide tackle) still rattles the blocker — they take a
+  // small, DEF-scaled chip even though the strike itself is stopped. A blocked
+  // SHOOT is caught clean and a blocked SUPER already backfires on the attacker,
+  // so neither chips the defender. Chip is pre-scaled by DEF → NOT re-mitigated.
+  // It's added AFTER the dmgFrom* defend check, so blocking still grants meter.
+  const PHYSICAL_BLOCK_KINDS = ['hit', 'rush', 'projhit', 'slide'];
+  for (const e of events.filter(ev => ev.type === 'blocked' && PHYSICAL_BLOCK_KINDS.includes(ev.kind))) {
+    if (e.defender === 'A') {
+      const c = blockChip(characterA);
+      if (c > 0) { damageToA += c; events.push({ type: 'block_chip', fighter: 'A', amount: c }); }
+    } else if (e.defender === 'B') {
+      const c = blockChip(characterB);
+      if (c > 0) { damageToB += c; events.push({ type: 'block_chip', fighter: 'B', amount: c }); }
+    }
+  }
+
   // 5. Spend Ultimate meter cost
   let newMeterA = meterA;
   let newMeterB = meterB;
@@ -190,8 +218,14 @@ export function resolveActions(
   const bLandedAttack = (actualB === 'hit' || actualB === 'shoot' || actualB === 'slide') && bHit;
   const aDefended = isOffensiveAction(actualB) && dmgFromB <= 0 && isDefensiveStance(actualA);
   const bDefended = isOffensiveAction(actualA) && dmgFromA <= 0 && isDefensiveStance(actualB);
-  newMeterA = applyMeterGains(newMeterA, characterA, { landedAttack: aLandedAttack, defended: aDefended });
-  newMeterB = applyMeterGains(newMeterB, characterB, { landedAttack: bLandedAttack, defended: bDefended });
+  newMeterA = applyMeterGains(newMeterA, characterA, {
+    landedAction: aLandedAttack ? actualA : null,
+    defendStance: aDefended ? actualA : null,
+  });
+  newMeterB = applyMeterGains(newMeterB, characterB, {
+    landedAction: bLandedAttack ? actualB : null,
+    defendStance: bDefended ? actualB : null,
+  });
 
   return {
     damageToA: Math.max(0, damageToA),
@@ -236,10 +270,20 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
     const attackerIsProjHit = !!CHARACTERS[attackerCharId]?.extraProjectileActions?.includes('hit');
     const attackerIsRushHit = !!CHARACTERS[attackerCharId]?.hitIsRushStyle;
     const defenderIsProjHit = !!CHARACTERS[defenderCharId]?.extraProjectileActions?.includes('hit');
-    // Projectile-style hit (Woman Hero's IceShoot) misses a jumper — straight-
-    // line shot, jumper evades the same way they do shoot.
-    if (defender === 'jump' && attackerIsProjHit) {
+    // Projectile-style hit (Woman Hero's IceShoot) AND a rush-style charge
+    // (Skater Kid's skateboard run — HE is the projectile) both miss a jumper:
+    // they travel a straight ground-level line, so the jumper evades the same
+    // way they evade a shoot.
+    if (defender === 'jump' && (attackerIsProjHit || attackerIsRushHit)) {
       events.push({ type: 'miss', attacker: attackerLabel, reason: 'jumped' });
+      return hit(0, false);
+    }
+    // Rush-style charge vs an AIRBORNE super: the super lifts over his
+    // ground-level rush (like a shoot vs an airborne ult), so the rush whiffs
+    // and the super lands on the rusher (awarded in the ult branch). The
+    // super-er takes no rush damage.
+    if (attackerIsRushHit && isUltimateKey(defender) && isAirborneUltimate(defenderCharId, defender)) {
+      events.push({ type: 'miss', attacker: attackerLabel, reason: 'ult_airborne' });
       return hit(0, false);
     }
     // Projectile hit attacker vs an opposing melee hit — opponent's lunge
@@ -300,11 +344,13 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
       events.push({ type: 'miss', attacker: attackerLabel, reason: 'interrupted_by_super' });
       return hit(0, false);
     }
-    events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: BASE_DAMAGE.hit, kind: 'hit' });
-    return hit(BASE_DAMAGE.hit, true);
+    const hitDmg = actionDamage(attackerCharId, 'hit');
+    events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: hitDmg, kind: 'hit' });
+    return hit(hitDmg, true);
   }
 
   if (attacker === 'shoot') {
+    const shootDmg = actionDamage(attackerCharId, 'shoot');
     // Shoot travels the LOW line — a low guard catches the projectile on the
     // shield. A high guard leaves the body open, so the shot lands.
     if (defender === 'defend_low') {
@@ -322,8 +368,8 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
         events.push({ type: 'miss', attacker: attackerLabel, reason: 'interrupted_by_slide' });
         return hit(0, false);
       }
-      events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: BASE_DAMAGE.shoot, kind: 'shoot' });
-      return hit(BASE_DAMAGE.shoot, true);
+      events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: shootDmg, kind: 'shoot' });
+      return hit(shootDmg, true);
     }
     // An airborne ultimate (flyHit / jet-pack lift) takes the defender out of
     // the projectile's path the same way a jump does. Grounded ultimates
@@ -358,8 +404,8 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
       events.push({ type: 'miss', attacker: attackerLabel, reason: 'interrupted_by_shot' });
       return hit(0, false);
     }
-    events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: BASE_DAMAGE.shoot, kind: 'shoot' });
-    return hit(BASE_DAMAGE.shoot, true);
+    events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: shootDmg, kind: 'shoot' });
+    return hit(shootDmg, true);
   }
 
   if (attacker === 'slide') {
@@ -396,7 +442,7 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
     }
     // Slide damages everything still on the ground here: idle / defend / shoot
     // (slow thrower) / melee hit attacker.
-    const dmg = BASE_DAMAGE.slide ?? 6;
+    const dmg = actionDamage(attackerCharId, 'slide');
     events.push({ type: 'hit', attacker: attackerLabel, victim: defenderLabel, damage: dmg, kind: 'slide' });
     return hit(dmg, true);
   }
@@ -408,10 +454,12 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
     // Guard block by line: an AIRBORNE super (flyHit / jet-pack) crashes down
     // HIGH and is stopped by defend_high; a GROUNDED super runs in LOW and is
     // stopped by defend_low. Either guard guessed wrong lets the super land for
-    // full damage. (`unblockable` / `piercesShield` no longer bypass a guard —
-    // the high/low guess is the only counter now.)
+    // full damage. EXCEPTION: a `piercesShield` super (Woman Hero's Venom
+    // Volley — arrows that punch through a raised guard) is never blocked; it
+    // pierces either guard for full damage, and the shooter is never thrown
+    // back (no `blocked` event).
     const ultLine = attackLine(attacker, attackerCharId);
-    if (isDefendAction(defender) && guardBlocks(defender, ultLine)) {
+    if (isDefendAction(defender) && !ult.piercesShield && guardBlocks(defender, ultLine)) {
       const kind = ultLine === 'high' ? 'ultimate_air' : 'ultimate_ground';
       events.push({ type: 'blocked', defender: defenderLabel, kind, name: ult.name });
       return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: true, ult, blocked: true } };
@@ -424,8 +472,12 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
     // a RANGED super (Woman Hero's arrow volley): it fires from range, so a
     // charging hitter can't interrupt it — instead the volley lands and the
     // hit is stopped in the hit branch (matching the fast-shoot-vs-rush rule).
+    // A rush-style hit (Skater Kid's skateboard charge) does NOT lunge in to
+    // clip the windup — it's a ground-level charge that the super lifts over,
+    // so it can't interrupt the super (the super lands on the rusher instead).
     if (defender === 'hit'
       && !ult.rangedSuper
+      && !CHARACTERS[defenderCharId]?.hitIsRushStyle
       && !CHARACTERS[defenderCharId]?.extraProjectileActions?.includes('hit')) {
       events.push({ type: 'miss', attacker: attackerLabel, reason: 'interrupted_by_hit', name: ult.name });
       return { attackerDamage: 0, attackerHit: false, attackResult: { ultimate: true, ult, missed: true } };
@@ -462,6 +514,32 @@ function computeAttack(attacker, defender, attackerCharId, defenderCharId, event
 
 function hit(damage, landed) {
   return { attackerDamage: damage, attackerHit: landed, attackResult: { ultimate: false } };
+}
+
+// Per-character base damage for a connecting hit / shoot / slide. Reads the
+// fighter's `actionTable`; falls back to the global BASE_DAMAGE for fighters
+// without one (e.g. the locked roster).
+function actionDamage(charId, action) {
+  const tuned = CHARACTERS[charId]?.actionTable?.[action]?.dmg;
+  return tuned ?? BASE_DAMAGE[action] ?? 0;
+}
+
+// DEF mitigation. A fighter's `ratings.def` (0–100) cuts the attack damage they
+// TAKE by def×0.4% (DEF 90 → −36%, DEF 35 → −14%). A connecting attack always
+// lands for ≥1. Untuned fighters (no ratings) take full damage. Applied ONLY to
+// attack damage — heals, self-damage, and blocked-super backfire bypass it.
+function mitigatedDamage(raw, defenderCharId) {
+  if (raw <= 0) return 0;
+  const def = CHARACTERS[defenderCharId]?.ratings?.def;
+  if (def == null) return raw;
+  return Math.max(1, Math.round(raw * (1 - def * 0.004)));
+}
+
+// HP a fighter loses when they CORRECTLY block a physical blow (hit / rush /
+// projhit / slide). A small, DEF-scaled chip — tankier guards take less. Per
+// character via actionTable.defend.chip; fighters without one take no chip.
+function blockChip(charId) {
+  return CHARACTERS[charId]?.actionTable?.defend?.chip ?? 0;
 }
 
 // True when the shooter's projectile spawn delay is long enough that an
@@ -501,10 +579,28 @@ function isDefensiveStance(action) {
   return isDefendAction(action) || action === 'jump' || action === 'slide';
 }
 
-function applyMeterGains(currentMeter, charId, { landedAttack, defended }) {
-  const { onHit, onDefend } = getMeterGain(charId);
+function applyMeterGains(currentMeter, charId, { landedAction, defendStance }) {
   let m = currentMeter;
-  if (landedAttack) m += onHit;
-  if (defended)     m += onDefend;
+  if (landedAction) m += meterGainOnLand(charId, landedAction);
+  if (defendStance) m += meterGainOnDefend(charId, defendStance);
   return Math.min(METER.MAX, m);
+}
+
+// Meter gained when this fighter's hit / shoot / slide CONNECTS. Per-action via
+// actionTable; falls back to the global GAIN_ON_HIT for untuned fighters.
+function meterGainOnLand(charId, action) {
+  const spm = CHARACTERS[charId]?.actionTable?.[action]?.spm;
+  return spm ?? getMeterGain(charId).onHit;
+}
+
+// Meter gained on a successful DEFENSIVE read. Jump-evade pays the most, then
+// slide-dodge, then a shield guard — per actionTable; falls back to the global
+// GAIN_ON_DEFEND for untuned fighters.
+function meterGainOnDefend(charId, stance) {
+  const t = CHARACTERS[charId]?.actionTable;
+  const fallback = getMeterGain(charId).onDefend;
+  if (!t) return fallback;
+  if (stance === 'jump')  return t.jump?.spm ?? fallback;
+  if (stance === 'slide') return t.slideDodge?.spm ?? fallback;
+  return t.defend?.spm ?? fallback;  // defend_low / defend_high
 }

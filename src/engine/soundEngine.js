@@ -56,7 +56,11 @@ export function preloadClips(urls = []) {
   }
 }
 
-export function playClip(url, { gain = 1 } = {}) {
+// Play a clip. `offset` (seconds) skips into the buffer, and a play length can
+// be capped with either `duration` (seconds) or `durationFrac` (a fraction of
+// the clip's full length, resolved once the buffer is decoded) — used to play
+// only the front portion of an over-long SFX.
+export function playClip(url, { gain = 1, offset = 0, duration, durationFrac } = {}) {
   // Never CREATE the context here — only the gesture unlock does that. Before
   // the first gesture audioCtx is null, so a sound that fires from an effect or
   // a timer is simply dropped (no audio is allowed pre-gesture anyway) instead
@@ -73,7 +77,12 @@ export function playClip(url, { gain = 1 } = {}) {
       gainNode.gain.value = gain;
       source.connect(gainNode);
       gainNode.connect(ctx.destination);
-      source.start();
+      const off = Math.max(0, offset);
+      const dur = duration != null ? duration
+        : (durationFrac != null ? buffer.duration * durationFrac : undefined);
+      if (dur != null) source.start(0, off, Math.max(0, dur));
+      else if (off > 0) source.start(0, off);
+      else source.start();
     }).catch(() => { /* decode failed — silent */ });
   } catch {
     // AudioContext unavailable or blocked — silent fail

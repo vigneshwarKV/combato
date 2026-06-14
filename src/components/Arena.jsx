@@ -8,6 +8,7 @@ import { useFight } from '../hooks/useFight.js';
 import { useFightRenderer } from '../hooks/useFightRenderer.js';
 import { CHARACTERS } from '../data/characters.js';
 import { startMusic, stopMusic, toggleMusic, isMusicPlaying, onMusicChange } from '../engine/soundEngine.js';
+import { FIGHT_TIME_LIMIT_MS } from '../engine/fightEngine.js';
 
 // Top-bar music on/off toggle. Reflects whether the theme is actually playing
 // (so a cold reload, where audio isn't unlocked, shows OFF). Clicking unlocks
@@ -24,6 +25,53 @@ function MusicToggle() {
     >
       {playing ? '🔊' : '🔇'}
     </button>
+  );
+}
+
+// Match countdown shown between the two HP meters. Counts down from the engine's
+// time limit (armed by the `fight_start` event → status 'calling'), pauses while
+// the fight is paused, and freezes when the match ends. Display-only — the engine
+// clock in fightEngine is authoritative for the actual cutoff.
+function FightTimer({ status, isPaused, timeLimitMs = FIGHT_TIME_LIMIT_MS }) {
+  const active = status === 'calling' || status === 'animating';
+  const ended = status === 'ko' || status === 'decision' || status === 'draw';
+
+  const [remainingMs, setRemainingMs] = useState(timeLimitMs);
+  const remainingRef = useRef(timeLimitMs);   // authoritative value across re-runs
+  const lastTickRef = useRef(0);
+  const wasActiveRef = useRef(false);
+
+  // One effect owns the whole countdown. It re-runs on the active edge and on a
+  // pause toggle (to re-base its tick clock); state is set ONLY inside the timer
+  // callback — never synchronously in the effect body — so it stays lint-clean.
+  useEffect(() => {
+    if (!active) { wasActiveRef.current = false; return; }
+    // Rising edge = a fresh fight just went live → re-arm to the full limit.
+    if (!wasActiveRef.current) {
+      wasActiveRef.current = true;
+      remainingRef.current = timeLimitMs;
+    }
+    lastTickRef.current = Date.now();
+    const id = setInterval(() => {
+      const now = Date.now();
+      const dt = now - lastTickRef.current;
+      lastTickRef.current = now;
+      if (isPaused) return;            // frozen while paused
+      remainingRef.current = Math.max(0, remainingRef.current - dt);
+      setRemainingMs(remainingRef.current);
+    }, 200);
+    return () => clearInterval(id);
+  }, [active, isPaused, timeLimitMs]);
+
+  const totalSec = Math.max(0, Math.ceil(remainingMs / 1000));
+  const mm = Math.floor(totalSec / 60);
+  const ss = totalSec % 60;
+  const low = remainingMs <= 10_000 && active;
+
+  return (
+    <div className={`fight-timer ${low ? 'low' : ''} ${ended ? 'ended' : ''}`}>
+      {mm}:{String(ss).padStart(2, '0')}
+    </div>
   );
 }
 
@@ -109,7 +157,7 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
     meterA, meterB, statusA, statusB,
     movesA, movesB, currentTurnIndex, completedTurns,
     animClassA, animClassB, animKeyA, animKeyB,
-    shakeScreen,
+    shakeScreen, isPaused, timeLimitMs,
   } = activeFightState;
 
   const currentActionA = currentTurnIndex >= 0 && movesA[currentTurnIndex] ? movesA[currentTurnIndex] : null;
@@ -228,8 +276,11 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
             zIndex: 20, pointerEvents: 'none',
           }}>
             <StatusBars fighter={fighterA} hp={hpA} meter={meterA} status={statusA} side="A" />
-            <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-arena)', fontSize: 18, padding: '8px 16px', letterSpacing: 2 }}>
-              VS
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '4px 12px' }}>
+              <FightTimer status={status} isPaused={isPaused} timeLimitMs={timeLimitMs} />
+              <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-arena)', fontSize: 14, letterSpacing: 2 }}>
+                VS
+              </div>
             </div>
             <StatusBars fighter={fighterB} hp={hpB} meter={meterB} status={statusB} side="B" />
           </div>

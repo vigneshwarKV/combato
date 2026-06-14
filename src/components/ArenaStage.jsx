@@ -602,10 +602,12 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
   // overlapping the defender. 350px keeps the tip near the stage edge.
   const PASS_THROUGH_PX = 350;
   const dir = side === 'A' ? 1 : -1;
-  // A LOW guard catches a shoot ON THE SHIELD: stop the bullet at the shield
-  // face (well in front of the defender's body) so it vanishes there instead of
-  // sailing into the body. Held constant speed by scaling duration to distance.
-  const targetBlocksLowShoot = action === 'shoot' && matchesAction('defend_low');
+  // A LOW guard catches a low-line projectile ON THE SHIELD: stop it at the
+  // shield face (well in front of the defender's body) so it vanishes there
+  // instead of sailing past into the body. Covers both a normal shoot AND Woman
+  // Hero's projectile-style hit (her ice arrow travels the low line too). Held
+  // constant speed by scaling duration to distance.
+  const targetBlocksLowShoot = (action === 'shoot' || isAttackerProjHit) && matchesAction('defend_low');
   const restEndX = targetBaseX + (side === 'A' ? -40 : 40);
   const aimEndY = targetBaseY - 80 + endYOffset;   // idle target (chest height)
   let endX = restEndX;
@@ -626,7 +628,7 @@ function fireProjectile(app, fromSprite, toSprite, action, side, character, endY
     // Keep the bullet speed constant: stretch flight time by the same ratio.
     duration += Math.round(duration * (PASS_THROUGH_PX / aimLen));
   } else if (targetBlocksLowShoot) {
-    const SHIELD_FACE_PX = 75;   // stop this far in front of the defender's base
+    const SHIELD_FACE_PX = 100;   // stop this far in front of the defender's base
     const blockEndX = targetBaseX - dir * SHIELD_FACE_PX;
     const fullDist  = Math.max(1, Math.abs(restEndX - startX));
     const blockDist = Math.max(1, Math.abs(blockEndX - startX));

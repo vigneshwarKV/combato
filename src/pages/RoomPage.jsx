@@ -4,8 +4,10 @@ import { useMatchHost } from '../hooks/useMatchHost.js';
 import { useMatchClient } from '../hooks/useMatchClient.js';
 import { CHARACTERS } from '../data/characters.js';
 import { getCharacterTemplate, DEFAULT_PROMPT } from '../data/promptTemplates.js';
-import { charById, loadProfile } from '../data/designData.js';
+import { charById, loadProfile, isProfileReady } from '../data/designData.js';
 import Icon from '../components/design/Icons.jsx';
+import { Modal } from '../components/design/DesignKit.jsx';
+import NeedSetupPrompt from '../components/design/NeedSetupPrompt.jsx';
 import Arena from '../components/Arena.jsx';
 import BracketView from '../components/BracketView.jsx';
 import ChampionView from '../components/ChampionView.jsx';
@@ -33,7 +35,6 @@ function PlayerSlot({ fighter, idx, isMe }) {
   const designChar = fighter.character ? charById(fighter.character) : null;
   const engineChar = fighter.character ? CHARACTERS[fighter.character] : null;
   const charName = designChar?.name || engineChar?.name || 'No fighter';
-  const rank = designChar?.rank || '—';
   const ready = fighter.isHost || fighter.ready === true;
   const classes = ['slot'];
   if (fighter.isHost) classes.push('host');
@@ -50,10 +51,6 @@ function PlayerSlot({ fighter, idx, isMe }) {
         <div className={`slot-ready ${ready ? '' : 'pend'}`}>
           <span className="dotg" />{ready ? 'READY' : 'NOT READY'}
         </div>
-      </div>
-      <div className="slot-stat">
-        <div className="slot-rank">{rank}</div>
-        <div className="slot-rank-lbl">RANK</div>
       </div>
     </div>
   );
@@ -262,8 +259,15 @@ export default function RoomPage() {
   const tournamentName = location.state?.tournamentName;
   const isPortrait = useIsPortrait();
 
-  const host   = useMatchHost(isHost ? code : null, { tournamentName });
-  const client = useMatchClient(!isHost ? code : null);
+  // Snapshot the profile on first render so the lobby header is stable.
+  const [profile] = useState(() => loadProfile());
+
+  // A visitor landing on a shared /room/:code link may not have a fighter +
+  // strategy yet. Gate them with a setup prompt before connecting to the room.
+  const needsSetup = !isProfileReady(profile);
+
+  const host   = useMatchHost(isHost && !needsSetup ? code : null, { tournamentName });
+  const client = useMatchClient(!isHost && !needsSetup ? code : null);
 
   const lobby           = isHost ? host : client;
   const myConfig        = lobby.myConfig;
@@ -275,8 +279,11 @@ export default function RoomPage() {
   const champion        = lobbyState?.champion ?? null;
   const myPeerId        = lobby.myPeerId;
 
-  // Snapshot the profile on first render so the lobby header is stable.
-  const [profile] = useState(() => loadProfile());
+  // A late joiner who connected after the tournament started watches as a
+  // spectator until it ends, then may opt into the roster.
+  const spectating = !isHost && !!lobby.isSpectator;
+  // Joining the roster is only offered once the tournament is over.
+  const canJoinNow = spectating && (phase === 'champion' || phase === 'lobby');
 
   // Auto-populate myConfig from the profile saved in /setup. Characters &
   // strategy are already chosen there — no setup UI on this page.
@@ -325,34 +332,41 @@ export default function RoomPage() {
     navigate('/');
   }
 
-  const currentMatch  = isHost ? host.currentMatch : null;
-  const matchFighters = !isHost ? client.matchFighters : null;
-  const fightConfig   = { n: 3, maxBatches: 20 };
-
-  // ── Bracket preview phase ────────────────────────────────────────────────
-  if (phase === 'bracket-preview' && bracket) {
-    if (isPortrait) {
-      return (
-        <MobileBracket
-          bracket={bracket}
-          nextMatchStartsAt={nextMatchStartsAt || Date.now()}
-          isHost={isHost}
-          onStartNow={isHost ? host.startNextMatch : undefined}
-        />
-      );
-    }
+  // ── Setup gate ─────────────────────────────────────────────────────────────
+  // New user with no fighter/strategy: prompt them to set up first. "Open
+  // settings" round-trips through /setup and redirects back here; "Not now"
+  // sends them home. We render this before any room UI and skip the peer
+  // connection entirely (see the null code passed to the hooks above).
+  if (needsSetup) {
+    const returnTo = encodeURIComponent(`/room/${code}`);
     return (
-      <BracketView
-        bracket={bracket}
-        nextMatchStartsAt={nextMatchStartsAt || Date.now()}
-        isHost={isHost}
-        onStartNow={isHost ? host.startNextMatch : undefined}
-      />
+      <div className="bg-arena">
+        <div className="spotlight-left" />
+        <div className="spotlight-right" />
+        <Modal open onClose={() => navigate('/')}>
+          <NeedSetupPrompt
+            onClose={() => navigate('/')}
+            onChoose={() => navigate(`/setup?returnTo=${returnTo}`)}
+          />
+        </Modal>
+      </div>
     );
   }
 
+  const currentMatch  = isHost ? host.currentMatch : null;
+  const matchFighters = !isHost ? client.matchFighters : null;
+  const fightConfig   = { n: 3 };
+
+  // Spectating overlay — shown for late joiners across every phase. Surfaces a
+  // JOIN action once the tournament ends (champion) or returns to lobby.
+  const spectatorBar = spectating
+    ? <SpectatorBar canJoin={canJoinNow} onJoin={() => client.joinAsFighter()} />
+    : null;
+
   // ── Fighting phase ───────────────────────────────────────────────────────
-  if (phase === 'fighting' && (currentMatch || matchFighters)) {
+  // Late joiners stay on the tournament tree for the whole tournament rather
+  // than the live Arena, so they're never dropped into a match mid-stream.
+  if (phase === 'fighting' && !spectating && (currentMatch || matchFighters)) {
     const rawA = isHost ? currentMatch?.fA : matchFighters?.find(f => f.role === 'A');
     const rawB = isHost ? currentMatch?.fB : matchFighters?.find(f => f.role === 'B');
     const hostPeerId = isHost ? host.lobbyState?.fighters?.find(f => f.isHost)?.peerId : null;
@@ -369,30 +383,58 @@ export default function RoomPage() {
     const fighterB = inject(rawB);
 
     return (
-      <Arena
-        fighterA={fighterA}
-        fighterB={fighterB}
-        fightConfig={{
-          ...fightConfig,
-          getMoves: isHost ? host.getMoves : undefined,
-          onBroadcastEvent: isHost ? host.broadcastFightEvent : undefined,
-        }}
-        onFightEnd={handleFightEnd}
-        mode={isHost ? 'host' : 'spectator'}
-        fightEvents={!isHost ? client.fightEvents : undefined}
+      <>
+        <Arena
+          fighterA={fighterA}
+          fighterB={fighterB}
+          fightConfig={{
+            ...fightConfig,
+            getMoves: isHost ? host.getMoves : undefined,
+            onBroadcastEvent: isHost ? host.broadcastFightEvent : undefined,
+          }}
+          onFightEnd={handleFightEnd}
+          mode={isHost ? 'host' : 'spectator'}
+          fightEvents={!isHost ? client.fightEvents : undefined}
+        />
+        {spectatorBar}
+      </>
+    );
+  }
+
+  // ── Bracket phase ─────────────────────────────────────────────────────────
+  // Covers bracket-preview between matches, plus the whole tournament for a
+  // spectator — late joiners watch the tree update live rather than the Arena.
+  if ((phase === 'bracket-preview' || phase === 'fighting') && bracket) {
+    const bracketEl = isPortrait ? (
+      <MobileBracket
+        bracket={bracket}
+        nextMatchStartsAt={nextMatchStartsAt || Date.now()}
+        isHost={isHost}
+        onStartNow={isHost ? host.startNextMatch : undefined}
+      />
+    ) : (
+      <BracketView
+        bracket={bracket}
+        nextMatchStartsAt={nextMatchStartsAt || Date.now()}
+        isHost={isHost}
+        onStartNow={isHost ? host.startNextMatch : undefined}
       />
     );
+    return <>{bracketEl}{spectatorBar}</>;
   }
 
   // ── Champion phase ───────────────────────────────────────────────────────
   if (phase === 'champion') {
     return (
-      <ChampionView
-        champion={champion}
-        isHost={isHost}
-        onBackToLobby={isHost ? host.closeTournament : undefined}
-        onCloseRoom={isHost ? handleCloseRoom : undefined}
-      />
+      <>
+        <ChampionView
+          champion={champion}
+          isHost={isHost}
+          onBackToLobby={isHost ? host.closeTournament : undefined}
+          onCloseRoom={isHost ? handleCloseRoom : undefined}
+        />
+        {spectatorBar}
+      </>
     );
   }
 
@@ -411,6 +453,32 @@ export default function RoomPage() {
     onToggleReady: isHost ? undefined : (next) => client.updateMyConfig({ ready: next }),
   };
 
-  if (isPortrait) return <MobileLobby {...lobbyProps} />;
-  return <LobbyView {...lobbyProps} />;
+  const lobbyEl = isPortrait ? <MobileLobby {...lobbyProps} /> : <LobbyView {...lobbyProps} />;
+  return <>{lobbyEl}{spectatorBar}</>;
+}
+
+// ── Spectator overlay ─────────────────────────────────────────────────────────
+
+function SpectatorBar({ canJoin, onJoin }) {
+  return (
+    <div style={{
+      position: 'fixed', left: '50%', bottom: 20, transform: 'translateX(-50%)',
+      zIndex: 60, display: 'flex', alignItems: 'center', gap: 14,
+      padding: '10px 16px', borderRadius: 999,
+      background: 'rgba(13,9,23,0.92)', border: '1px solid var(--line)',
+      boxShadow: '0 8px 30px rgba(0,0,0,0.5)', backdropFilter: 'blur(6px)',
+    }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--f-mono)', fontSize: 12, letterSpacing: '0.08em', color: 'var(--ink-soft)' }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--gold)', boxShadow: '0 0 8px var(--gold)' }} />
+        SPECTATING
+      </span>
+      {canJoin ? (
+        <button className="btn btn-sm" onClick={onJoin}>
+          <Icon name="enter" size={14} />&nbsp;JOIN THE RING
+        </button>
+      ) : (
+        <span style={{ fontSize: 12, color: 'var(--ink-mute)' }}>Tournament in progress…</span>
+      )}
+    </div>
+  );
 }

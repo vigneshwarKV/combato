@@ -16,6 +16,18 @@
 //                    png   → manifest.json folder name
 //                    spine → animation track name in the skeleton json
 //   stats         { attack, defense } 1–5 (used by BotMatch tiles)
+//   ratings       { atk, def, spm } 0–100 player-facing bars (CharSelect screen).
+//                 `def` doubles as the damage-mitigation rating read by
+//                 damageEngine: incoming attack damage ×(1 − def×0.004).
+//   actionTable   per-fighter combat tuning that overrides the global BASE_DAMAGE
+//                 / METER defaults for this character:
+//                   hit/shoot/slide → { dmg, spm } damage dealt + meter gained
+//                                     when that attack lands
+//                   defend          → { spm, chip } meter gained on a correct
+//                     guard + the DEF-scaled HP `chip` the blocker still takes
+//                     from a blocked physical blow (hit/rush/projhit/slide);
+//                     blocked shoots/supers don't chip (clean catch / backfire)
+//                   jump/slideDodge → { spm } meter gained on the evade
 //   ultimates     array of ultimate-move descriptors (see below)
 //
 //   spine only:   skeletonJson, atlasFile
@@ -46,9 +58,16 @@
 //                      (default BLOCKED_SUPER_DAMAGE_MULTIPLIER)
 //   rangedSuper   fires from range — a charging melee hit can't interrupt it;
 //                 the super lands and the hitter is clipped/thrown instead
-
-//   reflectsNext / blocksNext / ignoresDodge / unblockable / gainMeter /
-//   critVsLowHp / empowerNextMelees — situational flags read by damageEngine
+//   piercesShield super punches through EITHER guard — never blocked, and the
+//                 shooter is never thrown back (no `blocked` event)
+//   gainMeter     meter refunded to the attacker when the super fires
+//
+// Side-effect flags ACTUALLY honored by damageEngine: heals, selfDamage,
+// gainMeter, rangedSuper, piercesShield, blockBackfireMult, hits, airborne.
+// Earlier drafts also listed reflectsNext / blocksNext / ignoresDodge /
+// unblockable / critVsLowHp / empowerNextMelees as engine-read — they are NOT
+// wired up (only unblockable / reflectsNext do anything, and only as LLM
+// moveset text in prompts.js).
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BASE = '/assets/characters';
@@ -131,8 +150,18 @@ export const CHARACTERS = {
     // xOff (default -55), yOff (default -90), scale (default 1).
     jetExhaust: { type: 'smoke' },
     animations: pngAnimations({ gunIdle: 'IdleWithGun', jetpack: 'JetPack', ultKey: 'ultimate_rocketcharge', climb: 'Climbing' }),
+    // ── Unstoppable Engine: heaviest hits + biggest super, slowest meter ──
+    ratings: { atk: 90, def: 80, spm: 35 },
+    actionTable: {
+      hit:   { dmg: 13, spm: 6 },
+      shoot: { dmg: 5,  spm: 6 },   // weak poke — well below his hit/slide so shoot can't out-trade them
+      slide: { dmg: 8,  spm: 5 },
+      defend:     { spm: 7, chip: 1 },   // guard meter + DEF-scaled chip on a blocked hit/slide
+      jump:       { spm: 12 },  // jump-evade — above guard
+      slideDodge: { spm: 8 },   // slide used to dodge
+    },
     ultimates: [
-      { key: 'ultimate_rocketcharge', name: 'Rocket Charge', meterCost: 100, damage: 30, airborne: true },
+      { key: 'ultimate_rocketcharge', name: 'Rocket Charge', meterCost: 100, damage: 34, airborne: true },
     ],
   },
 
@@ -239,6 +268,16 @@ export const CHARACTERS = {
     // xOff (default -55), yOff (default -90), scale (default 1).
     jetExhaust: { type: 'smoke' },
     animations: pngAnimations({ gunIdle: 'IdleWGun', jetpack: 'JetPack', ultKey: 'ultimate_starfall' }),
+    // ── Sniper: dominates at range (strong shot), folds in melee ──
+    ratings: { atk: 80, def: 60, spm: 55 },
+    actionTable: {
+      hit:   { dmg: 8,  spm: 6 },
+      shoot: { dmg: 14, spm: 9 },
+      slide: { dmg: 6,  spm: 6 },
+      defend:     { spm: 9, chip: 2 },
+      jump:       { spm: 16 },
+      slideDodge: { spm: 11 },
+    },
     ultimates: [
       { key: 'ultimate_starfall', name: 'Star Fall', meterCost: 100, damage: 27, airborne: true },
     ],
@@ -320,6 +359,16 @@ export const CHARACTERS = {
     // xOff (default -55), yOff (default -90), scale (default 1).
     jetExhaust: { type: 'smoke' },
     animations: pngAnimations({ gunIdle: 'IdleWithGun', jetpack: 'Jetpack', ultKey: 'ultimate_teslaoverload' }),
+    // ── Overload: modest basics but charges fastest; squishy ──
+    ratings: { atk: 65, def: 35, spm: 90 },
+    actionTable: {
+      hit:   { dmg: 9,  spm: 9 },
+      shoot: { dmg: 4,  spm: 10 },  // weakest shoot in the cast — he pokes, doesn't out-trade
+      slide: { dmg: 6,  spm: 7 },
+      defend:     { spm: 8, chip: 3 },
+      jump:       { spm: 18 },
+      slideDodge: { spm: 11 },
+    },
     ultimates: [
       { key: 'ultimate_teslaoverload', name: 'Tesla Overload', meterCost: 100, damage: 22, airborne: true },
     ],
@@ -358,7 +407,7 @@ export const CHARACTERS = {
     // 600 here keeps his timing in sync (default lunge fwdMs of 220 fires far
     // too early for a rush this long).
     motionOverrides: {
-      hit: { kind: 'lunge', fwdMs: 600, gap: 60, holdMs: 160, retMs: 260 },
+      hit: { kind: 'lunge', fwdMs: 600, gap: 60, holdMs: 0, retMs: 260 },
       // ultimate_roll default lands at the GROUND (endYOffset 0). gap=80
       // closes the distance — default 160 left him stopping well short of
       // the opponent. When the opponent defends, the renderer overrides
@@ -377,6 +426,16 @@ export const CHARACTERS = {
       hurt:  'GetHit',
       death: 'Dead',
       ultimate_roll: 'JetPack',
+    },
+    // ── Grind: guard-breaking rush + mobility, fast meter, flimsy frame ──
+    ratings: { atk: 75, def: 45, spm: 75 },
+    actionTable: {
+      hit:   { dmg: 12, spm: 8 },  // skateboard rush — breaks a high guard (low line)
+      shoot: { dmg: 6,  spm: 7 },   // strongest of the NORMAL shooters, but still below his rush/slide
+      slide: { dmg: 7,  spm: 8 },
+      defend:     { spm: 7, chip: 3 },
+      jump:       { spm: 20 },  // acrobat — biggest jump bonus in the cast
+      slideDodge: { spm: 12 },
     },
     ultimates: [
       { key: 'ultimate_roll', name: 'Sky Grind', meterCost: 100, damage: 26, airborne: true },
@@ -440,6 +499,16 @@ export const CHARACTERS = {
       celebrate: 'Celebrates',
       ultimate_roll: 'FlyOnStick',
     },
+    // ── Trickster: slow spear hits double a normal shot; agile, fast meter ──
+    ratings: { atk: 85, def: 45, spm: 75 },
+    actionTable: {
+      hit:   { dmg: 11, spm: 8 },
+      shoot: { dmg: 24, spm: 9 },  // heavy spear — slow to release (loses to rush/slide)
+      slide: { dmg: 7,  spm: 8 },
+      defend:     { spm: 8, chip: 3 },
+      jump:       { spm: 20 },  // somersault — biggest jump bonus
+      slideDodge: { spm: 12 },
+    },
     ultimates: [
       { key: 'ultimate_roll', name: 'Cloud Somersault', meterCost: 100, damage: 16, hits: 2, airborne: true },
     ],
@@ -481,12 +550,26 @@ export const CHARACTERS = {
       celebrate: 'Celebrates',
       ultimate_shellcyclone: 'Fly',
     },
+    // ── Bulwark: tankiest DEF in the cast (−36% incoming damage). No heal — he
+    // wins by ATTRITION: soaks hits and turns every block/dodge into super charge
+    // faster than anyone. Slow heavy spear (double a shot) loses to rush/slide. ──
+    ratings: { atk: 70, def: 90, spm: 60 },
+    actionTable: {
+      hit:   { dmg: 12, spm: 7 },
+      shoot: { dmg: 24, spm: 9 },  // heavy spear — slow to release (loses to rush/slide)
+      slide: { dmg: 6,  spm: 6 },
+      defend:     { spm: 16, chip: 1 },  // best guard meter + least chip (tankiest DEF)
+      jump:       { spm: 16 },
+      slideDodge: { spm: 14 },  // even his dodges feed the meter
+    },
     ultimates: [
       // airborne: true is critical — without it, engine treats this as grounded
       // (shoot can clip it, no clash with opposing airborne ults) while the
       // renderer treats it as airborne (default flyHit kind). The mismatch
       // causes the weird interrupt/clash behavior.
-      { key: 'ultimate_shellcyclone', name: 'Shell Cyclone', meterCost: 100, damage: 22, heals: 8, blocksNext: 1, airborne: true },
+      // No heal / blocksNext: his tankiness is purely DEF 90 mitigation (−36%
+      // incoming) + the best block-to-meter conversion in the cast (below).
+      { key: 'ultimate_shellcyclone', name: 'Shell Cyclone', meterCost: 100, damage: 22, airborne: true },
     ],
   },
 
@@ -513,10 +596,11 @@ export const CHARACTERS = {
     // the roll clears the edge (negative = up). See monkey for the same fix.
     actionYOffsets: { slide: -50 },
     extraProjectileActions: ['hit'],
-    // Her arrows pierce a raised guard: both her hit (already projectile-style)
-    // and her ultimate punch straight through a defending opponent's shield and
-    // deal full damage — and she is never thrown back by a blocked shield.
-    piercesShield: true,
+    // Her ice-arrow `hit` is projectile-style → it travels the LOW line, so a
+    // RAISED guard (defend_high) can't stop it (that's the "pierces a guard"
+    // read) while defend_low still blocks it. No character-level piercesShield
+    // flag: the engine only ever honored piercesShield on a SUPER, so the
+    // character-level one was inert and has been removed.
     // Arrows, not bullets:
     //   shoot → fire arrow (FireShoot anim)
     //   hit   → ice arrow (IceShoot anim, airborne jumpShoot)
@@ -545,9 +629,12 @@ export const CHARACTERS = {
     motionOverrides: {
       // Hit: jump up, then at apex tilt body forward (fireRotation: 0.25 rad ≈ 14°)
       // to "aim down" before the ice arrow releases. Rotation is reset by the
-      // next action's cancelActiveTween.
+      // next action's cancelActiveTween. holdMs hovers her at the apex long
+      // enough that an opposing bullet passes UNDER her before she descends —
+      // without the longer hover she clips the bullet on the way down even
+      // though the engine scores it a clean miss (she's airborne).
       hit: {
-        kind: 'jumpShoot', peakY: 180, upMs: 350, holdMs: 220, downMs: 350,
+        kind: 'jumpShoot', peakY: 180, upMs: 350, holdMs: 420, downMs: 350,
         fireRotation: 0.25,
       },
       // Ult: 3-arrow poison spread. Each arrow has its own body tilt so she
@@ -572,12 +659,31 @@ export const CHARACTERS = {
       defend_high: 'OnLadder',
       hurt:  'GetHit',
       death: 'Die',
+      // Her rig has no dedicated celebrate track — reuse the OnLadder pose for
+      // the victory loop (loops because spritePlayer keys the loop off the
+      // 'celebrate' action key, not the track name).
+      celebrate: 'OnLadder',
       ultimate_poison: 'PoisonShoot1',
+    },
+    // ── Glass Volley: weak, BLOCKABLE super but charges fastest in the cast.
+    // Her basic ice-arrow `hit` still pierces a RAISED guard (it's a low-line
+    // projectile — see extraProjectileActions); only the SUPER lost its pierce. ──
+    ratings: { atk: 55, def: 55, spm: 95 },
+    actionTable: {
+      hit:   { dmg: 10, spm: 10 },  // ice arrow — pierces a raised guard, misses jumpers
+      shoot: { dmg: 5,  spm: 12 },  // fire-arrow poke — low damage, but fastest meter gain in the cast
+      slide: { dmg: 6,  spm: 8 },
+      defend:     { spm: 10, chip: 2 },
+      jump:       { spm: 18 },
+      slideDodge: { spm: 12 },
     },
     ultimates: [
       // rangedSuper: fires arrows from range — a charging melee hit can't
       // interrupt it; the volley lands and clips/throws the hitter instead.
-      { key: 'ultimate_poison', name: 'Venom Volley', meterCost: 100, damage: 20, rangedSuper: true },
+      // No piercesShield: the volley is now a LOW-line spread that defend_low
+      // blocks (and backfires on a bad read) — weak damage, but she throws it
+      // constantly because her meter fills so fast.
+      { key: 'ultimate_poison', name: 'Venom Volley', meterCost: 100, damage: 16, rangedSuper: true },
     ],
   },
 };

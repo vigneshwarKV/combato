@@ -11,8 +11,13 @@ import {
 export default function CharSelectPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const queryTab = new URLSearchParams(location.search).get('tab');
+  const params = new URLSearchParams(location.search);
+  const queryTab = params.get('tab');
   const initialTab = (location.state?.tab === 'strategy' || queryTab === 'strategy') ? 'strategy' : 'fighter';
+  // Where to send the player after saving. Defaults home; a relative path can be
+  // passed (e.g. ?returnTo=/room/A4K9P2) so setup can round-trip back to a room.
+  const rawReturn = params.get('returnTo');
+  const returnTo = rawReturn && rawReturn.startsWith('/') ? rawReturn : '/';
   const [tab, setTab] = useState(initialTab);
   const [savedFlash, setSavedFlash] = useState(false);
 
@@ -62,7 +67,8 @@ export default function CharSelectPage() {
 
   function save() {
     if (!canSave || savedFlash) return;
-    saveProfile(draft);
+    const cleaned = { ...draft, handle: (draft.handle || '').trim() || 'Player' };
+    saveProfile(cleaned);
     setSavedFlash(true);
     const strategyEmpty = strategyText.trim().length === 0;
     const jumpToStrategy = tab === 'fighter' && strategyEmpty;
@@ -71,11 +77,12 @@ export default function CharSelectPage() {
         setSavedFlash(false);
         selectTab('strategy');
       } else {
-        navigate('/');
+        navigate(returnTo);
       }
     }, 750);
   }
 
+  function setHandle(h)  { setDraft(d => ({ ...d, handle: h })); }
   function setCharId(id) { setDraft(d => ({ ...d, charId: id })); }
   function setMode(m)    { setDraft(d => ({ ...d, strategyMode: m })); }
   function setSimple(s)  { setDraft(d => ({ ...d, strategySimple:   typeof s === 'function' ? s(d.strategySimple)   : s })); }
@@ -115,7 +122,23 @@ export default function CharSelectPage() {
         </div>
 
         {tab === 'fighter' && (
-          <FighterPicker value={draft.charId} onChange={setCharId} />
+          <>
+            <div style={{ marginBottom: 14 }}>
+              <div className="eyebrow" style={{ marginBottom: 6 }}>DISPLAY NAME</div>
+              <input
+                className="input"
+                value={draft.handle || ''}
+                onChange={e => setHandle(e.target.value.slice(0, 24))}
+                placeholder="Your fighter name"
+                maxLength={24}
+                style={{
+                  fontFamily: 'var(--f-display)', fontSize: 18,
+                  letterSpacing: '0.04em', color: 'var(--gold)',
+                }}
+              />
+            </div>
+            <FighterPicker value={draft.charId} onChange={setCharId} />
+          </>
         )}
         {tab === 'strategy' && (
           <StrategyEditor
@@ -182,11 +205,12 @@ function FighterPicker({ value, onChange }) {
           <button className="char-preview-back" onClick={() => setPreviewId(null)}>
             <Icon name="back" size={16} />&nbsp;BACK
           </button>
-          <CharDetail char={previewChar} />
-          <MovesPanel char={previewChar} moves={BASE_MOVES} />
+          <div className="char-preview-cols">
+            <CharDetail char={previewChar} />
+            <MovesPanel char={previewChar} moves={BASE_MOVES} />
+          </div>
           <button
-            className="btn"
-            style={{ marginTop: 12, width: '100%' }}
+            className="btn char-preview-pick"
             onClick={() => { onChange(previewChar.id); setPreviewId(null); }}
           >
             <Icon name="check" size={14} />&nbsp;PICK {previewChar.name.toUpperCase()}

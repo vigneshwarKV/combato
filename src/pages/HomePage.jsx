@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from '../components/design/Icons.jsx';
 import { Modal } from '../components/design/DesignKit.jsx';
+import NeedSetupPrompt from '../components/design/NeedSetupPrompt.jsx';
 import HomeArena from '../components/design/HomeArena.jsx';
 import MobileHome from '../components/mobile/MobileHome.jsx';
 import { useIsPortrait } from '../hooks/useIsPortrait.js';
@@ -102,7 +103,7 @@ export default function HomePage() {
           <div className="avatar">{(profile.handle || '?')[0]}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <div className="name">{profile.handle}</div>
-            <div className="lvl">Rank {profile.rank} · {profile.wins}W</div>
+            <div className="lvl">{profile.wins}W</div>
           </div>
         </div>
       </div>
@@ -246,7 +247,7 @@ function JoinPublicTab({ onJoin }) {
           }} />
           <div>
             <div className="f-display" style={{ fontSize: 17, color: 'var(--ink)', letterSpacing: '0.04em' }}>{t.name}</div>
-            <div className="f-mono" style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 2 }}>{t.mode} · Rank {t.rank}</div>
+            <div className="f-mono" style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 2 }}>{t.mode}</div>
           </div>
           <span className="f-mono" style={{ fontSize: 13, color: 'var(--ink)', letterSpacing: '0.06em' }}>
             {t.players}/{t.max}
@@ -348,17 +349,3 @@ function Field({ label, children }) {
   );
 }
 
-function NeedSetupPrompt({ onClose, onChoose }) {
-  return (
-    <>
-      <h2>Set up your fighter first</h2>
-      <p>You need to pick a character and write a strategy before stepping into the ring.</p>
-      <div style={{ display: 'flex', gap: 10 }}>
-        <button className="btn btn-ghost" onClick={onClose} style={{ flex: 1 }}>NOT NOW</button>
-        <button className="btn" onClick={onChoose} style={{ flex: 1 }}>
-          <Icon name="sparkle" size={14} />&nbsp;OPEN SETTINGS
-        </button>
-      </div>
-    </>
-  );
-}

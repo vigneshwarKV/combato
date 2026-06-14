@@ -165,17 +165,50 @@ export function useMatchHost(matchCode, opts = {}) {
     onMessage(conn, (msg) => {
       switch (msg.type) {
         case 'JOIN': {
-          const newFighter = {
-            peerId: conn.peer,
-            name: msg.fighterConfig?.name || 'Fighter',
-            character: msg.fighterConfig?.character || null,
-            isHost: false,
-            ready: false,
-          };
           setLobbyState(prev => {
+            // Already on the roster (duplicate / reconnect) — just re-ack.
+            if (prev.fighters.some(f => f.peerId === conn.peer)) {
+              sendMessage(conn, 'JOIN_ACK', { lobbyState: prev, spectator: false });
+              return prev;
+            }
+            // Tournament already underway — admit as a spectator, not a fighter.
+            // They watch the bracket / live matches and may join once it ends.
+            if (prev.phase !== 'lobby') {
+              sendMessage(conn, 'JOIN_ACK', { lobbyState: prev, spectator: true });
+              return prev;
+            }
+            const newFighter = {
+              peerId: conn.peer,
+              name: msg.fighterConfig?.name || 'Fighter',
+              character: msg.fighterConfig?.character || null,
+              isHost: false,
+              ready: false,
+            };
             const next = { ...prev, fighters: [...prev.fighters, newFighter] };
             broadcastLobby(next);
-            sendMessage(conn, 'JOIN_ACK', { lobbyState: next });
+            sendMessage(conn, 'JOIN_ACK', { lobbyState: next, spectator: false });
+            return next;
+          });
+          break;
+        }
+        case 'JOIN_AS_FIGHTER': {
+          // A spectator opting in once the tournament is over (or back in lobby).
+          setLobbyState(prev => {
+            const joinable = prev.phase === 'lobby' || prev.phase === 'champion';
+            if (!joinable || prev.fighters.some(f => f.peerId === conn.peer)) {
+              sendMessage(conn, 'JOIN_ACK', { lobbyState: prev, spectator: !joinable });
+              return prev;
+            }
+            const newFighter = {
+              peerId: conn.peer,
+              name: msg.fighterConfig?.name || 'Fighter',
+              character: msg.fighterConfig?.character || null,
+              isHost: false,
+              ready: false,
+            };
+            const next = { ...prev, fighters: [...prev.fighters, newFighter] };
+            broadcastLobby(next);
+            sendMessage(conn, 'JOIN_ACK', { lobbyState: next, spectator: false });
             return next;
           });
           break;
