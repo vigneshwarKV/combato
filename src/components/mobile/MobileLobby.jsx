@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import Icon from '../design/Icons.jsx';
 import { charById } from '../../data/designData.js';
 import { CHARACTERS } from '../../data/characters.js';
+import { SlotSprite } from '../design/DesignKit.jsx';
 
 // Ported from the design package (tournament.jsx, "MobileLobby"):
 // /tmp/pk-design/pk/project/tournament.jsx:573-688. Wired to the real lobby
@@ -35,7 +36,7 @@ function MobSlot({ fighter, idx, isMe }) {
   return (
     <div className={classes.join(' ')}>
       <div className="mob-slot-portrait">
-        {designChar?.thumb && <img src={designChar.thumb} alt={charName} draggable="false" />}
+        <SlotSprite char={designChar} width={46} height={62} />
       </div>
       <div style={{ minWidth: 0 }}>
         <div className="mob-slot-name">{fighter.name || 'Unnamed'}</div>
@@ -183,8 +184,8 @@ export default function MobileLobby({
                   className={iAmReady ? 'btn btn-cyan' : 'btn'}
                   onClick={() => onToggleReady?.(!iAmReady)}
                 >
-                  <Icon name={iAmReady ? 'check' : 'play'} size={14} />
-                  &nbsp;{iAmReady ? 'READY' : 'CLICK TO READY'}
+                  <Icon name={iAmReady ? 'close' : 'play'} size={14} />
+                  &nbsp;{iAmReady ? 'CANCEL READY' : 'CLICK TO READY'}
                 </button>
                 <button className="btn btn-ghost icon-only" onClick={onLeave} title="Leave lobby">
                   <Icon name="back" size={16} />

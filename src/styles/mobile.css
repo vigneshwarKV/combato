@@ -1027,6 +1027,7 @@
   clip-path: polygon(4px 0, 100% 0, 100% 100%, 0 100%);
 }
 .mob-slot-portrait {
+  position: relative;
   height: 100%;
   background:
     radial-gradient(circle at 50% 95%, rgba(74,215,255,0.18), transparent 60%),

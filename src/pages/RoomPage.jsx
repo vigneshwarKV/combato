@@ -6,7 +6,7 @@ import { CHARACTERS } from '../data/characters.js';
 import { getCharacterTemplate, DEFAULT_PROMPT } from '../data/promptTemplates.js';
 import { charById, loadProfile, isProfileReady } from '../data/designData.js';
 import Icon from '../components/design/Icons.jsx';
-import { Modal } from '../components/design/DesignKit.jsx';
+import { Modal, SlotSprite } from '../components/design/DesignKit.jsx';
 import NeedSetupPrompt from '../components/design/NeedSetupPrompt.jsx';
 import Arena from '../components/Arena.jsx';
 import BracketView from '../components/BracketView.jsx';
@@ -43,7 +43,7 @@ function PlayerSlot({ fighter, idx, isMe }) {
   return (
     <div className={classes.join(' ')}>
       <div className="slot-portrait">
-        {designChar?.thumb && <img src={designChar.thumb} alt={charName} draggable="false" />}
+        <SlotSprite char={designChar} width={56} height={76} />
       </div>
       <div className="slot-body">
         <div className="slot-name">{fighter.name || 'Unnamed'}</div>
@@ -219,8 +219,8 @@ function LobbyView({
                     className={iAmReady ? 'btn btn-cyan' : 'btn'}
                     onClick={() => onToggleReady?.(!iAmReady)}
                   >
-                    <Icon name={iAmReady ? 'check' : 'play'} size={14} />
-                    &nbsp;{iAmReady ? 'READY' : 'CLICK TO READY'}
+                    <Icon name={iAmReady ? 'close' : 'play'} size={14} />
+                    &nbsp;{iAmReady ? 'CANCEL READY' : 'CLICK TO READY'}
                   </button>
                   <button className="btn btn-sm btn-ghost" onClick={onLeave}>
                     <Icon name="back" size={12} />&nbsp;LEAVE LOBBY
