@@ -17,16 +17,22 @@
 //                    spine → animation track name in the skeleton json
 //   stats         { attack, defense } 1–5 (used by BotMatch tiles)
 //   ratings       { atk, def, spm } 0–100 player-facing bars (CharSelect screen).
-//                 `def` doubles as the damage-mitigation rating read by
-//                 damageEngine: incoming attack damage ×(1 − def×0.004).
+//                 `def`'s only combat role is setting block throwbackDmg =
+//                 round(def/12) (see throwbackDmgFor) — the recoil a sturdy guard
+//                 deals to an attacker it blocks. (DEF does NOT mitigate incoming
+//                 damage; that mechanic was removed.)
 //   actionTable   per-fighter combat tuning that overrides the global BASE_DAMAGE
 //                 / METER defaults for this character:
 //                   hit/shoot/slide → { dmg, spm } damage dealt + meter gained
 //                                     when that attack lands
-//                   defend          → { spm, chip } meter gained on a correct
-//                     guard + the DEF-scaled HP `chip` the blocker still takes
-//                     from a blocked physical blow (hit/rush/projhit/slide);
-//                     blocked shoots/supers don't chip (clean catch / backfire)
+//                   defend          → { spm } meter gained on a correct guard.
+//                     The HP the blocker still takes when knocked back blocking
+//                     a THROWBACK blow (melee hit / rush charge / slide) is
+//                     DERIVED from ratings.def via throwbackDmgFor() — tankier
+//                     frames get rattled harder. Ranged blocks that don't throw
+//                     the guard cost nothing: a blocked shoot and Woman Hero's
+//                     ice arrow (projhit) are clean catches; a blocked super
+//                     backfires on the attacker instead.
 //                   jump/slideDodge → { spm } meter gained on the evade
 //   ultimates     array of ultimate-move descriptors (see below)
 //
@@ -156,7 +162,7 @@ export const CHARACTERS = {
       hit:   { dmg: 13, spm: 6 },
       shoot: { dmg: 5,  spm: 6 },   // weak poke — well below his hit/slide so shoot can't out-trade them
       slide: { dmg: 8,  spm: 5 },
-      defend:     { spm: 7, chip: 1 },   // guard meter + DEF-scaled chip on a blocked hit/slide
+      defend:     { spm: 7 },   // guard meter; throwback dmg is DEF-derived (throwbackDmgFor)
       jump:       { spm: 12 },  // jump-evade — above guard
       slideDodge: { spm: 8 },   // slide used to dodge
     },
@@ -274,7 +280,7 @@ export const CHARACTERS = {
       hit:   { dmg: 8,  spm: 6 },
       shoot: { dmg: 14, spm: 9 },
       slide: { dmg: 6,  spm: 6 },
-      defend:     { spm: 9, chip: 2 },
+      defend:     { spm: 9 },
       jump:       { spm: 16 },
       slideDodge: { spm: 11 },
     },
@@ -365,7 +371,7 @@ export const CHARACTERS = {
       hit:   { dmg: 9,  spm: 9 },
       shoot: { dmg: 4,  spm: 10 },  // weakest shoot in the cast — he pokes, doesn't out-trade
       slide: { dmg: 6,  spm: 7 },
-      defend:     { spm: 8, chip: 3 },
+      defend:     { spm: 8 },
       jump:       { spm: 18 },
       slideDodge: { spm: 11 },
     },
@@ -433,7 +439,7 @@ export const CHARACTERS = {
       hit:   { dmg: 12, spm: 8 },  // skateboard rush — breaks a high guard (low line)
       shoot: { dmg: 6,  spm: 7 },   // strongest of the NORMAL shooters, but still below his rush/slide
       slide: { dmg: 7,  spm: 8 },
-      defend:     { spm: 7, chip: 3 },
+      defend:     { spm: 7 },
       jump:       { spm: 20 },  // acrobat — biggest jump bonus in the cast
       slideDodge: { spm: 12 },
     },
@@ -505,7 +511,7 @@ export const CHARACTERS = {
       hit:   { dmg: 11, spm: 8 },
       shoot: { dmg: 24, spm: 9 },  // heavy spear — slow to release (loses to rush/slide)
       slide: { dmg: 7,  spm: 8 },
-      defend:     { spm: 8, chip: 3 },
+      defend:     { spm: 8 },
       jump:       { spm: 20 },  // somersault — biggest jump bonus
       slideDodge: { spm: 12 },
     },
@@ -550,15 +556,16 @@ export const CHARACTERS = {
       celebrate: 'Celebrates',
       ultimate_shellcyclone: 'Fly',
     },
-    // ── Bulwark: tankiest DEF in the cast (−36% incoming damage). No heal — he
-    // wins by ATTRITION: soaks hits and turns every block/dodge into super charge
-    // faster than anyone. Slow heavy spear (double a shot) loses to rush/slide. ──
+    // ── Highest DEF in the cast → highest block throwbackDmg (8): attackers who
+    // throw a melee/slide into his guard bounce off for 8. Paired with the best
+    // block/dodge-to-meter conversion in the cast, he's a punishing wall that
+    // charges super fastest by defending. Slow heavy spear loses to rush/slide. ──
     ratings: { atk: 70, def: 90, spm: 60 },
     actionTable: {
       hit:   { dmg: 12, spm: 7 },
       shoot: { dmg: 24, spm: 9 },  // heavy spear — slow to release (loses to rush/slide)
       slide: { dmg: 6,  spm: 6 },
-      defend:     { spm: 16, chip: 1 },  // best guard meter + least chip (tankiest DEF)
+      defend:     { spm: 16 },  // best guard-to-meter conversion in the cast (tankiest DEF)
       jump:       { spm: 16 },
       slideDodge: { spm: 14 },  // even his dodges feed the meter
     },
@@ -567,8 +574,8 @@ export const CHARACTERS = {
       // (shoot can clip it, no clash with opposing airborne ults) while the
       // renderer treats it as airborne (default flyHit kind). The mismatch
       // causes the weird interrupt/clash behavior.
-      // No heal / blocksNext: his tankiness is purely DEF 90 mitigation (−36%
-      // incoming) + the best block-to-meter conversion in the cast (below).
+      // No heal: his staying power is punishing blocks (throwbackDmg 8 onto
+      // attackers) + the best block/dodge-to-meter conversion (defend spm 16).
       { key: 'ultimate_shellcyclone', name: 'Shell Cyclone', meterCost: 100, damage: 22, airborne: true },
     ],
   },
@@ -582,7 +589,7 @@ export const CHARACTERS = {
     },
     name: 'Woman Hero',
     archetype: 'ranger',
-    description: 'An archer who jump-shoots ice arrows that pierce a guard and unleashes a piercing arrow volley.',
+    description: 'An archer who jump-shoots ice arrows that slip past a raised guard, then unleashes a low arrow volley.',
     renderMode: 'spine',
     assetBase: `${BASE}/woman-hero-game-character-sprite`,
     skeletonJson: 'Archy.json',
@@ -673,17 +680,19 @@ export const CHARACTERS = {
       hit:   { dmg: 10, spm: 10 },  // ice arrow — pierces a raised guard, misses jumpers
       shoot: { dmg: 5,  spm: 12 },  // fire-arrow poke — low damage, but fastest meter gain in the cast
       slide: { dmg: 6,  spm: 8 },
-      defend:     { spm: 10, chip: 2 },
+      defend:     { spm: 10 },
       jump:       { spm: 18 },
       slideDodge: { spm: 12 },
     },
     ultimates: [
       // rangedSuper: fires arrows from range — a charging melee hit can't
       // interrupt it; the volley lands and clips/throws the hitter instead.
-      // No piercesShield: the volley is now a LOW-line spread that defend_low
-      // blocks (and backfires on a bad read) — weak damage, but she throws it
-      // constantly because her meter fills so fast.
-      { key: 'ultimate_poison', name: 'Venom Volley', meterCost: 100, damage: 16, rangedSuper: true },
+      // No piercesShield: the volley is a LOW-line spread that defend_low blocks.
+      // blockBackfireMult: 0 — fired from afar, so a blocked volley does NOT
+      // rebound HP onto her (unlike melee-range supers). It just whiffs: she
+      // loses the spent meter and staggers (animResolution plays 'hurt', not the
+      // knockback throw). Weak damage, but her meter refills fast so she spams it.
+      { key: 'ultimate_poison', name: 'Venom Volley', meterCost: 100, damage: 16, rangedSuper: true, blockBackfireMult: 0 },
     ],
   },
 };
@@ -726,6 +735,18 @@ export function getMeterGain(charId) {
     onHit: c?.meterGain?.onHit ?? METER.GAIN_ON_HIT,
     onDefend: c?.meterGain?.onDefend ?? METER.GAIN_ON_DEFEND,
   };
+}
+
+// Recoil HP a fighter's GUARD deals to an attacker whose melee/rush/slide it
+// correctly blocks — the attacker bounces off the shield (the blocker takes 0).
+// Scales WITH ratings.def so sturdier guards punish hardest: round(def/12) →
+// Iron Turtle (def 90) = 8, Mad Scientist (def 35) = 3. Untuned fighters (no
+// ratings.def) deal none. Ranged blocks (shoot, Woman Hero's ice arrow) and
+// supers never reach this — only the kinds in damageEngine's THROWBACK_BLOCK_KINDS.
+export function throwbackDmgFor(charId) {
+  const def = CHARACTERS[charId]?.ratings?.def;
+  if (def == null) return 0;
+  return Math.round(def / 12);
 }
 
 // ── Ultimate lookup helpers ─────────────────────────────────────────────────

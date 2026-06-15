@@ -6,7 +6,8 @@
 // this file holds the player-facing presentation layer + the saved profile.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { CHARACTERS, BASE_DAMAGE, METER } from './characters.js';
+import { CHARACTERS, BASE_DAMAGE, METER, throwbackDmgFor } from './characters.js';
+import { DEFAULT_ADVANCED_TEMPLATE } from './promptTemplates.js';
 
 // Archetype presentation. `class` drives the accent colour in DesignKit
 // (atk→red, def→cyan, mage→plasma, range→green, else→gold).
@@ -51,20 +52,10 @@ function buildMoves(c) {
       case 'jump':
         return { ...m, dmg: 0, spm: t.jump?.spm ?? METER.GAIN_ON_DEFEND, evade: true };
       default: // defend_low / defend_high
-        return { ...m, dmg: 0, chip: t.defend?.chip ?? 0, spm: t.defend?.spm ?? METER.GAIN_ON_DEFEND, evade: true, guard: true };
+        return { ...m, dmg: 0, throwbackDmg: throwbackDmgFor(c.id), spm: t.defend?.spm ?? METER.GAIN_ON_DEFEND, evade: true, guard: true };
     }
   });
 }
-
-// Runtime variables a player can drop into an advanced strategy prompt.
-export const STRAT_VARS = [
-  { v: '{hp}',               desc: 'Your current HP' },
-  { v: '{meter}',            desc: 'Your current super meter' },
-  { v: '{previous_actions}', desc: "Your last batch of actions" },
-  { v: '{moveset}',          desc: 'Your full move set' },
-  { v: '{opponent_moveset}', desc: "The opponent's move set" },
-  { v: '{N}',                desc: 'Number of moves to return this turn' },
-];
 
 // First-visit strategy suggestions. When a player opens the strategy editor for
 // the first time (no saved strategy yet), CharSelectPage prefills the textarea
@@ -78,15 +69,6 @@ export const SAMPLE_SIMPLE_STRATEGIES = [
   'Mirror the opponent — block what they throw, then counter with your strongest move.',
 ];
 
-export const SAMPLE_ADVANCED_STRATEGIES = [
-  `Valid moves: hit, shoot, slide, jump, idle, defend_high, defend_low, super_move.
-Return ONLY a JSON array of exactly 3 move strings, e.g. ["hit", "defend_high", "super_move"].`,
-  `You are at {hp} HP with {meter} meter. Your opponent's moves: {opponent_moveset}.
-Punish their {previous_actions}, defend when you are low, and fire super_move the moment it is charged.
-Valid moves: hit, shoot, slide, jump, idle, defend_high, defend_low, super_move.
-Return ONLY a JSON array of exactly {N} move strings, e.g. ["hit", "defend_high", "super_move"].`,
-];
-
 function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
@@ -94,8 +76,9 @@ function pickRandom(arr) {
 /** A random plain-English strategy suggestion for the Simple editor. */
 export function randomSimpleStrategy() { return pickRandom(SAMPLE_SIMPLE_STRATEGIES); }
 
-/** A random full-prompt suggestion for the Advanced editor. */
-export function randomAdvancedStrategy() { return pickRandom(SAMPLE_ADVANCED_STRATEGIES); }
+/** Advanced seed = the canonical full template (correct structure + variables),
+ *  so opening Advanced for the first time starts from something valid & editable. */
+export function randomAdvancedStrategy() { return DEFAULT_ADVANCED_TEMPLATE; }
 
 // Simple deterministic per-character design stats (1–5 scale) derived from the
 // engine stats, plus a tagline + rank for the detail card.
@@ -142,7 +125,7 @@ export const CHARS = Object.values(CHARACTERS)
   .map((c, i) => {
     const ult = c.ultimates?.[0];
     // 0–100 player-facing bars come straight from the engine character (single
-    // source of truth — `def` also drives damage mitigation in damageEngine).
+    // source of truth — `def` also drives block throwbackDmg in damageEngine).
     // Locked fighters have no `ratings`, so derive a rough fallback from their
     // 1–5 engine stats so the bars still render something.
     const stats = c.ratings ?? {

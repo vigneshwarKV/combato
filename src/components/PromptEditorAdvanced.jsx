@@ -1,9 +1,9 @@
 import { useRef } from 'react';
-import { ADVANCED_VARIABLES } from '../data/promptTemplates.js';
+import VariableGuide from './VariableGuide.jsx';
 
-// Advanced mode: the player authors the ENTIRE prompt. Clicking a variable chip
-// inserts its {token} at the cursor. engine/prompts.js substitutes them at
-// fight time. onChange receives the full prompt text.
+// Advanced mode: the player authors the ENTIRE prompt. The VariableGuide lists
+// every {token} (click to insert at the cursor, expand to see the data it
+// becomes). engine/prompts.js substitutes them at fight time.
 export default function PromptEditorAdvanced({ prompt, onChange, disabled }) {
   const taRef = useRef(null);
 
@@ -28,29 +28,6 @@ export default function PromptEditorAdvanced({ prompt, onChange, disabled }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <div className="section-label mb-1">Insert a variable</div>
-        <div className="flex flex-wrap gap-1">
-          {ADVANCED_VARIABLES.map(v => (
-            <button
-              key={v.token}
-              type="button"
-              className="var-chip"
-              title={v.desc}
-              onClick={() => insertVariable(v.token)}
-              disabled={disabled}
-            >
-              {v.token}
-            </button>
-          ))}
-        </div>
-        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-          Write the whole prompt yourself. Click a chip to drop the variable at your cursor.
-        </p>
-      </div>
-
-      <div className="arena-divider" />
-
-      <div className="flex flex-col gap-1">
         <label className="section-label">Full Prompt</label>
         <textarea
           ref={taRef}
@@ -64,6 +41,16 @@ export default function PromptEditorAdvanced({ prompt, onChange, disabled }) {
         <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
           End with: return ONLY a JSON array of exactly 3 moves, e.g. ["hit", "defend_high", "super_move"].
         </p>
+      </div>
+
+      <div className="arena-divider" />
+
+      <div className="flex flex-col gap-1">
+        <div className="section-label mb-1">Runtime variables</div>
+        <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>
+          Click a token to drop it at your cursor; expand “what’s inside” to see the data it becomes.
+        </p>
+        <VariableGuide onInsert={disabled ? undefined : insertVariable} />
       </div>
     </div>
   );

@@ -5,54 +5,108 @@
 //   Advanced → the player writes the whole prompt using the {variables} below,
 //              substituted at fight time by engine/prompts.js.
 //
-// Variables: {game_rules} {self_info} {opponent_info} {self_hp} {opponent_hp}
-//            {self_super_move_is_available} {action_history} {n}
+// Variables: {game_rules} {self} {opponent} {state} {history}
+//            (moves-per-turn is hardcoded at 3 — no {n} to fill in)
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { CHARACTERS } from './characters.js';
+import { GAME_RULES } from '../engine/prompts.js';
 
-// Variables a player can drop into an Advanced prompt (label + what it expands to).
+// Variables a player can drop into an Advanced prompt. Each entry powers the
+// VariableGuide UI: `use` = why you'd reference it, `inside` = a preview of the
+// data it becomes at fight time. Keep the tokens in sync with substituteVariables().
 export const ADVANCED_VARIABLES = [
-  { token: '{game_rules}', desc: 'Full game rules (action system, meter, status)' },
-  { token: '{self_info}', desc: 'Your fighter: story, archetype, super_move effect' },
-  { token: '{opponent_info}', desc: "Opponent's story, archetype, super_move effect" },
-  { token: '{self_hp}', desc: 'Your current HP' },
-  { token: '{opponent_hp}', desc: "Opponent's current HP" },
-  { token: '{self_super_move_is_available}', desc: 'true / false — is your super_move charged' },
-  { token: '{action_history}', desc: 'JSON of every move so far this game' },
+  {
+    token: '{game_rules}',
+    use: 'The full rulebook — every action, what beats what, and the point/meter system.',
+    inside: GAME_RULES,   // the exact rules text injected into the prompt
+  },
+  {
+    token: '{self}',
+    use: "Your fighter's fixed profile — who you are and the numbers behind every move.",
+    inside: `{
+  "name": "Iron Turtle",
+  "archetype": "tank",
+  "description": "…short bio…",
+  "superMove": "22 damage, launches you airborne;
+                blocked by defend_high",
+  "pointSystem": {
+    "hit":   { "dmg": 12, "spm": 7 },
+    "shoot": { "dmg": 24, "spm": 9 },
+    "slide": { "dmg": 6,  "spm": 6 },
+    "jump":       { "spm": 16 },
+    "slideDodge": { "spm": 14 },
+    "defend": { "spm": 16, "throwbackDmg": 8 }
+  }
+}
+
+dmg = HP a move deals · spm = super-meter gained
+throwbackDmg = recoil your guard deals to an
+attacker you block`,
+  },
+  {
+    token: '{opponent}',
+    use: "The opponent's profile — same shape as {self}. Read it to pick moves that beat THEM.",
+    inside: `Identical structure to {self}.
+
+Watch opponent.pointSystem.defend.throwbackDmg —
+that's the recoil YOU take if you throw a
+melee/slide into their guard.`,
+  },
+  {
+    token: '{state}',
+    use: 'The live, per-turn snapshot — HP totals and whether each super is charged.',
+    inside: `{
+  "yourHp": 64,
+  "opponentHp": 30,
+  "yourSuperReady": true,
+  "opponentSuperReady": false
+}
+
+The only block that changes every turn.`,
+  },
+  {
+    token: '{history}',
+    use: 'Every past turn from your point of view — spot patterns and counter.',
+    inside: `[
+  { "turn": 1, "me": "hit", "opp": "defend_high",
+    "iTook": 0, "oppTook": 0 },
+  …one entry per turn played so far…
+]
+
+me/opp = moves played · iTook/oppTook = HP lost`,
+  },
 ];
 
 // Default Advanced template — a complete, editable prompt the player can tweak.
-export const DEFAULT_ADVANCED_TEMPLATE = `You are an AI fighter in a 1v1 combat game. Choose your next {n} moves.
+export const DEFAULT_ADVANCED_TEMPLATE = `You are an AI fighter in a 1v1 combat game. Choose your next 3 moves.
 
 GAME RULES:
 {game_rules}
 
-YOU:
-{self_info}
+YOU (JSON):
+{self}
 
-OPPONENT:
-{opponent_info}
+OPPONENT (JSON):
+{opponent}
 
-CURRENT STATE:
-- Your HP: {self_hp}
-- Opponent HP: {opponent_hp}
-- Your super_move available: {self_super_move_is_available}
+CURRENT STATE (JSON): {state}
 
-ACTION HISTORY (entire game so far): {action_history}
+MOVE HISTORY (entire game so far, from your perspective): {history}
 
 STRATEGY:
 - Read the opponent's recent moves and counter them.
-- Use super_move when it is available and will land or swing the round.
+- Each fighter's pointSystem shows the dmg and meter (spm) of every move, plus defend.throwbackDmg — recoil your guard deals to an attacker who hits it with a melee/slide (and what you'd eat attacking into theirs, so don't feed a tank's block). Pick moves that score against THIS opponent.
+- Watch CURRENT STATE: fire super_move when yourSuperReady is true and it will land or swing the round; respect opponentSuperReady.
 - Mix up your actions so you are hard to predict.
 
 Valid moves: hit, shoot, slide, jump, idle, defend_high, defend_low, super_move.
-Return ONLY a JSON array of exactly {n} move strings, e.g. ["hit", "defend_high", "super_move"].`;
+Return ONLY a JSON array of exactly 3 move strings, e.g. ["hit", "defend_high", "super_move"].`;
 
 // Back-compat alias (older imports expect DEFAULT_PROMPT).
 export const DEFAULT_PROMPT = DEFAULT_ADVANCED_TEMPLATE;
 
-// Per-character Advanced starter. Identity is carried by {self_info}, so every
+// Per-character Advanced starter. Identity is carried by {self}, so every
 // character shares the same starter template.
 export const CHARACTER_TEMPLATES = Object.fromEntries(
   Object.values(CHARACTERS).map(c => [c.id, DEFAULT_ADVANCED_TEMPLATE])

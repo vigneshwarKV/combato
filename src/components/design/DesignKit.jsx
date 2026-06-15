@@ -291,9 +291,10 @@ export function CharDetail({ char }) {
 }
 
 // Two numbers per move: DMG and +SPM (super-meter). For attacks DMG is dealt to
-// the opponent; for a GUARD (defend_low/high) it's the small chip you still TAKE
-// when you correctly block a physical blow (shown as ▾chip). SPM is meter gained
-// on a hit/evade/guard; the super move shows its METER COST (–100) instead.
+// the opponent; for a GUARD (defend_low/high) it's the recoil dealt to an
+// ATTACKER who hits the guard with a melee hit / rush / slide — they bounce off
+// (shown as ▾N). SPM is meter gained on a hit/evade/guard; the super move shows
+// its METER COST (–100) instead.
 export function MovesPanel({ char, moves }) {
   const list = char.moves || moves || [];
   const cols = '1fr 52px 56px';
@@ -318,8 +319,8 @@ export function MovesPanel({ char, moves }) {
               <div className="move-name">{m.name}</div>
               <div className="move-dmg">
                 {m.guard
-                  ? (m.chip > 0
-                      ? <span className="chip" title="HP you still lose when you correctly block this line">▾{m.chip}</span>
+                  ? (m.throwbackDmg > 0
+                      ? <span className="chip" title="Recoil dmg dealt to an attacker who hits this guard with a melee hit / rush / slide">▾{m.throwbackDmg}</span>
                       : <span className="lbl">–</span>)
                   : (dmg > 0 ? dmg : <span className="lbl">–</span>)}
               </div>

@@ -1,4 +1,4 @@
-import { CHARACTERS, METER, BASE_DAMAGE, getUltimate, isAirborneUltimate, getMeterGain, BLOCKED_SUPER_DAMAGE_MULTIPLIER } from '../data/characters.js';
+import { CHARACTERS, METER, BASE_DAMAGE, getUltimate, isAirborneUltimate, getMeterGain, throwbackDmgFor, BLOCKED_SUPER_DAMAGE_MULTIPLIER } from '../data/characters.js';
 
 export const BASE_ACTIONS = ['idle', 'jump', 'hit', 'shoot', 'slide', 'defend_low', 'defend_high'];
 
@@ -125,8 +125,8 @@ export function resolveActions(
     // meter is still spent in step 5 because isUltimateKey(actual) is true.
     resultA = { ultimate: false }; resultB = { ultimate: false };
   } else if (clashSlide) {
-    // Head-on slide collision: each fighter takes the OTHER's slide force
-    // (mitigated by their own DEF below), so a heavier slider hurts more.
+    // Head-on slide collision: each fighter takes the OTHER's slide force,
+    // so a heavier slider hurts more.
     dmgFromA = actionDamage(characterA, 'slide');
     dmgFromB = actionDamage(characterB, 'slide');
     events.push({ type: 'clash', kind: 'slide', damage: Math.max(dmgFromA, dmgFromB) });
@@ -139,10 +139,11 @@ export function resolveActions(
       computeAttack(actualA, actualB, characterA, characterB, events, 'A', 'B'));
   }
 
-  // DEF mitigation: the damage each fighter TAKES is reduced by their own DEF
-  // rating. Heals / self-damage / blocked-super backfire (below) are NOT mitigated.
-  let damageToA = mitigatedDamage(dmgFromB, characterA);
-  let damageToB = mitigatedDamage(dmgFromA, characterB);
+  // Damage each fighter TAKES = what the other dealt. DEF no longer mitigates
+  // incoming damage — its only combat role now is setting block throwbackDmg
+  // (see throwbackDmgFor). Heals / self-damage / backfire are layered on below.
+  let damageToA = dmgFromB;
+  let damageToB = dmgFromA;
 
   // 4. Apply Ultimate side-effects (self-heal, self-damage).
   if (isUltimateKey(actualA) && resultA.ultimate) {
@@ -176,20 +177,22 @@ export function resolveActions(
     if (backfire > 0) { damageToB += backfire; events.push({ type: 'super_backfire', fighter: 'B', amount: backfire }); }
   }
 
-  // 4c. Block chip: a correctly-guarded PHYSICAL blow (melee hit / rush /
-  // projectile-hit / slide tackle) still rattles the blocker — they take a
-  // small, DEF-scaled chip even though the strike itself is stopped. A blocked
-  // SHOOT is caught clean and a blocked SUPER already backfires on the attacker,
-  // so neither chips the defender. Chip is pre-scaled by DEF → NOT re-mitigated.
-  // It's added AFTER the dmgFrom* defend check, so blocking still grants meter.
-  const PHYSICAL_BLOCK_KINDS = ['hit', 'rush', 'projhit', 'slide'];
-  for (const e of events.filter(ev => ev.type === 'blocked' && PHYSICAL_BLOCK_KINDS.includes(ev.kind))) {
+  // 4c. Throwback damage: when a THROWBACK blow (melee hit / rush charge / slide
+  // tackle) is correctly guarded, the shield bounces the ATTACKER back — THEY
+  // take recoil HP, scaled by the DEFENDER's guard (throwbackDmgFor). The blocker
+  // takes nothing. RANGED attacks don't bounce: a blocked SHOOT and Woman Hero's
+  // ICE ARROW (projhit) die on the shield, and a blocked SUPER backfires via 4b.
+  // Added AFTER the dmgFrom* defend check, so blocking still grants meter. The
+  // recoil rides on the attacker's existing `knockback` anim (animResolution).
+  const THROWBACK_BLOCK_KINDS = ['hit', 'rush', 'slide'];
+  for (const e of events.filter(ev => ev.type === 'blocked' && THROWBACK_BLOCK_KINDS.includes(ev.kind))) {
     if (e.defender === 'A') {
-      const c = blockChip(characterA);
-      if (c > 0) { damageToA += c; events.push({ type: 'block_chip', fighter: 'A', amount: c }); }
+      // A's guard bounces the attacker (B) back — recoil scaled by A's guard.
+      const c = throwbackDmgFor(characterA);
+      if (c > 0) { damageToB += c; events.push({ type: 'throwback_dmg', fighter: 'B', amount: c }); }
     } else if (e.defender === 'B') {
-      const c = blockChip(characterB);
-      if (c > 0) { damageToB += c; events.push({ type: 'block_chip', fighter: 'B', amount: c }); }
+      const c = throwbackDmgFor(characterB);
+      if (c > 0) { damageToA += c; events.push({ type: 'throwback_dmg', fighter: 'A', amount: c }); }
     }
   }
 
@@ -522,24 +525,6 @@ function hit(damage, landed) {
 function actionDamage(charId, action) {
   const tuned = CHARACTERS[charId]?.actionTable?.[action]?.dmg;
   return tuned ?? BASE_DAMAGE[action] ?? 0;
-}
-
-// DEF mitigation. A fighter's `ratings.def` (0–100) cuts the attack damage they
-// TAKE by def×0.4% (DEF 90 → −36%, DEF 35 → −14%). A connecting attack always
-// lands for ≥1. Untuned fighters (no ratings) take full damage. Applied ONLY to
-// attack damage — heals, self-damage, and blocked-super backfire bypass it.
-function mitigatedDamage(raw, defenderCharId) {
-  if (raw <= 0) return 0;
-  const def = CHARACTERS[defenderCharId]?.ratings?.def;
-  if (def == null) return raw;
-  return Math.max(1, Math.round(raw * (1 - def * 0.004)));
-}
-
-// HP a fighter loses when they CORRECTLY block a physical blow (hit / rush /
-// projhit / slide). A small, DEF-scaled chip — tankier guards take less. Per
-// character via actionTable.defend.chip; fighters without one take no chip.
-function blockChip(charId) {
-  return CHARACTERS[charId]?.actionTable?.defend?.chip ?? 0;
 }
 
 // True when the shooter's projectile spawn delay is long enough that an

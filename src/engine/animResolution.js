@@ -90,13 +90,13 @@ export function hasUltimateHit(events, victim) {
 
 // resolveActions adds `ult.selfDamage` (e.g. Beast's Rocket Charge -5 HP) and
 // a shield-blocked super's backfire onto the attacker's `damageTo*` total, but
-// those are self-inflicted — NOT a hit from the opponent. `block_chip` is the
-// small DEF-scaled tax a defender pays for CORRECTLY blocking a physical blow;
-// it costs HP but the block succeeded, so it must not trigger a reaction either
-// (otherwise the shield-holder plays `hurt` after a clean block instead of
-// holding the guard). Reaction anims should only fire on damage from a strike
-// that actually got through.
-const NON_REACTION_DAMAGE = new Set(['self_damage', 'super_backfire', 'block_chip']);
+// those are self-inflicted — NOT a hit from the opponent. `throwback_dmg` is the
+// recoil an ATTACKER takes when their melee/rush/slide is bounced off the
+// opponent's shield; it's excluded here so it doesn't force a `hurt` — the
+// attacker already plays the purpose-built `knockback` shield-throw (see "Shield
+// throwback" below) and the HP just rides along. Reaction anims should only fire
+// on damage from a strike that actually got through.
+const NON_REACTION_DAMAGE = new Set(['self_damage', 'super_backfire', 'throwback_dmg']);
 function selfDamageFor(events, fighter) {
   if (!events?.length) return 0;
   let total = 0;
@@ -501,8 +501,16 @@ export function computeAttackTiming(result, characterA, characterB) {
   ) ?? false;
   const aThrownBack = !reactionA && physicalBlock('B');
   const bThrownBack = !reactionB && physicalBlock('A');
-  const outReactionA = aThrownBack ? 'knockback' : reactionA;
-  const outReactionB = bThrownBack ? 'knockback' : reactionB;
+  // A ranged super (Woman Hero's arrow volley) is fired from range — when it's
+  // blocked she staggers in place ('hurt') rather than being thrown back like a
+  // melee blow. Pairs with blockBackfireMult: 0 on her ult (no HP rebound), so a
+  // blocked volley just whiffs: she reacts but loses no HP.
+  const isRangedSuper = (action, character) => isUltimateKey(action)
+    && !!character?.ultimates?.find(u => u.key === action)?.rangedSuper;
+  const aSuperWhiff = aThrownBack && isRangedSuper(actionA, characterA);
+  const bSuperWhiff = bThrownBack && isRangedSuper(actionB, characterB);
+  const outReactionA = aSuperWhiff ? 'hurt' : aThrownBack ? 'knockback' : reactionA;
+  const outReactionB = bSuperWhiff ? 'hurt' : bThrownBack ? 'knockback' : reactionB;
   const outReactionAtA = aThrownBack ? shieldThrowAt(actionA, characterA) : reactionAtA;
   const outReactionAtB = bThrownBack ? shieldThrowAt(actionB, characterB) : reactionAtB;
   // Each fighter's "natural" anim duration accounts for the launch delay.

@@ -4,10 +4,11 @@ import Icon from '../components/design/Icons.jsx';
 import { CharTile, CharDetail, MovesPanel } from '../components/design/DesignKit.jsx';
 import AssetPreloadModal from '../components/AssetPreloadModal.jsx';
 import {
-  CHARS, BASE_MOVES, STRAT_VARS,
+  CHARS, BASE_MOVES,
   loadProfile, saveProfile, charById,
   randomSimpleStrategy, randomAdvancedStrategy,
 } from '../data/designData.js';
+import VariableGuide from '../components/VariableGuide.jsx';
 import { CHARACTERS } from '../data/characters.js';
 import { preloadAll, isPreloaded } from '../engine/assetPreloader.js';
 
@@ -333,16 +334,13 @@ function StrategyEditor({ mode, setMode, simple, setSimple, advanced, setAdvance
       </div>
 
       {mode === 'advanced' && (
-        <>
-          <div className="eyebrow" style={{ marginTop: 12, marginBottom: 6 }}>RUNTIME VARIABLES</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {STRAT_VARS.map(v => (
-              <span key={v.v} className="var-chip" onClick={() => insertVar(v.v)} title={v.desc}>
-                {v.v}
-              </span>
-            ))}
-          </div>
-        </>
+        <div style={{ marginTop: 14 }}>
+          <div className="eyebrow" style={{ marginBottom: 4 }}>RUNTIME VARIABLES</div>
+          <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--ink-mute)', lineHeight: 1.5 }}>
+            Click a token to drop it into your prompt. Hit “what’s inside” to see the exact data it becomes each turn.
+          </p>
+          <VariableGuide onInsert={insertVar} />
+        </div>
       )}
 
       <div style={{
