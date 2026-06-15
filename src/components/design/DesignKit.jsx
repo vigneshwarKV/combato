@@ -141,6 +141,21 @@ export function CharSprite({ char, active }) {
   return <img className="char-sprite" src={src} alt={char.name} draggable="false" />;
 }
 
+// Idle-only roster portrait for lobby slots. Mirrors CharTile's renderer split —
+// spine fighters (skater, turtle, monkey, womanHero) play their live idle via
+// PIXI; PNG fighters loop idle frames through the lightweight <img> swapper. No
+// hover/action rotation — slots are always idle. Returns null for the empty
+// seat / missing-asset cases so callers can leave the portrait blank.
+export function SlotSprite({ char, width = 56, height = 76 }) {
+  const engineChar = char ? ENGINE_CHARS[char.id] : null;
+  if (!char || !engineChar) return null;
+  if (engineChar.renderMode === 'spine') {
+    return <CharacterPreview characterId={char.id} width={width} height={height} mode="idle" />;
+  }
+  if (char.thumb) return <CharSprite char={char} active={false} />;
+  return null;
+}
+
 const archToneVar = (cls) =>
   cls === 'atk' ? 'red'
   : cls === 'def' ? 'cyan'
