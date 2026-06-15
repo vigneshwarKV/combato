@@ -31,18 +31,20 @@ export const ADVANCED_VARIABLES = [
   "superMove": "22 damage, launches you airborne;
                 blocked by defend_high",
   "pointSystem": {
-    "hit":   { "dmg": 12, "spm": 7 },
-    "shoot": { "dmg": 24, "spm": 9 },
-    "slide": { "dmg": 6,  "spm": 6 },
+    "hit":   { "dmg": 12, "spm": 7, "line": "high" },
+    "shoot": { "dmg": 24, "spm": 9, "line": "low" },
+    "slide": { "dmg": 6,  "spm": 6, "line": "low" },
     "jump":       { "spm": 16 },
     "slideDodge": { "spm": 14 },
     "defend": { "spm": 16, "throwbackDmg": 8 }
   }
 }
 
-dmg = HP a move deals · spm = super-meter gained
-throwbackDmg = recoil your guard deals to an
-attacker you block`,
+dmg = HP dealt · spm = super-meter gained
+line = guard that stops it (high→defend_high,
+       low→defend_low)
+throwbackDmg = HP the ATTACKER loses when you
+block their melee/slide (you take 0)`,
   },
   {
     token: '{opponent}',
@@ -67,40 +69,24 @@ The only block that changes every turn.`,
   },
   {
     token: '{history}',
-    use: 'Every past turn from your point of view — spot patterns and counter.',
+    use: 'Your most recent turns (last 6) — spot patterns and counter.',
     inside: `[
-  { "turn": 1, "me": "hit", "opp": "defend_high",
+  { "turn": 13, "me": "hit", "opp": "defend_high",
     "iTook": 0, "oppTook": 0 },
-  …one entry per turn played so far…
+  …the 6 most recent turns (turn # stays absolute)…
 ]
 
 me/opp = moves played · iTook/oppTook = HP lost`,
   },
 ];
 
-// Default Advanced template — a complete, editable prompt the player can tweak.
-export const DEFAULT_ADVANCED_TEMPLATE = `You are an AI fighter in a 1v1 combat game. Choose your next 3 moves.
-
-GAME RULES:
-{game_rules}
-
-YOU (JSON):
-{self}
-
-OPPONENT (JSON):
-{opponent}
-
-CURRENT STATE (JSON): {state}
-
-MOVE HISTORY (entire game so far, from your perspective): {history}
-
-STRATEGY:
-- Read the opponent's recent moves and counter them.
-- Each fighter's pointSystem shows the dmg and meter (spm) of every move, plus defend.throwbackDmg — recoil your guard deals to an attacker who hits it with a melee/slide (and what you'd eat attacking into theirs, so don't feed a tank's block). Pick moves that score against THIS opponent.
-- Watch CURRENT STATE: fire super_move when yourSuperReady is true and it will land or swing the round; respect opponentSuperReady.
-- Mix up your actions so you are hard to predict.
+// Default Advanced template — a MINIMAL starter on purpose. The player fleshes
+// it out with the {self} / {opponent} / {state} / {history} variables (see the
+// VariableGuide chips below the editor) to feed the AI fighter/live-state context.
+export const DEFAULT_ADVANCED_TEMPLATE = `This is the gamerule: {game_rules}
 
 Valid moves: hit, shoot, slide, jump, idle, defend_high, defend_low, super_move.
+fire super_move only when yourSuperReady is true
 Return ONLY a JSON array of exactly 3 move strings, e.g. ["hit", "defend_high", "super_move"].`;
 
 // Back-compat alias (older imports expect DEFAULT_PROMPT).
