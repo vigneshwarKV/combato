@@ -22,13 +22,19 @@ export async function loadFighterSprite(character) {
   return loadPng(character);
 }
 
+// Warm the Spine skeleton + atlas (and the atlas' texture pages) into PIXI's
+// cache without building a display object. Used by the up-front asset
+// preloader; loadSpine() reuses it on the actual mount.
+export async function preloadSpineAssets(character) {
+  if (spineLoaded.has(character.assetBase)) return;
+  const skelUrl = `${character.assetBase}/${character.skeletonJson}`;
+  const atlasUrl = `${character.assetBase}/${character.atlasFile}`;
+  await PIXI.Assets.load([skelUrl, atlasUrl]);
+  spineLoaded.add(character.assetBase);
+}
+
 export async function loadSpine(character) {
-  if (!spineLoaded.has(character.assetBase)) {
-    const skelUrl = `${character.assetBase}/${character.skeletonJson}`;
-    const atlasUrl = `${character.assetBase}/${character.atlasFile}`;
-    await PIXI.Assets.load([skelUrl, atlasUrl]);
-    spineLoaded.add(character.assetBase);
-  }
+  await preloadSpineAssets(character);
   const skelUrl = `${character.assetBase}/${character.skeletonJson}`;
   const atlasUrl = `${character.assetBase}/${character.atlasFile}`;
   // Craftpix Spine atlases are sized for high-res — base 0.5 brings them to a
@@ -38,7 +44,9 @@ export async function loadSpine(character) {
   return spine;
 }
 
-export async function loadPng(character) {
+// Fetch + cache a PNG character's manifest.json (action folder → frame file
+// list). Cached per assetBase so it's fetched once across mounts/preload.
+export async function loadManifest(character) {
   let manifest = manifestCache.get(character.assetBase);
   if (!manifest) {
     const res = await fetch(`${character.assetBase}/manifest.json`);
@@ -46,6 +54,11 @@ export async function loadPng(character) {
     manifest = await res.json();
     manifestCache.set(character.assetBase, manifest);
   }
+  return manifest;
+}
+
+export async function loadPng(character) {
+  const manifest = await loadManifest(character);
   const idleFolder = character.animations.idle;
   const idleFiles = manifest.animations[idleFolder];
   if (!idleFiles) throw new Error(`No idle animation: ${idleFolder}`);

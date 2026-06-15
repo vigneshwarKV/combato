@@ -56,6 +56,14 @@ export function preloadClips(urls = []) {
   }
 }
 
+// Fetch + cache one clip's raw bytes and RESOLVE when the bytes are in. Same
+// caching as preloadClips (populates rawClips, no context needed), but
+// awaitable — the up-front asset preloader uses it to drive a progress bar and
+// to know each sound is actually downloaded before a fight starts.
+export function prefetchClipBytes(url) {
+  return Promise.resolve(fetchRaw(url));
+}
+
 // Play a clip. `offset` (seconds) skips into the buffer, and a play length can
 // be capped with either `duration` (seconds) or `durationFrac` (a fraction of
 // the clip's full length, resolved once the buffer is decoded) — used to play

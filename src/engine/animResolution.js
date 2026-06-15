@@ -90,14 +90,18 @@ export function hasUltimateHit(events, victim) {
 
 // resolveActions adds `ult.selfDamage` (e.g. Beast's Rocket Charge -5 HP) and
 // a shield-blocked super's backfire onto the attacker's `damageTo*` total, but
-// those are self-inflicted — NOT a hit from the opponent. Reaction anims should
-// only fire on opponent-inflicted damage, otherwise the attacker swaps to
-// `hurt` mid-ult and clips its own animation.
+// those are self-inflicted — NOT a hit from the opponent. `block_chip` is the
+// small DEF-scaled tax a defender pays for CORRECTLY blocking a physical blow;
+// it costs HP but the block succeeded, so it must not trigger a reaction either
+// (otherwise the shield-holder plays `hurt` after a clean block instead of
+// holding the guard). Reaction anims should only fire on damage from a strike
+// that actually got through.
+const NON_REACTION_DAMAGE = new Set(['self_damage', 'super_backfire', 'block_chip']);
 function selfDamageFor(events, fighter) {
   if (!events?.length) return 0;
   let total = 0;
   for (const e of events) {
-    if ((e.type === 'self_damage' || e.type === 'super_backfire') && e.fighter === fighter) total += (e.amount ?? 0);
+    if (NON_REACTION_DAMAGE.has(e.type) && e.fighter === fighter) total += (e.amount ?? 0);
   }
   return total;
 }

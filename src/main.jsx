@@ -11,6 +11,14 @@ import { setMusicTrack } from './engine/soundEngine.js'
 // stops it when the match ends. A top-bar toggle lets the user turn it on/off.
 setMusicTrack('/assets/sound/game_theme.mp3', { gain: 0.25 })
 
+// Cache-first Service Worker for /assets (see public/sw.js): keeps the preloaded
+// fight assets across page reloads so a reload re-warms from cache, not network.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => { /* SW optional — ignore */ })
+  })
+}
+
 createRoot(document.getElementById('root')).render(
   <BrowserRouter>
     <App />

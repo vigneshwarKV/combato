@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Icon from '../components/design/Icons.jsx';
 import { CharTile, CharDetail, MovesPanel } from '../components/design/DesignKit.jsx';
+import AssetPreloadModal from '../components/AssetPreloadModal.jsx';
 import {
   CHARS, BASE_MOVES, STRAT_VARS,
   loadProfile, saveProfile, charById,
   randomSimpleStrategy, randomAdvancedStrategy,
 } from '../data/designData.js';
+import { CHARACTERS } from '../data/characters.js';
+import { preloadAll, isPreloaded } from '../engine/assetPreloader.js';
 
 export default function CharSelectPage() {
   const navigate = useNavigate();
@@ -59,11 +62,62 @@ export default function CharSelectPage() {
     return () => document.body.classList.remove('pk-design');
   }, []);
 
+  // ── Mandatory one-time asset preload ──────────────────────────────────────
+  // Opening setup is the gate: we download every playable fighter, sound and
+  // effect up front so battles never stutter while assets stream in. Runs once
+  // per page-load (the Service Worker keeps the bytes across reloads), shows a
+  // blocking progress modal, and offers retry / continue-anyway on failure.
+  const [preload, setPreload] = useState(() =>
+    isPreloaded()
+      ? { active: false, status: 'done', done: 0, total: 0 }
+      : { active: true, status: 'loading', done: 0, total: 0 },
+  );
+  const abortRef = useRef(null);
+
+  // Kick off the async preload. State updates happen only in async callbacks
+  // (onProgress / then / catch), never synchronously — the synchronous
+  // "loading" reset lives in runPreload (the retry handler) instead.
+  function startPreload() {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    // Only the playable (unlocked) roster — locked fighters can never enter a fight.
+    const fightChars = CHARS.filter(c => !c.locked).map(c => CHARACTERS[c.id]).filter(Boolean);
+    preloadAll({
+      characters: fightChars,
+      signal: controller.signal,
+      onProgress: (done, total) => setPreload(p => (p.status === 'loading' ? { ...p, done, total } : p)),
+    })
+      .then(() => setPreload({ active: false, status: 'done', done: 1, total: 1 }))
+      .catch(err => {
+        if (err?.name === 'AbortError') return;
+        setPreload(p => ({ ...p, status: 'error' }));
+      });
+  }
+
+  // Retry handler (event-driven): reset to loading, then restart.
+  function runPreload() {
+    setPreload({ active: true, status: 'loading', done: 0, total: 0 });
+    startPreload();
+  }
+
+  function continuePreloadAnyway() {
+    abortRef.current?.abort();
+    setPreload({ active: false, status: 'done', done: 0, total: 0 });
+  }
+
+  useEffect(() => {
+    // Initial state is already 'loading' when not preloaded, so just start the
+    // work here — no synchronous setState in the effect body.
+    if (!isPreloaded()) startPreload();
+    return () => abortRef.current?.abort();
+  }, []);
+
   const fighter = draft.charId ? charById(draft.charId) : null;
   const fighterReady = !!fighter && !fighter.locked;
   const strategyText = draft.strategyMode === 'advanced' ? draft.strategyAdvanced : draft.strategySimple;
   const strategyReady = strategyText.trim().length > 8;
-  const canSave = fighterReady;
+  const canSave = fighterReady && !preload.active;
 
   function save() {
     if (!canSave || savedFlash) return;
@@ -90,6 +144,15 @@ export default function CharSelectPage() {
 
   return (
     <div className="bg-arena">
+      {preload.active && (
+        <AssetPreloadModal
+          done={preload.done}
+          total={preload.total}
+          status={preload.status}
+          onRetry={runPreload}
+          onContinue={continuePreloadAnyway}
+        />
+      )}
       <div className="spotlight-left" />
       <div className="spotlight-right" />
 
