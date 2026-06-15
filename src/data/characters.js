@@ -431,6 +431,10 @@ export const CHARACTERS = {
       defend_high: 'Idle',
       hurt:  'GetHit',
       death: 'Dead',
+      // TheKids.json has no dedicated 'Celebrate' track, and IdleShoot/JetPackWShoot
+      // are gun poses we don't want on a victory. Reuse the gun-free skateboard
+      // trick 'OnSkateboard_Jump' as the victory move — on-theme for a skater.
+      celebrate: 'OnSkateboard_Jump',
       ultimate_roll: 'JetPack',
     },
     // ── Grind: guard-breaking rush + mobility, fast meter, flimsy frame ──
