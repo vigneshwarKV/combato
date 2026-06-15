@@ -95,7 +95,9 @@ export default function MobileLobby({
       setTimeout(() => setShared(false), 1500);
     };
     if (navigator.share) {
-      navigator.share({ title: 'Prompt Kombat — Tournament', text: 'Join my Prompt Kombat lobby', url })
+      // Message in `title`, not `text` — some share targets append `text` onto
+      // the URL and corrupt the /room/:code path. Keep `url` clean.
+      navigator.share({ title: 'Join my Prompt Kombat lobby', url })
         .then(flash)
         .catch(() => {});
     } else {

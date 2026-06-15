@@ -7,7 +7,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // Hard fight length. With no round/batch cap, this is the ONLY automatic end
 // condition besides a KO: when it elapses (excluding paused time) the fight
 // goes to a decision — higher HP wins, equal HP draws.
-export const FIGHT_TIME_LIMIT_MS = 60_000; // 1 minute
+export const FIGHT_TIME_LIMIT_MS = 90_000; // 1 min 30 sec
 
 /**
  * Run a complete fight between two fighters.
