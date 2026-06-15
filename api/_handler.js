@@ -11,11 +11,20 @@ const PROVIDERS = {
     url: 'https://api.deepseek.com/chat/completions',
     model: 'deepseek-v4-flash',
     keyEnv: 'DEEPSEEK_API_KEY',
+    // deepseek-v4-flash is a hybrid model that DEFAULTS to Thinking Mode — it
+    // spends most of the token budget on hidden chain-of-thought before the
+    // answer, adding heavy latency (and emitting empty content if the budget
+    // runs out mid-thought). Move selection is a simple task and the prompt now
+    // hands the model every number it needs (dmg/spm/line/throwbackDmg), so we
+    // DISABLE thinking for instant, cheap answers. Top-level field per DeepSeek
+    // docs: https://api-docs.deepseek.com/guides/thinking_mode
+    extraBody: { thinking: { type: 'disabled' } },
   },
   'openai-mini': {
     url: 'https://api.openai.com/v1/chat/completions',
     model: 'gpt-4.1-mini',
     keyEnv: 'OPENAI_API_KEY',
+    // No extraBody — OpenAI rejects unknown body params with a 400.
   },
 };
 
@@ -30,7 +39,10 @@ const DEFAULT_PROVIDER = 'deepseek-flash';
  *          so the client falls back to random moves.
  */
 export async function handleAi(body, env = process.env) {
-  const { system, messages = [], maxTokens = 400 } = body || {};
+  // Default high: a reasoning model (e.g. deepseek-v4-flash) spends most of the
+  // budget on chain-of-thought before the answer, so a low cap returns empty
+  // content (finish_reason "length"). The client sends its own maxTokens too.
+  const { system, messages = [], maxTokens = 2048 } = body || {};
 
   const providerKey = env.AI_PROVIDER || DEFAULT_PROVIDER;
   const provider = PROVIDERS[providerKey] || PROVIDERS[DEFAULT_PROVIDER];
@@ -53,6 +65,7 @@ console.log("***** api calling*****")
     body: JSON.stringify({
       model: provider.model,
       max_tokens: maxTokens,
+      ...provider.extraBody,   // e.g. DeepSeek's { thinking: { type: 'disabled' } }
       messages: [
         ...(system ? [{ role: 'system', content: system }] : []),
         ...messages,
@@ -68,7 +81,7 @@ console.log("***** api calling*****")
   }
 
   const data = await res.json();
-
+console.log(JSON.stringify(data));
     
   const text = data.choices?.[0]?.message?.content ?? '';
     console.log("***** api calling end*****", text)

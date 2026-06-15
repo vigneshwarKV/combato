@@ -505,8 +505,6 @@ export function computeAttackTiming(result, characterA, characterB) {
   // blocked she staggers in place ('hurt') rather than being thrown back like a
   // melee blow. Pairs with blockBackfireMult: 0 on her ult (no HP rebound), so a
   // blocked volley just whiffs: she reacts but loses no HP.
-  const isRangedSuper = (action, character) => isUltimateKey(action)
-    && !!character?.ultimates?.find(u => u.key === action)?.rangedSuper;
   const aSuperWhiff = aThrownBack && isRangedSuper(actionA, characterA);
   const bSuperWhiff = bThrownBack && isRangedSuper(actionB, characterB);
   const outReactionA = aSuperWhiff ? 'hurt' : aThrownBack ? 'knockback' : reactionA;

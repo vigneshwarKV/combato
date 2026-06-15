@@ -1,4 +1,4 @@
-import { BASE_ACTIONS, validActionsForCharacter, isUltimateKey } from './damageEngine.js';
+import { BASE_ACTIONS, validActionsForCharacter, isUltimateKey, attackLine } from './damageEngine.js';
 import { CHARACTERS, METER, BASE_DAMAGE, BLOCKED_SUPER_DAMAGE_MULTIPLIER, getMeterGain, throwbackDmgFor } from '../data/characters.js';
 
 const MOCK_AI = false;
@@ -16,32 +16,31 @@ const SUPER_SYNONYMS = new Set(['super_move', 'supermove', 'super move', 'super'
 // defaults to 3); every prompt asks for exactly this many moves.
 export const MOVES_PER_TURN = 3;
 
-// Human-readable rules block included in every LLM prompt.
-export const GAME_RULES = `ACTION SYSTEM:
-  idle    → stand still, 0 dmg, no meter change
-  jump    → evades shoot AND projectile-based hits (Woman Hero's Ice Arrow — straight-line shot); MELEE hit lands on a jumper (knocks them out of the air immediately); still hittable by Ultimates; +${METER.GAIN_ON_DEFEND} meter on each successful evade
-  hit     → ${BASE_DAMAGE.hit} dmg close-range attack; +${METER.GAIN_ON_HIT} meter on landed hit; MISSED by slide; melee hit LANDS on jumpers (knocks down mid-air); a REGULAR melee hit is HIGH — BLOCKED by defend_high (defend_low gets hit). RUSH-style (Skater Kid's skateboard run) and PROJECTILE-style (Woman Hero's IceShoot) hits are LOW — BLOCKED by defend_low (defend_high gets hit); CLASHES with opposing hit when BOTH are melee (no HP loss — fighters visually collide mid-lunge and fall back with death anim); MELEE hitter rushing into a FAST shoot gets STOPPED — bullet catches them mid-lunge and throws them back (rush-style hits get the same slide-vs-shoot throwback timing). Against a SLOW thrower (Iron Turtle's spear, Monkey King's spear) the lunge LANDS — hitter reaches the thrower before the projectile spawns. PROJECTILE-style hits (Woman Hero's IceShoot — she jumpShoots an ice arrow): MISS jumpers (straight-line shot, jumper evades); arrow always aims at the opponent's IDLE position regardless of their movement; vs SLIDE the arrow LANDS — slider dodges momentarily but the arrow catches them once they finish the glide and return to base (deferred hurt). WH's hit MISSES if the opponent is also hitting (their melee lunge interrupts her arrow release while their hit lands on her); WH vs Skater Kid hit → both miss (both end up airborne)
-  shoot   → ${BASE_DAMAGE.shoot} dmg straight-line projectile; +${METER.GAIN_ON_HIT} meter on landed hit; MISSED by jump, airborne Ultimates (jet-pack/flyHit ults), OR a projectile-hit attacker (Woman Hero's IceShoot — her jumpShoot lifts her out of the bullet's path); shoot is LOW — BLOCKED by defend_low (low guard catches the bullet on the shield), but defend_high does NOT block it (bullet goes under). Fast shoots HIT a sliding defender (slider thrown back); SLOW throws (Iron Turtle's spear, Monkey King's spear — long spawn delay) get RUSHED — the slider reaches the thrower before the projectile releases and the slide damage lands on the thrower instead
-  slide   → ${BASE_DAMAGE.slide} dmg low tackle; evades hit (melee attackers clipped at the legs and thrown back) AND fast shoot is the one that catches the slider; slide is LOW — BLOCKED by defend_low (low guard catches the tackle), but defend_high gets swept (takes full slide dmg); deals damage to idle/melee-hit/slow-throwers; MISSED by jump and by airborne hit attackers (Woman Hero's jumpShoot); SLIDE-vs-SLIDE collides at the centre — both take ${BASE_DAMAGE.slide} dmg and are thrown back; slide CANNOT damage an opponent who is mid-Ultimate; +${METER.GAIN_ON_HIT} meter on landed slide, +${METER.GAIN_ON_DEFEND} on successful evade
-  defend_high → HIGH guard, braces overhead; BLOCKS regular melee hit AND AIRBORNE supers (jet-pack / flyHit / sky-dive ults). Does NOT block shoot, slide, rush-style hit (Skater Kid), projectile hit (Woman Hero), or grounded supers — those go UNDER it and HURT you. Correctly blocking a MELEE hit BOUNCES THE ATTACKER back for your pointSystem defend.throwbackDmg HP (you take 0); a blocked airborne super backfires on the attacker. +${METER.GAIN_ON_DEFEND} meter on a successful block
-  defend_low  → LOW guard, drops the shield to the body/legs; BLOCKS shoot, slide, rush-style hit (Skater Kid), projectile hit (Woman Hero), AND grounded supers. Does NOT block a regular melee hit or an AIRBORNE super — those come over the top and HURT you. Correctly blocking a SLIDE or rush-style hit BOUNCES THE ATTACKER back for your pointSystem defend.throwbackDmg HP (you take 0); a blocked shoot, ice-arrow hit, or grounded super deals 0 (dies on the shield / backfires). +${METER.GAIN_ON_DEFEND} meter on a successful block
-  super_move → your character-specific special (cost meter); deals heavy damage (some also heal you); BLOCKED by the MATCHING guard — an AIRBORNE super is stopped by defend_high, a GROUNDED super by defend_low (wrong guard = full damage; there are no unblockable supers anymore). CLASH only when BOTH supers occupy the same lane — both airborne (collide mid-flight, fall with death anim, no HP loss) OR both grounded (silent clash, no HP loss, meter still spent). MIXED airborne-vs-grounded does NOT clash. ALL supers LAND on a sliding defender (slider takes full damage). MELEE hit INTERRUPTS a super — hitter's lunge clips the super-er mid-windup, they take the hit damage and the super never connects. BACKFIRE: if your super is BLOCKED by the matching guard (airborne→defend_high, grounded→defend_low), it rebounds and YOU take ${BLOCKED_SUPER_DAMAGE_MULTIPLIER}× the super's damage as HP loss — never throw a super into a guard you can be read on. EXCEPTION: a RANGED super (Woman Hero's arrow volley) is thrown from afar — a blocked volley simply whiffs with NO backfire; she only loses the spent meter.
+// How many of the most recent turns to include in {history}. Capped so the
+// prompt's token cost stays flat instead of growing every turn of the fight.
+// If you change this, update the "last 6 turns" labels in the prompt templates.
+export const HISTORY_TURNS = 6;
 
-POINT SYSTEM (how to read each fighter's pointSystem):
-  dmg          → HP the move deals when it lands.
-  spm          → super-meter points GAINED when that attack LANDS, or when a jump / slide / guard SUCCESSFULLY defends an incoming attack (see SUPER METER).
-  throwbackDmg → recoil dealt to the ATTACKER when you CORRECTLY block their melee hit / rush / slide — they bounce off your shield (you take 0). Blocking a shoot, ice arrow, or super deals 0. The OPPONENT's throwbackDmg is what YOU eat if you attack into their block — don't throw a melee/slide into a guard you can be read on.
+// Concise rulebook injected into every prompt. Kept tight on purpose — it sits
+// in the system prompt every turn, so it covers the decision-critical counter
+// matrix and omits per-character timing/visual edge cases (the renderer's job).
+export const GAME_RULES = `ACTIONS (and what stops each):
+  idle  → do nothing.
+  jump  → dodges shoot & arrows, but a MELEE hit knocks you out of the air and supers still land.
+  hit   → close attack. Whiffs over a slide; loses to a shoot (bullet lands first); two melee hits clash for no damage. Usually HIGH-line (→ defend_high), but some fighters' hit is a LOW rush/arrow (→ defend_low) — read each move's "line" in the pointSystem, don't guess.
+  shoot → projectile on the LOW line → stopped by defend_low (slips under defend_high). Dodged by jump and by airborne supers. Beats a slide.
+  slide → low tackle on the LOW line → stopped by defend_low (sweeps under defend_high). Goes under a melee hit; loses to jump and to shoot; two slides trade.
+  defend_high → blocks MELEE hit + AIRBORNE supers. Open to shoot, slide, low-line hits, grounded supers.
+  defend_low  → blocks shoot, slide, low-line hits + GROUNDED supers. Open to melee hit, airborne supers.
+  super_move → spend a full meter for heavy damage; stopped only by the MATCHING guard (airborne→defend_high, grounded→defend_low). A MELEE hit interrupts it (super fizzles, you take the hit); it ignores a slide.
 
-SUPER METER:
-  Meter fills from 0→${METER.MAX} on two events only: LANDING an attack (hit/shoot/slide that connects → +${METER.GAIN_ON_HIT}) and SUCCESSFULLY DEFENDING an incoming attack — a shield block, a jump or slide evade, even a defended super (→ +${METER.GAIN_ON_DEFEND}). Taking damage no longer builds meter. (Exact rates vary per character.)
-  You can only use super_move when it is available (meter fully charged). If you pick super_move while it is unavailable, the turn is WASTED on 'idle' (you do nothing — no attack, no defense).
+BLOCKING: a correct block takes 0 damage and builds meter. Blocking a MELEE/rush/slide bounces the attacker for the blocker's throwbackDmg — so never attack into a guard you can be read on. A blocked SUPER backfires ${BLOCKED_SUPER_DAMAGE_MULTIPLIER}× its damage onto the attacker (exception: a ranged volley just whiffs).
 
-TIMING:
-  Both fighters act simultaneously per turn. Read opponent patterns and counter.
+POINT SYSTEM (per fighter): dmg = HP a move deals · spm = meter gained on a landed attack or a successful defend · line = which guard stops the attack (high → defend_high, low → defend_low) · throwbackDmg = HP the ATTACKER loses when you correctly block their melee/rush/slide (it recoils off your guard — you take 0).
 
-NUMBERS: The dmg/meter figures in this rules block are typical baselines — your fighter's EXACT per-move dmg, spm and throwbackDmg live in the pointSystem under YOU / OPPONENT below. Trust those over the baselines here.
+SUPER METER: fills ONLY by landing an attack or successfully defending (block / jump / slide-dodge) — taking damage gives nothing. super_move works only at full meter (${METER.MAX}); choosing it early wastes the turn on idle. Exact numbers vary per fighter — trust each pointSystem.
 
-NOTE: In your move output, your character-specific Ultimate is ALWAYS written as the single token "super_move" — never a fancy name.`;
+TIMING: both fighters move at once — read patterns and counter. Always write your special as the token "super_move".`;
 
 // ── Character description helpers ───────────────────────────────────────────
 
@@ -73,10 +72,14 @@ function buildPointSystem(charId) {
   const { onHit, onDefend } = getMeterGain(charId);
   const dmgOf = (a) => t?.[a]?.dmg ?? BASE_DAMAGE[a] ?? 0;
   const landSpm = (a) => t?.[a]?.spm ?? onHit;
+  // The guard line each attack travels ('high' → stopped by defend_high, 'low' →
+  // defend_low). Computed from the engine so the model NEVER has to infer it from
+  // the bio — that inference is what makes a reasoning model burn its budget.
+  const lineOf = (a) => attackLine(a, charId);
   return {
-    hit:        { dmg: dmgOf('hit'),   spm: landSpm('hit') },
-    shoot:      { dmg: dmgOf('shoot'), spm: landSpm('shoot') },
-    slide:      { dmg: dmgOf('slide'), spm: landSpm('slide') },
+    hit:        { dmg: dmgOf('hit'),   spm: landSpm('hit'),   line: lineOf('hit') },
+    shoot:      { dmg: dmgOf('shoot'), spm: landSpm('shoot'), line: lineOf('shoot') },
+    slide:      { dmg: dmgOf('slide'), spm: landSpm('slide'), line: lineOf('slide') },
     jump:       { spm: t?.jump?.spm ?? onDefend },
     slideDodge: { spm: t?.slideDodge?.spm ?? onDefend },
     defend:     { spm: t?.defend?.spm ?? onDefend, throwbackDmg: throwbackDmgFor(charId) },
@@ -106,7 +109,8 @@ function toModelAction(action) {
   return isUltimateKey(action) ? SUPER_MOVE_TOKEN : action;
 }
 
-/** Whole-game move log from this fighter's perspective, as compact JSON. */
+/** Recent move log (last HISTORY_TURNS turns) from this fighter's perspective,
+ *  as compact JSON. Turn numbers stay absolute so position is still clear. */
 function buildActionHistory(history) {
   const turns = [];
   let n = 0;
@@ -123,7 +127,9 @@ function buildActionHistory(history) {
       });
     });
   }
-  return JSON.stringify(turns);
+  // Only the most recent turns reach the prompt — keeps the token cost flat as
+  // the fight drags on instead of growing one entry per turn.
+  return JSON.stringify(turns.slice(-HISTORY_TURNS));
 }
 
 // ── Variable substitution ───────────────────────────────────────────────────
@@ -196,7 +202,7 @@ OPPONENT (JSON):
 
 CURRENT STATE (JSON): {state}
 
-MOVE HISTORY (entire game so far, from your perspective): {history}
+MOVE HISTORY (your last ${HISTORY_TURNS} turns): {history}
 
 YOUR STRATEGY:
 ${strat}
@@ -231,8 +237,14 @@ function mapModelMove(raw, charId) {
  * Call the managed AI proxy for a fighter. Returns string[] | 'FAIL' | null.
  * On any failure (no key, HTTP error, bad JSON) returns 'FAIL' so the engine
  * plays random moves.
+ *
+ * maxTokens defaults HIGH (2048) because a REASONING model (e.g. deepseek-v4-flash)
+ * spends most of the budget on hidden chain-of-thought BEFORE emitting the move
+ * array. Too small a budget gets cut off mid-reasoning (finish_reason "length")
+ * and returns empty content — the bug this guards against. A non-reasoning model
+ * just stops after the ~15-token array, so the higher cap costs it nothing.
  */
-export async function callAI(fighter, { system, messages, maxTokens = 400 }) {
+export async function callAI(fighter, { system, messages, maxTokens = 2048 }) {
   const tag = `[AI:${fighter.name}]`;
 
   if (MOCK_AI) return null;
@@ -257,6 +269,10 @@ export async function callAI(fighter, { system, messages, maxTokens = 400 }) {
     const text = data.text ?? '';
 
     const cleaned = text.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+    if (!cleaned) {
+      console.error(`${tag} Empty completion after ${elapsed}ms — the model likely spent its whole maxTokens budget on reasoning before emitting moves. Raise maxTokens or use a non-reasoning provider. Random fallback.`);
+      return 'FAIL';
+    }
     let parsed;
     try {
       parsed = JSON.parse(cleaned);
