@@ -56,15 +56,18 @@ melee/slide into their guard.`,
   },
   {
     token: '{state}',
-    use: 'The live, per-turn snapshot — HP totals and whether each super is charged.',
+    use: 'The live, per-turn snapshot — HP totals, super-meter charge, and whether each super is ready.',
     inside: `{
   "yourHp": 64,
   "opponentHp": 30,
+  "yourSuperMeter": 100,
   "yourSuperReady": true,
+  "opponentSuperMeter": 60,
   "opponentSuperReady": false
 }
 
-The only block that changes every turn.`,
+The only block that changes every turn.
+yourSuperMeter/opponentSuperMeter = super charge (0–100).`,
   },
   {
     token: '{history}',

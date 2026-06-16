@@ -38,7 +38,7 @@ BLOCKING: a correct block takes 0 damage and builds meter. Blocking a MELEE/rush
 
 POINT SYSTEM (per fighter): dmg = HP a move deals · spm = meter gained on a landed attack or a successful defend · line = which guard stops the attack (high → defend_high, low → defend_low) · throwbackDmg = HP the ATTACKER loses when you correctly block their melee/rush/slide (it recoils off your guard — you take 0).
 
-SUPER METER: fills ONLY by landing an attack or successfully defending (block / jump / slide-dodge) — taking damage gives nothing. super_move works only at full meter (${METER.MAX}); choosing it early wastes the turn on idle. Exact numbers vary per fighter — trust each pointSystem.
+SUPER METER: fills ONLY by landing an attack or successfully defending (block / jump / slide-dodge) — taking damage gives nothing. CURRENT STATE.yourSuperMeter is your charge right now (0–${METER.MAX}); super_move needs a FULL meter (${METER.MAX}), so picking it early wastes the turn on idle. Combine yourSuperMeter with each move's spm to plan how many landed hits/blocks reach full, and watch opponentSuperMeter to gauge how close THEY are to firing. Firing super_move SPENDS the entire meter, so use it AT MOST ONCE across your moves this turn. Exact numbers vary per fighter — trust each pointSystem.
 
 TIMING: both fighters move at once — read patterns and counter. Always write your special as the token "super_move".`;
 
@@ -162,7 +162,9 @@ export function buildFighterPrompt(fighter, opponent, fightState) {
   const state = {
     yourHp: fighter.hp,
     opponentHp: opponent.hp,
+    yourSuperMeter: meter,                         // super-meter charge now (0–MAX)
     yourSuperReady: meter >= selfCost,
+    opponentSuperMeter: opponentMeter,             // their charge now (0–MAX)
     opponentSuperReady: opponentMeter >= oppCost,
   };
 
@@ -207,7 +209,7 @@ YOUR STRATEGY:
 ${strat}
 
 Valid moves: hit, shoot, slide, jump, idle, defend_high, defend_low, super_move.
-SUPER RULE: only use super_move when CURRENT STATE.yourSuperReady is true. If it is false the meter is NOT charged — picking super_move wastes the whole turn, so build meter with attacks/blocks instead.
+SUPER RULE: only use super_move when CURRENT STATE.yourSuperReady is true. If it is false the meter is NOT charged — picking super_move wastes the whole turn, so build meter with attacks/blocks instead. 
 Return ONLY a JSON array of exactly 3 move strings, e.g. ["hit", "defend_high", "super_move"].`;
 }
 
