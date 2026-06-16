@@ -606,6 +606,11 @@ export const CHARACTERS = {
     // and clips the bottom of the canvas — lift the sprite during the slide so
     // the roll clears the edge (negative = up). See monkey for the same fix.
     actionYOffsets: { slide: -50 },
+    // Celebrate reuses the OnLadder climb pose, which leans her body OUTWARD
+    // (away from the opponent). Nudge her back toward the opponent so she
+    // celebrates near her idle spot instead of drifting off to the side.
+    // +ve = toward opponent; tune the magnitude to taste.
+    actionXOffsets: { celebrate: 200 },
     extraProjectileActions: ['hit'],
     // Her ice-arrow `hit` is projectile-style → it travels the LOW line, so a
     // RAISED guard (defend_high) can't stop it (that's the "pierces a guard"

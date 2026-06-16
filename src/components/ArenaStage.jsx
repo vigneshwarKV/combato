@@ -1355,6 +1355,16 @@ function playAction(fighter, opponent, action, app) {
   // outside the canvas — push the sprite up to compensate).
   const yOffset = fighter.character.actionYOffsets?.[action];
   if (yOffset) fighter.sprite.y = fighter.baseY + yOffset;
+  // Per-action X offset, applied TOWARD the opponent (+ve) — same sign
+  // convention as defendOffsetX. Used to recenter a spine pose that leans to
+  // one side: Woman Hero's celebrate reuses the OnLadder climb pose, which
+  // drifts her body OUTWARD (away from the opponent); this nudges her back.
+  // Safe for tweened actions too — their per-frame tween overrides this.
+  const xOffset = fighter.character.actionXOffsets?.[action];
+  if (xOffset) {
+    const dir = fighter.side === 'A' ? 1 : -1;
+    fighter.sprite.x = fighter.baseX + dir * xOffset;
+  }
   // Per-action scale (e.g., a roll whose rig reads oversized). Applied every
   // action — actionScale defaults to 1, so the sprite snaps back to its base
   // displayScale on the next move. Preserve the mirror direction (B faces left,
