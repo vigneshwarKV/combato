@@ -208,6 +208,7 @@ YOUR STRATEGY:
 ${strat}
 
 Valid moves: hit, shoot, slide, jump, idle, defend_high, defend_low, super_move.
+Fire super_move only when yourSuperReady is true.
 Return ONLY a JSON array of exactly 3 move strings, e.g. ["hit", "defend_high", "super_move"].`;
 }
 
