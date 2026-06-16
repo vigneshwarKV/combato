@@ -10,7 +10,7 @@ import { SlotSprite } from '../design/DesignKit.jsx';
 // props signature.
 
 const TOTAL_SEATS = 16;
-const AUTO_START_SECONDS = 5 * 60;
+const AUTO_START_SECONDS = 15 * 60; // 15:00 fallback until the host's shared deadline arrives
 
 function MobSlot({ fighter, idx, isMe }) {
   if (!fighter) {
@@ -72,14 +72,22 @@ export default function MobileLobby({
 
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(AUTO_START_SECONDS);
+
+  // Anchored to the host's broadcast `autoStartAt` so every joiner shows the
+  // same remaining time. Falls back to a local 15:00 until it arrives.
+  const autoStartAt = lobbyState?.autoStartAt;
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    autoStartAt ? Math.max(0, Math.round((autoStartAt - Date.now()) / 1000)) : AUTO_START_SECONDS
+  );
 
   useEffect(() => {
-    const id = setInterval(() => {
-      setSecondsLeft(s => (s > 0 ? s - 1 : AUTO_START_SECONDS));
-    }, 1000);
+    const tick = () => setSecondsLeft(
+      autoStartAt ? Math.max(0, Math.round((autoStartAt - Date.now()) / 1000)) : AUTO_START_SECONDS
+    );
+    tick();
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [autoStartAt]);
 
   function copyCode() {
     try {

@@ -2,6 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPeer, sendMessage, broadcast, onMessage } from '../engine/peerEngine.js';
 import { callAI, buildFighterPrompt, getFallback } from '../engine/prompts.js';
 
+// Lobby auto-start window. The HOST stamps an absolute deadline (`autoStartAt`)
+// into the broadcast lobby state so every joiner counts down to the SAME wall
+// clock instant — instead of each client running its own local 5:00 from
+// whenever it happened to render the page.
+const AUTO_START_MS = 15 * 60 * 1000; // 15:00
+
 // ── Bracket helpers ────────────────────────────────────────────────────────────
 
 function nextPow2(n) {
@@ -263,7 +269,7 @@ export function useMatchHost(matchCode, opts = {}) {
         isHost: true,
         ready: true,
       };
-      const initial = { fighters: [hostFighter], phase: 'lobby', matchCode, tournamentName };
+      const initial = { fighters: [hostFighter], phase: 'lobby', matchCode, tournamentName, autoStartAt: Date.now() + AUTO_START_MS };
       setLobbyState(initial);
 
       peer.on('connection', handleConnection);
@@ -401,6 +407,8 @@ export function useMatchHost(matchCode, opts = {}) {
       champion: null,
       nextMatchStartsAt: null,
       fightConfig: null,
+      // Re-arm the shared lobby countdown for the next round of joiners.
+      autoStartAt: Date.now() + AUTO_START_MS,
     };
     setLobbyState(updatedLobby);
     broadcastLobby(updatedLobby);

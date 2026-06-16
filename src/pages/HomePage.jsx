@@ -218,7 +218,7 @@ function JoinPrivateTab({ onJoin }) {
         maxLength={8}
       />
       <button
-        className="btn"
+        className="btn btn-solid"
         onClick={() => onJoin(code)}
         disabled={disabled}
         style={{ marginTop: 14, width: '100%' }}

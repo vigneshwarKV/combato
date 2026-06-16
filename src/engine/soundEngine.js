@@ -134,8 +134,7 @@ export function isMusicPlaying() { return !!musicSource; }
 // stays off until the user toggles it on.
 export function startMusic() {
   if (!musicEnabled || !musicUrl || musicSource || !audioCtx) return;
-  if (audioCtx.state === 'suspended') audioCtx.resume();
-  Promise.resolve(decodeClip(musicUrl)).then(buffer => {
+  const launch = () => Promise.resolve(decodeClip(musicUrl)).then(buffer => {
     // Re-check: a stop()/disable may have happened during the async decode.
     if (!buffer || musicSource || !musicEnabled || !audioCtx) return;
     const source = audioCtx.createBufferSource();
@@ -149,6 +148,13 @@ export function startMusic() {
     musicSource = source;
     notifyMusic();
   }).catch(() => { /* decode failed — silent */ });
+  // Resume FIRST, then play — otherwise source.start() is scheduled into a
+  // suspended context and (when the resume never lands) the loop stays silent.
+  // A context that was unlocked once can be resumed programmatically here
+  // (no fresh gesture needed) — this is what lets a timer-started tournament
+  // fight, or a 2nd round after the lobby idled, get its music back.
+  if (audioCtx.state === 'suspended') audioCtx.resume().then(launch).catch(launch);
+  else launch();
 }
 
 export function stopMusic() {
@@ -207,8 +213,31 @@ export function unlockAudio() {
     const ctx = getCtx();
     if (ctx.state === 'suspended') ctx.resume();
     for (const url of rawClips.keys()) decodeClip(url);
+    startKeepAlive();
   } catch { /* ignore */ }
   return audioCtx;
+}
+
+// A 1-sample silent loop that holds the AudioContext 'running' so the browser
+// won't suspend it while the page idles (e.g. the lobby between rounds, or the
+// 20s bracket-preview wait). Without it, a tournament fight that auto-starts
+// from a TIMER (no user gesture) could land on a suspended context and play no
+// music — "works sometimes" depending on whether the context happened to still
+// be awake. Gain 0 = inaudible, negligible CPU; started once and left running.
+let keepAliveSource = null;
+function startKeepAlive() {
+  if (keepAliveSource || !audioCtx) return;
+  try {
+    const src = audioCtx.createBufferSource();
+    src.buffer = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
+    src.loop = true;
+    const g = audioCtx.createGain();
+    g.gain.value = 0;
+    src.connect(g);
+    g.connect(audioCtx.destination);
+    src.start();
+    keepAliveSource = src;
+  } catch { /* ignore — keep-alive is best-effort */ }
 }
 
 // Auto-unlock on the first interaction ANYWHERE on the page. Registered in the
@@ -223,13 +252,26 @@ export function unlockAudio() {
 function installAudioUnlock() {
   if (typeof window === 'undefined') return;
   const events = ['pointerdown', 'mousedown', 'touchstart', 'keydown', 'click'];
+  // Stay armed for the page's whole life — do NOT remove after the first unlock.
+  // The browser suspends an idle AudioContext (e.g. while the lobby sits between
+  // tournament rounds, or when the tab is backgrounded). A removed listener
+  // could never recover from that, so the next fight — which auto-starts from a
+  // timer, not a click — played silently. Keeping the listener means any
+  // interaction re-resumes a suspended context. The handler is cheap and only
+  // touches the context when it isn't already running.
   const handler = () => {
-    unlockAudio();
-    if (audioCtx && audioCtx.state === 'running') {
-      events.forEach(e => window.removeEventListener(e, handler, true));
-    }
+    if (!audioCtx || audioCtx.state !== 'running') unlockAudio();
   };
   events.forEach(e => window.addEventListener(e, handler, { capture: true, passive: true }));
+  // Returning to the tab is another good moment to revive a context the browser
+  // suspended while we were backgrounded.
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => { /* needs a gesture — the listener above will catch it */ });
+      }
+    });
+  }
 }
 
 installAudioUnlock();

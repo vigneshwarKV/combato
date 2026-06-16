@@ -294,7 +294,7 @@ export function CharDetail({ char }) {
           fontSize: 26, lineHeight: 0.95, margin: '4px 0 6px',
           color: 'var(--gold)', letterSpacing: '0.03em',
         }}>{char.name}</h1>
-        <p style={{ margin: '0 0 10px', color: 'var(--ink-soft)', fontSize: 12, lineHeight: 1.5 }}>{char.tagline}</p>
+        <p style={{ margin: '0 0 12px', color: 'var(--ink-soft)', fontSize: 12, lineHeight: 1.55 }}>{char.description}</p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           <Bar label="ATK" value={char.stats.atk} red />
           <Bar label="DEF" value={char.stats.def} />

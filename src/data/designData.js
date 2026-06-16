@@ -86,19 +86,21 @@ const RANKS = ['S', 'A', 'A', 'B', 'B', 'C'];
 function rankFor(i) { return RANKS[i % RANKS.length]; }
 
 const TAGLINES = {
-  soldierBoy:  'Disciplined frontline soldier. Closes fast, punishes hesitation.',
-  beast:       'Hulking brawler. Rockets in and crashes down.',
-  speedKid:    'Glitchy speedster. Gone before you react.',
-  gunBoy:      'Hot-headed gunner. Sets the ring alight.',
-  cartoonBoy:  'Cartoon scrapper. Hits harder than physics allow.',
-  spaceGirl:   'Cosmic markswoman. Rains starlight from range.',
-  stormGirl:   'Tempest channeler. Freezes opponents mid-combo.',
-  ironKnight:  'Armored heavy. Soaks punishment, answers in steel.',
-  madScientist: 'Mad scientist. Overloads the arena with lightning.',
-  skater:      'Reckless skater. Board run smashes through guards.',
-  monkey:      'Trickster. Spears from range, somersaults skyward.',
-  turtle:      'Armored bruiser. Heavy spear, defensive cyclone.',
-  womanHero:   'Archer. Ice arrows pierce guards, venom volley finishes.',
+  // Playable fighters — strength + the catch, in plain words.
+  beast:       'Hits hardest, but slow. Win up close.',
+  spaceGirl:   'Deadly from afar, weak up close.',
+  madScientist:'Special move ready fastest — but fragile.',
+  skater:      'Skateboard rush beats a high block. Fragile.',
+  monkey:      'Hard-hitting spear, but slow to throw.',
+  turtle:      'Tough defender — blocking wins him the fight.',
+  womanHero:   'Spams a fast, cheap special. Low damage.',
+  // Locked fighters.
+  soldierBoy:  'Balanced all-rounder. No tricks, just smart play.',
+  speedKid:    'Fast and dodgy, but fragile.',
+  gunBoy:      'Aggressive shooter. Steady pressure.',
+  cartoonBoy:  'All attack, little defense.',
+  stormGirl:   'Balanced mid-range fighter.',
+  ironKnight:  'Tough and slow. Blocks and grinds.',
 };
 
 // Static idle-frame thumbnail for PNG characters. CharTile only renders the
@@ -140,6 +142,7 @@ export const CHARS = Object.values(CHARACTERS)
       locked: !UNLOCKED_IDS.has(c.id),   // temporarily lock all but the playable few
       rank: rankFor(i),
       tagline: TAGLINES[c.id] || c.description || '',
+      description: c.description || TAGLINES[c.id] || '',
       thumb: thumbFor(c),
       stats,                       // { atk, def, spm } on a 0–100 scale
       moves: buildMoves(c),        // [{ key, name, dmg, spm, super?, evade? }]
@@ -157,7 +160,10 @@ const PROFILE_KEY = 'pk.profile';
 
 function defaultProfile() {
   return {
-    handle: 'Player',
+    // Empty on purpose — a pre-filled "Player" got shipped as everyone's name
+    // because users skipped the field. Blank forces a real name in setup (the
+    // input shows its placeholder, and CharSelect blocks Save until it's set).
+    handle: '',
     rank: 'C',
     wins: 0,
     charId: null,

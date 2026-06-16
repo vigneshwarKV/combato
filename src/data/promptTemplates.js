@@ -26,7 +26,6 @@ export const ADVANCED_VARIABLES = [
     use: "Your fighter's fixed profile — who you are and the numbers behind every move.",
     inside: `{
   "name": "Iron Turtle",
-  "archetype": "tank",
   "description": "…short bio…",
   "superMove": "22 damage, launches you airborne;
                 blocked by defend_high",

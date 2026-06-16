@@ -111,7 +111,7 @@ export const CHARACTERS = {
     },
     name: 'Soldier Boy',
     archetype: 'striker',
-    description: 'A disciplined frontline soldier who closes distance fast and punishes hesitation.',
+    description: 'A balanced fighter with no big strengths or weaknesses. Wins by reading the enemy and countering them.',
     renderMode: 'png',
     assetBase: `${BASE}/main-character-for-2d-platformer`,
     stats: { attack: 4, defense: 3 },
@@ -138,7 +138,7 @@ export const CHARACTERS = {
     },
     name: 'Beast',
     archetype: 'tank',
-    description: 'A hulking brawler who rockets across the arena and crashes down on opponents.',
+    description: "The hardest hitter in the game, with a huge special move. He's slow to charge it up and weak from a distance, so get in close and brawl.",
     renderMode: 'png',
     assetBase: `${BASE}/beast-character-sprites`,
     stats: { attack: 5, defense: 4 },
@@ -159,12 +159,12 @@ export const CHARACTERS = {
     // ── Unstoppable Engine: heaviest hits + biggest super, slowest meter ──
     ratings: { atk: 90, def: 80, spm: 35 },
     actionTable: {
-      hit:   { dmg: 13, spm: 6 },
-      shoot: { dmg: 5,  spm: 6 },   // weak poke — well below his hit/slide so shoot can't out-trade them
-      slide: { dmg: 8,  spm: 5 },
-      defend:     { spm: 7 },   // guard meter; throwback dmg is DEF-derived (throwbackDmgFor)
-      jump:       { spm: 12 },  // jump-evade — above guard
-      slideDodge: { spm: 8 },   // slide used to dodge
+      hit:   { dmg: 13, spm: 11 },
+      shoot: { dmg: 5,  spm: 11 },  // weak poke — well below his hit/slide so shoot can't out-trade them
+      slide: { dmg: 8,  spm: 10 },
+      defend:     { spm: 12 },  // guard meter; throwback dmg is DEF-derived (throwbackDmgFor)
+      jump:       { spm: 17 },  // jump-evade — above guard
+      slideDodge: { spm: 13 },  // slide used to dodge
     },
     ultimates: [
       { key: 'ultimate_rocketcharge', name: 'Rocket Charge', meterCost: 100, damage: 34, airborne: true },
@@ -180,7 +180,7 @@ export const CHARACTERS = {
     },
     name: 'Speed Kid',
     archetype: 'acrobat',
-    description: 'A glitchy speedster who blinks in and out of the fight before you can react.',
+    description: 'Fast and hard to pin down, but weak and fragile. Dodge attacks and chip away.',
     renderMode: 'png',
     assetBase: `${BASE}/animated-boy-character-sprite-pack`,
     stats: { attack: 3, defense: 2 },
@@ -207,7 +207,7 @@ export const CHARACTERS = {
     },
     name: 'Gun Boy',
     archetype: 'striker',
-    description: 'A hot-headed gunner who sets the ring alight with every charge.',
+    description: 'An aggressive shooter who keeps up the pressure from range.',
     renderMode: 'png',
     assetBase: `${BASE}/boy-character-sprites-for-platformer`,
     stats: { attack: 4, defense: 3 },
@@ -234,7 +234,7 @@ export const CHARACTERS = {
     },
     name: 'Cartoon Boy',
     archetype: 'striker',
-    description: 'A cartoon scrapper whose cartoon physics make every blow land harder than it should.',
+    description: 'All offense and little defense. Hit hard and win fast before you get hit back.',
     renderMode: 'png',
     assetBase: `${BASE}/cartoon-boy-sprites-for-platformer-game`,
     stats: { attack: 4, defense: 2 },
@@ -261,7 +261,7 @@ export const CHARACTERS = {
     },
     name: 'Space Girl',
     archetype: 'ranger',
-    description: 'A cosmic markswoman who rains starlight on anyone who keeps their distance.',
+    description: "Deadly from far away with the best gun in the game. She's weak up close, so keep your enemy at a distance.",
     renderMode: 'png',
     assetBase: `${BASE}/female-main-character-sprites-for-platformer`,
     stats: { attack: 4, defense: 3 },
@@ -277,12 +277,12 @@ export const CHARACTERS = {
     // ── Sniper: dominates at range (strong shot), folds in melee ──
     ratings: { atk: 80, def: 60, spm: 55 },
     actionTable: {
-      hit:   { dmg: 8,  spm: 6 },
-      shoot: { dmg: 14, spm: 9 },
-      slide: { dmg: 6,  spm: 6 },
-      defend:     { spm: 9 },
-      jump:       { spm: 16 },
-      slideDodge: { spm: 11 },
+      hit:   { dmg: 8,  spm: 11 },
+      shoot: { dmg: 14, spm: 14 },
+      slide: { dmg: 6,  spm: 11 },
+      defend:     { spm: 14 },
+      jump:       { spm: 21 },
+      slideDodge: { spm: 16 },
     },
     ultimates: [
       { key: 'ultimate_starfall', name: 'Star Fall', meterCost: 100, damage: 27, airborne: true },
@@ -298,7 +298,7 @@ export const CHARACTERS = {
     },
     name: 'Storm Girl',
     archetype: 'mage',
-    description: 'A tempest-channeling mage who batters opponents with raw storm force.',
+    description: 'A balanced, patient fighter who works best at mid-range.',
     renderMode: 'png',
     assetBase: `${BASE}/female-protagonist-character-sprites`,
     stats: { attack: 3, defense: 3 },
@@ -325,7 +325,7 @@ export const CHARACTERS = {
     },
     name: 'Iron Knight',
     archetype: 'tank',
-    description: 'An armored heavy who soaks up punishment and answers with a steel barrage.',
+    description: 'A tough, slow fighter who blocks a lot and wears the enemy down.',
     renderMode: 'png',
     assetBase: `${BASE}/game-character-for-2d-platformer`,
     stats: { attack: 4, defense: 5 },
@@ -352,7 +352,7 @@ export const CHARACTERS = {
     },
     name: 'Mad Scientist',
     archetype: 'mage',
-    description: 'A mad scientist who overloads the arena with arcing electricity.',
+    description: "Charges his special faster than anyone, and it's the strongest in the game, so he can unleash it early and often. His basic attacks are weak and he's fragile, so win with the special, not by trading blows.",
     renderMode: 'png',
     assetBase: `${BASE}/mad-scientist-game-character-sprite`,
     stats: { attack: 3, defense: 2 },
@@ -368,15 +368,15 @@ export const CHARACTERS = {
     // ── Overload: modest basics but charges fastest; squishy ──
     ratings: { atk: 65, def: 35, spm: 90 },
     actionTable: {
-      hit:   { dmg: 9,  spm: 9 },
-      shoot: { dmg: 4,  spm: 10 },  // weakest shoot in the cast — he pokes, doesn't out-trade
-      slide: { dmg: 6,  spm: 7 },
-      defend:     { spm: 8 },
-      jump:       { spm: 18 },
-      slideDodge: { spm: 11 },
+      hit:   { dmg: 9,  spm: 14 },
+      shoot: { dmg: 4,  spm: 15 },  // weakest shoot in the cast — he pokes, doesn't out-trade
+      slide: { dmg: 6,  spm: 12 },
+      defend:     { spm: 13 },
+      jump:       { spm: 23 },
+      slideDodge: { spm: 16 },
     },
     ultimates: [
-      { key: 'ultimate_teslaoverload', name: 'Tesla Overload', meterCost: 100, damage: 22, airborne: true },
+      { key: 'ultimate_teslaoverload', name: 'Tesla Overload', meterCost: 100, damage: 35, airborne: true },
     ],
   },
 
@@ -390,7 +390,7 @@ export const CHARACTERS = {
     },
     name: 'Skater Kid',
     archetype: 'acrobat',
-    description: 'A reckless skateboarder whose board run smashes straight through a raised guard.',
+    description: "Rushes in on a skateboard with a hit that smashes through a high block. Fast but fragile — trick them into blocking high, then run them over.",
     renderMode: 'spine',
     assetBase: `${BASE}/cartoon-boy-character-animation-sprites`,
     skeletonJson: 'TheKids.json',
@@ -440,12 +440,12 @@ export const CHARACTERS = {
     // ── Grind: guard-breaking rush + mobility, fast meter, flimsy frame ──
     ratings: { atk: 75, def: 45, spm: 75 },
     actionTable: {
-      hit:   { dmg: 12, spm: 8 },  // skateboard rush — breaks a high guard (low line)
-      shoot: { dmg: 6,  spm: 7 },   // strongest of the NORMAL shooters, but still below his rush/slide
-      slide: { dmg: 7,  spm: 8 },
-      defend:     { spm: 7 },
-      jump:       { spm: 20 },  // acrobat — biggest jump bonus in the cast
-      slideDodge: { spm: 12 },
+      hit:   { dmg: 12, spm: 13 },  // skateboard rush — breaks a high guard (low line)
+      shoot: { dmg: 6,  spm: 12 },  // strongest of the NORMAL shooters, but still below his rush/slide
+      slide: { dmg: 7,  spm: 13 },
+      defend:     { spm: 12 },
+      jump:       { spm: 25 },  // acrobat — biggest jump bonus in the cast
+      slideDodge: { spm: 17 },
     },
     ultimates: [
       { key: 'ultimate_roll', name: 'Sky Grind', meterCost: 100, damage: 26, airborne: true },
@@ -461,7 +461,7 @@ export const CHARACTERS = {
     },
     name: 'Monkey King',
     archetype: 'striker',
-    description: 'A trickster who hurls a spear from range and somersaults skyward on a flying staff.',
+    description: "Throws a spear that hits twice as hard as a normal shot, but it's slow to throw, so a fast attacker reaches him first. Best from a distance.",
     renderMode: 'spine',
     assetBase: `${BASE}/monkey-game-character-sprite`,
     skeletonJson: 'Wukong.json',
@@ -512,12 +512,12 @@ export const CHARACTERS = {
     // ── Trickster: slow spear hits double a normal shot; agile, fast meter ──
     ratings: { atk: 85, def: 45, spm: 75 },
     actionTable: {
-      hit:   { dmg: 11, spm: 8 },
-      shoot: { dmg: 24, spm: 9 },  // heavy spear — slow to release (loses to rush/slide)
-      slide: { dmg: 7,  spm: 8 },
-      defend:     { spm: 8 },
-      jump:       { spm: 20 },  // somersault — biggest jump bonus
-      slideDodge: { spm: 12 },
+      hit:   { dmg: 11, spm: 13 },
+      shoot: { dmg: 24, spm: 14 },  // heavy spear — slow to release (loses to rush/slide)
+      slide: { dmg: 7,  spm: 13 },
+      defend:     { spm: 13 },
+      jump:       { spm: 25 },  // somersault — biggest jump bonus
+      slideDodge: { spm: 17 },
     },
     ultimates: [
       { key: 'ultimate_roll', name: 'Cloud Somersault', meterCost: 100, damage: 16, hits: 2, airborne: true },
@@ -533,7 +533,7 @@ export const CHARACTERS = {
     },
     name: 'Iron Turtle',
     archetype: 'tank',
-    description: 'A slow, armored bruiser who throws a heavy spear and spins into a defensive cyclone.',
+    description: "The toughest defender. Blocking hurts whoever attacks him and powers up his special, so he wins by turtling and waiting. His spear hits hard but is slow.",
     renderMode: 'spine',
     assetBase: `${BASE}/turtle-game-character-sprite`,
     skeletonJson: 'skeleton.json',
@@ -566,12 +566,12 @@ export const CHARACTERS = {
     // charges super fastest by defending. Slow heavy spear loses to rush/slide. ──
     ratings: { atk: 70, def: 90, spm: 60 },
     actionTable: {
-      hit:   { dmg: 12, spm: 7 },
-      shoot: { dmg: 24, spm: 9 },  // heavy spear — slow to release (loses to rush/slide)
-      slide: { dmg: 6,  spm: 6 },
-      defend:     { spm: 16 },  // best guard-to-meter conversion in the cast (tankiest DEF)
-      jump:       { spm: 16 },
-      slideDodge: { spm: 14 },  // even his dodges feed the meter
+      hit:   { dmg: 12, spm: 12 },
+      shoot: { dmg: 24, spm: 14 },  // heavy spear — slow to release (loses to rush/slide)
+      slide: { dmg: 6,  spm: 11 },
+      defend:     { spm: 21 },  // best guard-to-meter conversion in the cast (tankiest DEF)
+      jump:       { spm: 21 },
+      slideDodge: { spm: 19 },  // even his dodges feed the meter
     },
     ultimates: [
       // airborne: true is critical — without it, engine treats this as grounded
@@ -593,7 +593,7 @@ export const CHARACTERS = {
     },
     name: 'Woman Hero',
     archetype: 'ranger',
-    description: 'An archer who jump-shoots ice arrows that slip past a raised guard, then unleashes a low arrow volley.',
+    description: "Charges her special fastest and throws it often, though it's weak and easy to block. Her arrows can sneak past a high block. She wins by chipping away, not big hits.",
     renderMode: 'spine',
     assetBase: `${BASE}/woman-hero-game-character-sprite`,
     skeletonJson: 'Archy.json',
@@ -681,12 +681,12 @@ export const CHARACTERS = {
     // projectile — see extraProjectileActions); only the SUPER lost its pierce. ──
     ratings: { atk: 55, def: 55, spm: 95 },
     actionTable: {
-      hit:   { dmg: 10, spm: 10 },  // ice arrow — pierces a raised guard, misses jumpers
-      shoot: { dmg: 5,  spm: 12 },  // fire-arrow poke — low damage, but fastest meter gain in the cast
-      slide: { dmg: 6,  spm: 8 },
-      defend:     { spm: 10 },
-      jump:       { spm: 18 },
-      slideDodge: { spm: 12 },
+      hit:   { dmg: 10, spm: 15 },  // ice arrow — pierces a raised guard, misses jumpers
+      shoot: { dmg: 5,  spm: 17 },  // fire-arrow poke — low damage, but fastest meter gain in the cast
+      slide: { dmg: 6,  spm: 13 },
+      defend:     { spm: 15 },
+      jump:       { spm: 23 },
+      slideDodge: { spm: 17 },
     },
     ultimates: [
       // rangedSuper: fires arrows from range — a charging melee hit can't
