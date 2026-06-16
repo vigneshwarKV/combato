@@ -179,6 +179,17 @@ body.pk-design {
 
 .btn-sm { font-size: 14px; padding: 8px 18px; clip-path: none; }
 
+/* Always-filled primary CTA. A plain .btn is a transparent outline until
+   :hover paints it solid — but touch devices never fire :hover, so the mobile
+   "Enter the Ring" join button read as inert. .btn-solid is filled by default
+   so it looks tappable everywhere (no hover required). */
+.btn-solid {
+  background: var(--c);
+  color: #0a0612;
+  box-shadow: 0 0 12px var(--c), 0 0 28px rgba(255, 216, 74, 0.35);
+}
+.btn-solid:hover { background: var(--c); color: #0a0612; }
+
 /* ─── Topbar ─────────────────────────────────────────────────────── */
 
 .topbar {

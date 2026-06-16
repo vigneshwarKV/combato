@@ -97,7 +97,6 @@ export function buildFighterObject(charId) {
   if (!c) return { description: 'An unknown fighter.' };
   return {
     name: c.name,
-    archetype: c.archetype,
     description: c.description,
     superMove: describeSuperEffect(charId),
     pointSystem: buildPointSystem(charId),
@@ -208,7 +207,7 @@ YOUR STRATEGY:
 ${strat}
 
 Valid moves: hit, shoot, slide, jump, idle, defend_high, defend_low, super_move.
-Fire super_move only when yourSuperReady is true.
+SUPER RULE: only use super_move when CURRENT STATE.yourSuperReady is true. If it is false the meter is NOT charged — picking super_move wastes the whole turn, so build meter with attacks/blocks instead.
 Return ONLY a JSON array of exactly 3 move strings, e.g. ["hit", "defend_high", "super_move"].`;
 }
 

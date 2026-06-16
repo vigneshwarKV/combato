@@ -14,9 +14,10 @@ import ChampionView from '../components/ChampionView.jsx';
 import MobileLobby from '../components/mobile/MobileLobby.jsx';
 import MobileBracket from '../components/mobile/MobileBracket.jsx';
 import { useIsPortrait } from '../hooks/useIsPortrait.js';
+import { unlockAudio } from '../engine/soundEngine.js';
 
 const TOTAL_SEATS = 16;
-const AUTO_START_SECONDS = 5 * 60; // 5:00 lobby countdown
+const AUTO_START_SECONDS = 15 * 60; // 15:00 fallback until the host's shared deadline arrives
 
 // ── Player slot ───────────────────────────────────────────────────────────────
 
@@ -99,15 +100,22 @@ function LobbyView({
 
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(AUTO_START_SECONDS);
 
-  // Visual auto-start countdown — always ticks while the lobby is open.
+  // Lobby countdown — anchored to the host's broadcast `autoStartAt` so every
+  // joiner shows the SAME remaining time (not a fresh local 15:00 each). Falls
+  // back to a local 15:00 until that timestamp lands.
+  const autoStartAt = lobbyState?.autoStartAt;
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    autoStartAt ? Math.max(0, Math.round((autoStartAt - Date.now()) / 1000)) : AUTO_START_SECONDS
+  );
   useEffect(() => {
-    const id = setInterval(() => {
-      setSecondsLeft(s => (s > 0 ? s - 1 : AUTO_START_SECONDS));
-    }, 1000);
+    const tick = () => setSecondsLeft(
+      autoStartAt ? Math.max(0, Math.round((autoStartAt - Date.now()) / 1000)) : AUTO_START_SECONDS
+    );
+    tick();
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [autoStartAt]);
 
   function copyCode() {
     try {
@@ -365,10 +373,17 @@ export default function RoomPage() {
   const matchFighters = !isHost ? client.matchFighters : null;
   const fightConfig   = { n: 3 };
 
+  // The tournament fight auto-starts from the bracket countdown timer, NOT a
+  // click — so unlike the bot match it never has a user gesture at fight time
+  // to unlock audio. Unlock on every tournament gesture (host force-starting a
+  // match) so the AudioContext is live + freshly resumed when the Arena mounts
+  // and starts the theme. Without this the background music stays silent.
+  const startNextMatch = isHost ? () => { unlockAudio(); host.startNextMatch(); } : undefined;
+
   // Spectating overlay — shown for late joiners across every phase. Surfaces a
   // JOIN action once the tournament ends (champion) or returns to lobby.
   const spectatorBar = spectating
-    ? <SpectatorBar canJoin={canJoinNow} onJoin={() => client.joinAsFighter()} />
+    ? <SpectatorBar canJoin={canJoinNow} onJoin={() => { unlockAudio(); client.joinAsFighter(); }} />
     : null;
 
   // ── Fighting phase ───────────────────────────────────────────────────────
@@ -418,14 +433,14 @@ export default function RoomPage() {
         bracket={bracket}
         nextMatchStartsAt={nextMatchStartsAt || Date.now()}
         isHost={isHost}
-        onStartNow={isHost ? host.startNextMatch : undefined}
+        onStartNow={startNextMatch}
       />
     ) : (
       <BracketView
         bracket={bracket}
         nextMatchStartsAt={nextMatchStartsAt || Date.now()}
         isHost={isHost}
-        onStartNow={isHost ? host.startNextMatch : undefined}
+        onStartNow={startNextMatch}
       />
     );
     return <>{bracketEl}{spectatorBar}</>;
@@ -456,9 +471,9 @@ export default function RoomPage() {
     error: lobby.error,
     myPeerId,
     profile,
-    onStart: () => host.startTournament(fightConfig),
+    onStart: () => { unlockAudio(); host.startTournament(fightConfig); },
     onLeave: isHost ? handleCloseRoom : () => navigate('/'),
-    onToggleReady: isHost ? undefined : (next) => client.updateMyConfig({ ready: next }),
+    onToggleReady: isHost ? undefined : (next) => { unlockAudio(); client.updateMyConfig({ ready: next }); },
   };
 
   const lobbyEl = isPortrait ? <MobileLobby {...lobbyProps} /> : <LobbyView {...lobbyProps} />;

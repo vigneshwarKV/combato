@@ -116,13 +116,14 @@ export default function CharSelectPage() {
 
   const fighter = draft.charId ? charById(draft.charId) : null;
   const fighterReady = !!fighter && !fighter.locked;
+  const nameReady = (draft.handle || '').trim().length > 0;
   const strategyText = draft.strategyMode === 'advanced' ? draft.strategyAdvanced : draft.strategySimple;
   const strategyReady = strategyText.trim().length > 8;
-  const canSave = fighterReady && !preload.active;
+  const canSave = fighterReady && nameReady && !preload.active;
 
   function save() {
     if (!canSave || savedFlash) return;
-    const cleaned = { ...draft, handle: (draft.handle || '').trim() || 'Player' };
+    const cleaned = { ...draft, handle: (draft.handle || '').trim() };
     saveProfile(cleaned);
     setSavedFlash(true);
     const strategyEmpty = strategyText.trim().length === 0;
@@ -181,13 +182,13 @@ export default function CharSelectPage() {
         </div>
 
         <div className="settings-tabs">
-          <TabButton n="01" label="Fighter"  active={tab === 'fighter'}  ready={fighterReady}  onClick={() => selectTab('fighter')} />
+          <TabButton n="01" label="Fighter"  active={tab === 'fighter'}  ready={fighterReady && nameReady}  onClick={() => selectTab('fighter')} />
           <TabButton n="02" label="Strategy" active={tab === 'strategy'} ready={strategyReady} onClick={() => selectTab('strategy')} />
         </div>
 
         {tab === 'fighter' && (
           <>
-            <div style={{ marginBottom: 14 }}>
+            <div style={{ marginTop: 18, marginBottom: 26 }}>
               <div className="eyebrow" style={{ marginBottom: 6 }}>DISPLAY NAME</div>
               <input
                 className="input"
@@ -214,9 +215,9 @@ export default function CharSelectPage() {
 
         <div className="setup-foot">
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
-            {!fighterReady && !savedFlash && (
+            {!savedFlash && (!fighterReady || !nameReady) && (
               <span className="f-mono" style={{ fontSize: 11, color: 'var(--ink-mute)' }}>
-                Pick a fighter
+                {!fighterReady ? 'Pick a fighter' : 'Enter your name'}
               </span>
             )}
             <button className="btn btn-sm btn-ghost" onClick={() => navigate('/')}>CANCEL</button>
