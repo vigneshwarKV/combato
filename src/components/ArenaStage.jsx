@@ -8,18 +8,6 @@ import {
   applyScale,
 } from '../engine/spritePlayer.js';
 
-// ONE PIXI Application + WebGL context is shared across every match for the
-// whole session, created lazily on the first mount. We used to create a fresh
-// Application per ArenaStage mount and destroy it on unmount — but destroying
-// the renderer LOSES its WebGL context, while the module-global texture caches
-// (PIXI.Assets + spritePlayer's frame/atlas caches) live on. The next match
-// then reused those textures on a brand-new context: Spine atlas pages
-// re-uploaded inconsistently (flicker / "motions not working") and plain shield
-// PNGs never re-uploaded at all (invisible fighters mid-defend). Keeping one
-// live context and only swapping the stage contents each match fixes that.
-let sharedApp = null;
-let sharedAppInit = null;   // Promise<void> from sharedApp.init(), awaited by every mount
-
 /**
  * One Pixi.js Application that hosts BOTH fighters in a single canvas.
  * This fixes two things over the old per-fighter canvas approach:
@@ -81,30 +69,21 @@ export default function ArenaStage({
   useEffect(() => {
     if (!containerRef.current || !charA || !charB) return;
     let cancelled = false;
-    let app = null;   // assigned from the shared Application once it's initialised
+
+    const app = new PIXI.Application();
+    appRef.current = app;
 
     (async () => {
       try {
         const { width: w0, height: h0 } = sizeRef.current;
-        // Create the shared Application + context once; every later match reuses
-        // it (see sharedApp note above) instead of spinning up a new context.
-        if (!sharedApp) {
-          sharedApp = new PIXI.Application();
-          sharedAppInit = sharedApp.init({
-            width: w0, height: h0,
-            backgroundAlpha: 0,
-            antialias: true,
-            preference: 'webgl',
-          });
-        }
-        await sharedAppInit;
-        if (cancelled) return;
-        app = sharedApp;
-        appRef.current = app;
-        // Match this mount's size (constant in practice) and (re)attach the
-        // shared canvas into this mount's container.
-        if (app.renderer.width !== w0 || app.renderer.height !== h0) app.renderer.resize(w0, h0);
-        if (app.canvas.parentNode !== containerRef.current) containerRef.current?.appendChild(app.canvas);
+        await app.init({
+          width: w0, height: h0,
+          backgroundAlpha: 0,
+          antialias: true,
+          preference: 'webgl',
+        });
+        if (cancelled) { app.destroy(true); return; }
+        containerRef.current?.appendChild(app.canvas);
 
         const [spriteA, spriteB] = await Promise.all([
           loadFighterSprite(charA),
@@ -198,25 +177,7 @@ export default function ArenaStage({
 
     return () => {
       cancelled = true;
-      // Keep the shared Application + WebGL context ALIVE; only dismantle THIS
-      // match's contents so nothing leaks into the next one. app.destroy used to
-      // do this for free — now we must stop the continuous per-sprite tickers
-      // (Spine slot-tint enforcer) and any in-flight tweens / projectiles, then
-      // clear the stage and detach the canvas.
-      const fa = fighterARef.current;
-      const fb = fighterBRef.current;
-      [fa, fb].forEach(f => {
-        const s = f?.sprite;
-        if (s?._tintTicker && app) { try { app.ticker.remove(s._tintTicker); } catch { /* ignore */ } s._tintTicker = null; }
-        if (!f) return;
-        try { cancelActiveTween(f, { resetPosition: false }); } catch { /* ignore */ }
-        try { cancelPendingProjectiles(f); } catch { /* ignore */ }
-        try { cancelActiveProjectiles(f); } catch { /* ignore */ }
-      });
-      if (app) {
-        try { app.stage?.removeChildren(); } catch { /* ignore */ }
-        try { if (app.canvas?.parentNode) app.canvas.parentNode.removeChild(app.canvas); } catch { /* ignore */ }
-      }
+      try { app.destroy(true, { children: true }); } catch { /* ignore */ }
       appRef.current = null;
       fighterARef.current = null;
       fighterBRef.current = null;
