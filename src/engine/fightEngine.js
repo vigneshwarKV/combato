@@ -18,7 +18,7 @@ export const FIGHT_TIME_LIMIT_MS = 90_000; // 1 min 30 sec
  * @param {function} onEvent - callback for each fight event
  */
 export async function runFight(fighterA, fighterB, fightConfig, onEvent) {
-  const { n = 3, getDelay = () => 800, pauseRef, forceNextRef, defaults = {} } = fightConfig;
+  const { n = 3, getDelay = () => 800, pauseRef, forceNextRef, defaults = {}, shouldCancel = () => false } = fightConfig;
 
   const charIdA = fighterA.character || fallbackCharacter(fighterA);
   const charIdB = fighterB.character || fallbackCharacter(fighterB);
@@ -43,6 +43,13 @@ export async function runFight(fighterA, fighterB, fightConfig, onEvent) {
 
   const isTimeUp = () => (Date.now() - fightStartTime - pausedTime) >= TIME_LIMIT;
 
+  // Snapshot returned when the fight is cancelled mid-run (the owning Arena
+  // unmounted — e.g. this match ended and the next is spinning up, or the host
+  // left). Lets runFight bail out of its loop instead of running on in the
+  // background making AI calls and emitting events into a dead fight. The caller
+  // (useFight) suppresses onFightEnd for a cancelled run via its own unmount flag.
+  const cancelledResult = () => ({ winner: null, winnerId: null, hpA, hpB, meterA, meterB, history, cancelled: true });
+
   // History perspective flip: B sees "my moves" as movesB in raw history. Swap
   // the per-turn outcome fields too — both damage AND the actual executed action
   // — so any consumer reading outcome.actionA always gets "my" action regardless
@@ -66,9 +73,10 @@ export async function runFight(fighterA, fighterB, fightConfig, onEvent) {
   onEvent({ type: 'fight_start', timeLimitMs: TIME_LIMIT });
 
   while (!winner && !isTimeUp()) {
+    if (shouldCancel()) return cancelledResult();
     batchNumber++;
 
-    while (pauseRef?.current) {
+    while (pauseRef?.current && !shouldCancel()) {
       const pauseStart = Date.now();
       await delay(200);
       pausedTime += Date.now() - pauseStart;
@@ -106,6 +114,8 @@ export async function runFight(fighterA, fighterB, fightConfig, onEvent) {
         ),
       ]);
     }
+
+    if (shouldCancel()) return cancelledResult();
 
     const resolveMoves = (raw, charId, meter) => {
       if (!raw || !Array.isArray(raw) || raw.length !== n) return getFallback(n, charId, meter);
@@ -181,6 +191,8 @@ export async function runFight(fighterA, fighterB, fightConfig, onEvent) {
       if (forceNextRef) forceNextRef.current = false;
       await delay(waitMs);
 
+      if (shouldCancel()) return cancelledResult();
+
       if (hpA <= 0 || hpB <= 0) {
         winner = hpA <= 0 && hpB <= 0
           ? (hpA <= hpB ? 'B' : 'A')
@@ -201,6 +213,8 @@ export async function runFight(fighterA, fighterB, fightConfig, onEvent) {
 
     if (winner) break;
   }
+
+  if (shouldCancel()) return cancelledResult();
 
   if (!winner) {
     if (hpA === hpB) {
