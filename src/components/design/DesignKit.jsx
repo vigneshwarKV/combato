@@ -348,6 +348,18 @@ export function MovesPanel({ char, moves }) {
           );
         })}
       </div>
+      <div className="move-legend">
+        <p>
+          <b>DMG</b> — HP this move strips off the opponent when it lands. On a guard,
+          the <span className="chip">▾N</span> is recoil: HP the <i>attacker</i> loses when
+          their melee / rush / slide hits your block.
+        </p>
+        <p>
+          <b>SPM</b> — super-meter points earned when the move lands, evades or guards.
+          Meter fills to 100, then unlocks your super — shown as <span className="cost">–100</span> because
+          firing it spends the whole bar.
+        </p>
+      </div>
     </div>
   );
 }

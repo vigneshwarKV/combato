@@ -48,11 +48,7 @@ block their melee/slide (you take 0)`,
   {
     token: '{opponent}',
     use: "The opponent's profile — same shape as {self}. Read it to pick moves that beat THEM.",
-    inside: `Identical structure to {self}.
-
-Watch opponent.pointSystem.defend.throwbackDmg —
-that's the recoil YOU take if you throw a
-melee/slide into their guard.`,
+    inside: `Identical structure to {self}.`,
   },
   {
     token: '{state}',
@@ -87,7 +83,7 @@ me/opp = moves played · iTook/oppTook = HP lost`,
 // VariableGuide chips below the editor) to feed the AI fighter/live-state context.
 export const DEFAULT_ADVANCED_TEMPLATE = `This is the gamerule: {game_rules}
 
-Valid moves: hit, shoot, slide, jump, idle, defend_high, defend_low, super_move.
+Valid moves: hit, shoot, slide, jump, defend_high, defend_low, super_move.
 fire super_move only when yourSuperReady is true
 Return ONLY a JSON array of exactly 3 move strings, e.g. ["hit", "defend_high", "super_move"].`;
 
