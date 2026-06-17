@@ -189,7 +189,9 @@ export default function CharSelectPage() {
         {tab === 'fighter' && (
           <>
             <div style={{ marginTop: 18, marginBottom: 26 }}>
-              <div className="eyebrow" style={{ marginBottom: 6 }}>DISPLAY NAME</div>
+              <div className="eyebrow" style={{
+                marginBottom: 6, fontSize: 15, letterSpacing: '0.2em', color: 'var(--gold)',
+              }}>DISPLAY NAME</div>
               <input
                 className="input"
                 value={draft.handle || ''}
@@ -199,8 +201,17 @@ export default function CharSelectPage() {
                 style={{
                   fontFamily: 'var(--f-display)', fontSize: 18,
                   letterSpacing: '0.04em', color: 'var(--gold)',
+                  border: '1px solid var(--gold)',
+                  boxShadow: '0 0 10px rgba(255,216,74,0.15)',
                 }}
               />
+              <p style={{
+                margin: '8px 0 0', fontSize: 11.5, color: 'var(--ink-soft)',
+                display: 'flex', alignItems: 'center', gap: 6, lineHeight: 1.4,
+              }}>
+                <Icon name="info" size={13} />
+                <span>Click the <b style={{ color: 'var(--gold)' }}>info</b> button on any fighter to know more about it.</span>
+              </p>
             </div>
             <FighterPicker value={draft.charId} onChange={setCharId} />
           </>
@@ -315,11 +326,20 @@ function StrategyEditor({ mode, setMode, simple, setSimple, advanced, setAdvance
         </div>
       </div>
 
-      <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--ink-mute)', lineHeight: 1.5 }}>
-        {mode === 'simple'
-          ? 'Plain English. Tell the AI how to fight — the prompt builds itself.'
-          : 'Full prompt access. Drop in {variables} to react to live state.'}
-      </p>
+      {mode === 'simple' ? (
+        <div style={{ margin: '0 0 12px' }}>
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-mute)', lineHeight: 1.5 }}>
+            Plain English. Tell the AI how to fight — the prompt builds itself.
+          </p>
+          <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--ink-soft)', lineHeight: 1.5 }}>
+            Moves the AI can use: <span style={{ color: 'var(--gold)' }}>hit, shoot, slide, jump, defend high, defend low, super move</span>. Mention these in your strategy to steer it.
+          </p>
+        </div>
+      ) : (
+        <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--ink-mute)', lineHeight: 1.5 }}>
+          Full prompt access. Drop in {'{variables}'} to react to live state.
+        </p>
+      )}
 
       <div className="editor-wrap">
         <div className="editor-gutter">

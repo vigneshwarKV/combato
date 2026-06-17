@@ -25,7 +25,6 @@ export const HISTORY_TURNS = 6;
 // in the system prompt every turn, so it covers the decision-critical counter
 // matrix and omits per-character timing/visual edge cases (the renderer's job).
 export const GAME_RULES = `ACTIONS (and what stops each):
-  idle  → do nothing.
   jump  → dodges shoot & arrows, but NOT a melee hit (knocks you out of the air) or a super (hits you anyway).
   hit   → close attack. Whiffs over a slide; loses to a shoot (bullet lands first); two melee hits clash for no damage. Usually HIGH-line (→ defend_high), but some fighters' hit is a LOW rush/arrow (→ defend_low) — read each move's "line" in the pointSystem, don't guess.
   shoot → projectile on the LOW line → stopped by defend_low (slips under defend_high). Dodged by jump and by airborne supers. Beats a slide.
@@ -38,7 +37,7 @@ BLOCKING: a correct block takes 0 damage and builds super meter. Blocking a MELE
 
 POINT SYSTEM (per fighter): dmg = HP a move deals · spm = SUPER METER gained on a landed attack or a successful defend · line = which guard stops the attack (high → defend_high, low → defend_low) · throwbackDmg = HP the ATTACKER loses when you correctly block their melee/rush/slide (it recoils off your guard — you take 0).
 
-SUPER METER: fills ONLY by landing an attack or successfully defending (block / jump / slide-dodge) — taking damage gives nothing. CURRENT STATE.yourSuperMeter is your charge right now (0–${METER.MAX}); super_move needs a FULL meter (${METER.MAX}), so picking it early wastes the turn on idle. Combine yourSuperMeter with each move's spm to plan how many landed hits/blocks reach full, and watch opponentSuperMeter to gauge how close THEY are to firing. Firing super_move SPENDS the entire meter, so use it AT MOST ONCE across your moves this turn. Exact numbers vary per fighter — trust each pointSystem.
+SUPER METER: fills ONLY by landing an attack or successfully defending (block / jump / slide-dodge) — taking damage gives nothing. CURRENT STATE.yourSuperMeter is your charge right now (0–${METER.MAX}); super_move needs a FULL meter (${METER.MAX}), so picking it early wastes the turn (you do nothing). Combine yourSuperMeter with each move's spm to plan how many landed hits/blocks reach full, and watch opponentSuperMeter to gauge how close THEY are to firing. Firing super_move SPENDS the entire meter, so use it AT MOST ONCE across your moves this turn. Exact numbers vary per fighter — trust each pointSystem.
 
 TIMING: both fighters move at once.`;
 
@@ -212,7 +211,7 @@ export function buildFighterPrompt(fighter, opponent, fightState) {
   // uncharged super. (Confirmed product decision — do NOT gate behind !isAdvanced.)
   const superFact = state.yourSuperReady
     ? `FACT: super_move is available this turn (meter ${meter}/${METER.MAX}); firing it spends the whole meter, so it can land at most once.`
-    : `FACT: super_move is NOT available this turn (meter ${meter}/${METER.MAX}, needs ${METER.MAX}) — if picked it is wasted (counts as idle).`;
+    : `FACT: super_move is NOT available this turn (meter ${meter}/${METER.MAX}, needs ${METER.MAX}) — if picked it is wasted (you do nothing that turn).`;
 
   // Simple-mode strategy is short — echo it as the LAST line so the player's
   // intent outranks the generic rulebook and the FACT above. ONLY this echo is
@@ -250,8 +249,8 @@ MOVE HISTORY (your last ${HISTORY_TURNS} turns): {history}
 YOUR STRATEGY:
 ${strat}
 
-Valid moves: hit, shoot, slide, jump, idle, defend_high, defend_low, super_move.
-SUPER RULE (mechanic, not advice): super_move only works when CURRENT STATE.yourSuperReady is true (full meter). If it is false, picking super_move is wasted (counts as idle) — so when it's unavailable, pick whatever OTHER move your strategy calls for. Whether to fire it when it IS available is your strategy's call.
+Valid moves: hit, shoot, slide, jump, defend_high, defend_low, super_move.
+SUPER RULE (mechanic, not advice): super_move only works when CURRENT STATE.yourSuperReady is true (full meter). If it is false, picking super_move is wasted (you do nothing that turn) — so when it's unavailable, pick whatever OTHER move your strategy calls for. Whether to fire it when it IS available is your strategy's call.
 Your strategy decides every move. Return ONLY a JSON array of exactly 3 move strings, e.g. ["hit", "defend_high", "shoot"].`;
 }
 

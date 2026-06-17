@@ -87,7 +87,7 @@ me/opp = moves played · iTook/oppTook = HP lost`,
 // VariableGuide chips below the editor) to feed the AI fighter/live-state context.
 export const DEFAULT_ADVANCED_TEMPLATE = `This is the gamerule: {game_rules}
 
-Valid moves: hit, shoot, slide, jump, idle, defend_high, defend_low, super_move.
+Valid moves: hit, shoot, slide, jump, defend_high, defend_low, super_move.
 fire super_move only when yourSuperReady is true
 Return ONLY a JSON array of exactly 3 move strings, e.g. ["hit", "defend_high", "super_move"].`;
 
