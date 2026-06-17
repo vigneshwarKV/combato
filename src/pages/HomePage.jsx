@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Icon from '../components/design/Icons.jsx';
 import { Modal } from '../components/design/DesignKit.jsx';
 import NeedSetupPrompt from '../components/design/NeedSetupPrompt.jsx';
@@ -11,11 +11,20 @@ import { generateMatchCode } from '../engine/peerEngine.js';
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const isPortrait = useIsPortrait();
   const [profile, setProfile] = useState(() => loadProfile());
-  const [showJoin, setShowJoin] = useState(false);
-  const [showHost, setShowHost] = useState(false);
+  // Returning from /setup with ?intent=host|join means the player came to
+  // host/join but had to set up a fighter first — reopen that action now that
+  // they're ready. Derived at mount; the effect below strips the param so a
+  // refresh or back-nav doesn't reopen it.
+  const initialIntent = new URLSearchParams(location.search).get('intent');
+  const [showJoin, setShowJoin] = useState(() => initialIntent === 'join' && isProfileReady(loadProfile()));
+  const [showHost, setShowHost] = useState(() => initialIntent === 'host' && isProfileReady(loadProfile()));
   const [showNeedSetup, setShowNeedSetup] = useState(false);
+  // Where to send the player after they finish setup, captured when an action
+  // is gated (e.g. '/bot', or '/?intent=host' to reopen the host modal).
+  const [needSetupReturn, setNeedSetupReturn] = useState('/');
 
   // Re-read profile when returning from /setup (storage event for cross-tab,
   // focus event for same-tab navigation).
@@ -29,6 +38,14 @@ export default function HomePage() {
     };
   }, []);
 
+  // Drop the ?intent param once consumed so a refresh / back-nav doesn't
+  // reopen the modal. The modal open-state was already derived at mount above.
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('intent')) {
+      navigate('/', { replace: true });
+    }
+  }, [location.search, navigate]);
+
   useEffect(() => {
     document.body.classList.add('pk-design');
     return () => document.body.classList.remove('pk-design');
@@ -36,8 +53,9 @@ export default function HomePage() {
 
   const ready = isProfileReady(profile);
 
-  function gate(action) {
+  function gate(action, returnTo = '/') {
     if (!ready) {
+      setNeedSetupReturn(returnTo);
       setShowNeedSetup(true);
     } else {
       action();
@@ -58,9 +76,9 @@ export default function HomePage() {
       <>
         <MobileHome
           profile={profile}
-          onQuick={() => gate(() => navigate('/bot'))}
-          onHost={() => gate(() => setShowHost(true))}
-          onJoin={() => gate(() => setShowJoin(true))}
+          onQuick={() => gate(() => navigate('/bot'), '/bot')}
+          onHost={() => gate(() => setShowHost(true), '/?intent=host')}
+          onJoin={() => gate(() => setShowJoin(true), '/?intent=join')}
           onSettings={() => navigate('/setup')}
         />
         <Modal open={showJoin} onClose={() => setShowJoin(false)} width={680}>
@@ -78,7 +96,7 @@ export default function HomePage() {
         <Modal open={showNeedSetup} onClose={() => setShowNeedSetup(false)}>
           <NeedSetupPrompt
             onClose={() => setShowNeedSetup(false)}
-            onChoose={() => { setShowNeedSetup(false); navigate('/setup'); }}
+            onChoose={() => { setShowNeedSetup(false); navigate(`/setup?returnTo=${encodeURIComponent(needSetupReturn)}`); }}
           />
         </Modal>
       </>
@@ -122,21 +140,21 @@ export default function HomePage() {
             icon={<Icon name="bot" size={26} />}
             desc="Solo skirmish vs a random AI fighter."
             cta="Quick fight"
-            onClick={() => gate(() => navigate('/bot'))}
+            onClick={() => gate(() => navigate('/bot'), '/bot')}
           />
           <Action
             tone="red" title="Host Tournament"
             icon={<Icon name="trophy" size={26} />}
             desc="Open a 4 / 8 / 16 player bracket. You set the rules."
             cta="Open lobby"
-            onClick={() => gate(() => setShowHost(true))}
+            onClick={() => gate(() => setShowHost(true), '/?intent=host')}
           />
           <Action
             tone="ink" title="Join Tournament"
             icon={<Icon name="enter" size={26} />}
             desc="Enter a private room code or drop into a public bracket."
             cta="Find a match"
-            onClick={() => gate(() => setShowJoin(true))}
+            onClick={() => gate(() => setShowJoin(true), '/?intent=join')}
           />
         </div>
       </div>
@@ -158,7 +176,7 @@ export default function HomePage() {
       <Modal open={showNeedSetup} onClose={() => setShowNeedSetup(false)}>
         <NeedSetupPrompt
           onClose={() => setShowNeedSetup(false)}
-          onChoose={() => { setShowNeedSetup(false); navigate('/setup'); }}
+          onChoose={() => { setShowNeedSetup(false); navigate(`/setup?returnTo=${encodeURIComponent(needSetupReturn)}`); }}
         />
       </Modal>
 

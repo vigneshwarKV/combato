@@ -43,7 +43,10 @@ export async function runFight(fighterA, fighterB, fightConfig, onEvent) {
 
   const isTimeUp = () => (Date.now() - fightStartTime - pausedTime) >= TIME_LIMIT;
 
-  // History perspective flip: B sees "my moves" as movesB in raw history
+  // History perspective flip: B sees "my moves" as movesB in raw history. Swap
+  // the per-turn outcome fields too — both damage AND the actual executed action
+  // — so any consumer reading outcome.actionA always gets "my" action regardless
+  // of side (buildActionHistory relies on this to log the real move per fighter).
   const historyForB = () =>
     history.map(batch => ({
       ...batch,
@@ -53,6 +56,8 @@ export async function runFight(fighterA, fighterB, fightConfig, onEvent) {
         ...o,
         damageToA: o.damageToB,
         damageToB: o.damageToA,
+        actionA: o.actionB,
+        actionB: o.actionA,
       })),
     }));
 
