@@ -326,20 +326,19 @@ function StrategyEditor({ mode, setMode, simple, setSimple, advanced, setAdvance
         </div>
       </div>
 
-      {mode === 'simple' ? (
-        <div style={{ margin: '0 0 12px' }}>
-          <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-mute)', lineHeight: 1.5 }}>
-            Plain English. Tell the AI how to fight — the prompt builds itself.
-          </p>
-          <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--ink-soft)', lineHeight: 1.5 }}>
-            Moves the AI can use: <span style={{ color: 'var(--gold)' }}>hit, shoot, slide, jump, defend high, defend low, super move</span>. Mention these in your strategy to steer it.
-          </p>
-        </div>
-      ) : (
-        <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--ink-mute)', lineHeight: 1.5 }}>
-          Full prompt access. Drop in {'{variables}'} to react to live state.
+      <div style={{ margin: '0 0 12px' }}>
+        <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-mute)', lineHeight: 1.5 }}>
+          {mode === 'simple'
+            ? 'Plain English. Tell the AI how to fight — the prompt builds itself.'
+            : 'Full prompt access. Drop in {variables} to react to live state.'}
         </p>
-      )}
+        <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--ink-soft)', lineHeight: 1.5 }}>
+          Moves the AI can use: <span style={{ color: 'var(--gold)' }}>hit, shoot, slide, jump, defend high, defend low, super move</span>. Mention these in your strategy to steer it.
+        </p>
+        <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--ink-soft)', lineHeight: 1.5 }}>
+          Note: <span style={{ color: 'var(--gold)' }}>super move</span> only works when the super meter (SPM) is full — otherwise the turn is wasted.
+        </p>
+      </div>
 
       <div className="editor-wrap">
         <div className="editor-gutter">
