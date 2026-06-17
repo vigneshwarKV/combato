@@ -931,6 +931,29 @@ body.pk-design {
 .move.evade .move-dmg { color: var(--ink-mute); } /* jump deals no damage */
 .move-dmg .chip { color: var(--cyan); }            /* chip HP a guard still takes on a block */
 
+/* DMG / SPM legend under the move set table */
+.move-legend {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.move-legend p {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-mute);
+}
+.move-legend b {
+  font-family: var(--f-mono);
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+}
+.move-legend .chip { color: var(--cyan); font-family: var(--f-mono); }
+.move-legend .cost { color: var(--red); font-family: var(--f-mono); }
+
 /* ─── Strategy editor ────────────────────────────────────────────── */
 
 .mode-tabs {

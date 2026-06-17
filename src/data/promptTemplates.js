@@ -48,11 +48,7 @@ block their melee/slide (you take 0)`,
   {
     token: '{opponent}',
     use: "The opponent's profile — same shape as {self}. Read it to pick moves that beat THEM.",
-    inside: `Identical structure to {self}.
-
-Watch opponent.pointSystem.defend.throwbackDmg —
-that's the recoil YOU take if you throw a
-melee/slide into their guard.`,
+    inside: `Identical structure to {self}.`,
   },
   {
     token: '{state}',
