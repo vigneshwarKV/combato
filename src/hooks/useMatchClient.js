@@ -38,6 +38,18 @@ export function useMatchClient(matchCode) {
         break;
       case 'LOBBY_UPDATE':
         setLobbyState(msg.lobbyState);
+        // Match teardown: once the host moves us off the live fight (back to the
+        // bracket / champion / lobby), drop the finished match's fighters + event
+        // log. The next match's LOBBY_UPDATE(phase:'fighting') arrives just BEFORE
+        // its FIGHT_START — if stale matchFighters survived, RoomPage's mount gate
+        // (currentMatch || matchFighters) would re-mount the Arena on the OLD
+        // fighters and the spectator renderer would replay the previous fight's
+        // tail (winner sound, KO poses) until FIGHT_START lands. Clearing here
+        // keeps the gate closed until fresh fighters arrive.
+        if (msg.lobbyState?.phase !== 'fighting') {
+          setMatchFighters(null);
+          setFightEvents([]);
+        }
         break;
       case 'FIGHT_START': {
         const myPeerId = peerRef.current?.id;

@@ -12,6 +12,7 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
   const forceNextRef = useRef(false);
   const runningRef   = useRef(false);
   const fightGenRef  = useRef(0);
+  const cancelRef    = useRef(false);   // set by cancelFight() to stop runFight's loop
 
   const getDelay = useCallback(
     () => Math.round(2000 / (fightState.speedMultiplier || 1)),
@@ -21,6 +22,7 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
   const startFight = useCallback(async () => {
     if (runningRef.current) return;
     runningRef.current = true;
+    cancelRef.current = false;   // re-arm for this run (see cancelFight)
     dispatch({ type: 'RESET' });
     preloadCombatClips();   // warm the SFX cache so the first hit isn't delayed
 
@@ -37,6 +39,7 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
       forceNextRef,
       getMoves: fightConfig.getMoves,
       defaults: fightConfig.defaults || {},
+      shouldCancel: () => cancelRef.current,
     }, (event) => {
       if (fightGenRef.current !== thisGen) return;
       // Tag character IDs onto every event so spectators (and our own
@@ -161,7 +164,7 @@ export function useFight(fighterA, fighterB, fightConfig = {}, broadcastRef = nu
   const resumeFight    = useCallback(() => { pauseRef.current = false; dispatch({ type: 'TOGGLE_PAUSE' }); }, []);
   const forceNextBatch = useCallback(() => { forceNextRef.current = true; }, []);
   const setSpeed       = useCallback((value) => dispatch({ type: 'SET_SPEED', value }), []);
-  const cancelFight    = useCallback(() => { fightGenRef.current++; runningRef.current = false; }, []);
+  const cancelFight    = useCallback(() => { fightGenRef.current++; runningRef.current = false; cancelRef.current = true; }, []);
 
   return { fightState, startFight, cancelFight, pauseFight, resumeFight, forceNextBatch, setSpeed };
 }
