@@ -26,21 +26,21 @@ export const HISTORY_TURNS = 6;
 // matrix and omits per-character timing/visual edge cases (the renderer's job).
 export const GAME_RULES = `ACTIONS (and what stops each):
   idle  → do nothing.
-  jump  → dodges shoot & arrows, but a MELEE hit knocks you out of the air and supers still land.
+  jump  → dodges shoot & arrows, but NOT a melee hit (knocks you out of the air) or a super (hits you anyway).
   hit   → close attack. Whiffs over a slide; loses to a shoot (bullet lands first); two melee hits clash for no damage. Usually HIGH-line (→ defend_high), but some fighters' hit is a LOW rush/arrow (→ defend_low) — read each move's "line" in the pointSystem, don't guess.
   shoot → projectile on the LOW line → stopped by defend_low (slips under defend_high). Dodged by jump and by airborne supers. Beats a slide.
   slide → low tackle on the LOW line → stopped by defend_low (sweeps under defend_high). Goes under a melee hit; loses to jump and to shoot; two slides trade.
   defend_high → blocks MELEE hit + AIRBORNE supers. Open to shoot, slide, low-line hits, grounded supers.
   defend_low  → blocks shoot, slide, low-line hits + GROUNDED supers. Open to melee hit, airborne supers.
-  super_move → spend a full meter for heavy damage; stopped only by the MATCHING guard (airborne→defend_high, grounded→defend_low). A MELEE hit interrupts it (super fizzles, you take the hit); it ignores a slide.
+  super_move → spend a full SUPER METER for heavy damage; stopped only by the MATCHING guard (airborne→defend_high, grounded→defend_low). A MELEE hit interrupts it (super fizzles, you take the hit) — unless it's a ranged super (see your superMove), which fires anyway; it ignores a slide.
 
-BLOCKING: a correct block takes 0 damage and builds meter. Blocking a MELEE/rush/slide bounces the attacker for the blocker's throwbackDmg — so never attack into a guard you can be read on. A blocked SUPER backfires ${BLOCKED_SUPER_DAMAGE_MULTIPLIER}× its damage onto the attacker (exception: a ranged volley just whiffs).
+BLOCKING: a correct block takes 0 damage and builds super meter. Blocking a MELEE/rush/slide bounces the attacker for the blocker's throwbackDmg. A blocked SUPER backfires ${BLOCKED_SUPER_DAMAGE_MULTIPLIER}× its damage onto the attacker (exception: a ranged volley just whiffs).
 
-POINT SYSTEM (per fighter): dmg = HP a move deals · spm = meter gained on a landed attack or a successful defend · line = which guard stops the attack (high → defend_high, low → defend_low) · throwbackDmg = HP the ATTACKER loses when you correctly block their melee/rush/slide (it recoils off your guard — you take 0).
+POINT SYSTEM (per fighter): dmg = HP a move deals · spm = SUPER METER gained on a landed attack or a successful defend · line = which guard stops the attack (high → defend_high, low → defend_low) · throwbackDmg = HP the ATTACKER loses when you correctly block their melee/rush/slide (it recoils off your guard — you take 0).
 
 SUPER METER: fills ONLY by landing an attack or successfully defending (block / jump / slide-dodge) — taking damage gives nothing. CURRENT STATE.yourSuperMeter is your charge right now (0–${METER.MAX}); super_move needs a FULL meter (${METER.MAX}), so picking it early wastes the turn on idle. Combine yourSuperMeter with each move's spm to plan how many landed hits/blocks reach full, and watch opponentSuperMeter to gauge how close THEY are to firing. Firing super_move SPENDS the entire meter, so use it AT MOST ONCE across your moves this turn. Exact numbers vary per fighter — trust each pointSystem.
 
-TIMING: both fighters move at once — read patterns and counter. Always write your special as the token "super_move".`;
+TIMING: both fighters move at once.`;
 
 // ── Character description helpers ───────────────────────────────────────────
 
@@ -114,16 +114,32 @@ function buildActionHistory(history) {
   const turns = [];
   let n = 0;
   for (const batch of history) {
-    batch.movesA.forEach((me, i) => {
+    batch.movesA.forEach((requested, i) => {
       n += 1;
       const outcome = batch.outcomes?.[i];
-      turns.push({
+      // Log the ACTUAL executed action (post-coercion), not what was requested.
+      // A super fired without a full meter is coerced to idle by the engine
+      // (see damageEngine.coerceAction); reporting the requested "super_move"
+      // here would teach the model that its special does nothing / is blockable
+      // instead of the real lesson — the meter wasn't charged. Fall back to the
+      // requested move only when a turn has no recorded outcome (e.g. a KO cut
+      // the batch short before this slot ran).
+      const myAction = outcome?.actionA ?? requested;
+      const oppAction = outcome?.actionB ?? batch.movesB[i];
+      const entry = {
         turn: n,
-        me: toModelAction(me),
-        opp: toModelAction(batch.movesB[i]),
+        me: toModelAction(myAction),
+        opp: toModelAction(oppAction),
         iTook: outcome?.damageToA ?? 0,
         oppTook: outcome?.damageToB ?? 0,
-      });
+      };
+      // Make the wasted-super lesson explicit: the model picked a super but the
+      // engine coerced it away because the meter wasn't full. Only set on the
+      // turn it happened, so normal turns stay compact.
+      if (isUltimateKey(requested) && !isUltimateKey(myAction)) {
+        entry.note = 'super wasted — meter not full';
+      }
+      turns.push(entry);
     });
   }
   // Only the most recent turns reach the prompt — keeps the token cost flat as
@@ -181,7 +197,33 @@ export function buildFighterPrompt(fighter, opponent, fightState) {
     : wrapSimpleStrategy(fighter.prompt || '');
 
   const system = substituteVariables(template, ctx);
-  const userMessage = `Respond now with ONLY a JSON array of exactly ${MOVES_PER_TURN} moves, e.g. ["hit", "defend_high", "super_move"].`;
+
+  // Per-turn super-meter FACT in the USER message (the last thing the model
+  // reads). It states ONLY the engine's hard mechanic — a super needs a full
+  // meter or it's coerced to idle (see damageEngine.coerceAction) — and gives
+  // NO tactical advice, so it never overrides the player's strategy. We must not
+  // say "build meter with attacks" (that breaks an "always defend" strategy) or
+  // "you may fire it" (that breaks a "never super" strategy); whether/what to
+  // play is always deferred to YOUR STRATEGY.
+  //
+  // Sent in BOTH Simple AND Advanced (unlike the strategy echo below). Because
+  // it's a pure mechanic it acts as a safety net: even a minimal Advanced
+  // template that omits {state} or a super rule still can't waste a turn on an
+  // uncharged super. (Confirmed product decision — do NOT gate behind !isAdvanced.)
+  const superFact = state.yourSuperReady
+    ? `FACT: super_move is available this turn (meter ${meter}/${METER.MAX}); firing it spends the whole meter, so it can land at most once.`
+    : `FACT: super_move is NOT available this turn (meter ${meter}/${METER.MAX}, needs ${METER.MAX}) — if picked it is wasted (counts as idle).`;
+
+  // Simple-mode strategy is short — echo it as the LAST line so the player's
+  // intent outranks the generic rulebook and the FACT above. ONLY this echo is
+  // Simple-only: an Advanced author writes their own full prompt (their strategy
+  // already lives there), so re-injecting it would be redundant. The FACT above
+  // is still sent in Advanced — see its note.
+  const strategyReminder = (!isAdvanced && fighter.prompt?.trim())
+    ? `\nYour strategy decides your moves — follow it: ${fighter.prompt.trim()}`
+    : '';
+
+  const userMessage = `${superFact}${strategyReminder}\nRespond now with ONLY a JSON array of exactly ${MOVES_PER_TURN} moves, e.g. ["hit", "defend_high", "shoot"].`;
 
   return { system, messages: [{ role: 'user', content: userMessage }] };
 }
@@ -209,8 +251,8 @@ YOUR STRATEGY:
 ${strat}
 
 Valid moves: hit, shoot, slide, jump, idle, defend_high, defend_low, super_move.
-SUPER RULE: only use super_move when CURRENT STATE.yourSuperReady is true. If it is false the meter is NOT charged — picking super_move wastes the whole turn, so build meter with attacks/blocks instead. 
-Return ONLY a JSON array of exactly 3 move strings, e.g. ["hit", "defend_high", "super_move"].`;
+SUPER RULE (mechanic, not advice): super_move only works when CURRENT STATE.yourSuperReady is true (full meter). If it is false, picking super_move is wasted (counts as idle) — so when it's unavailable, pick whatever OTHER move your strategy calls for. Whether to fire it when it IS available is your strategy's call.
+Your strategy decides every move. Return ONLY a JSON array of exactly 3 move strings, e.g. ["hit", "defend_high", "shoot"].`;
 }
 
 // ── Move mapping ─────────────────────────────────────────────────────────────
