@@ -265,23 +265,34 @@ export default function HowToPlay({ onClose }) {
 
   // Fit the design-space scene into the frame.
   const frameRef = useRef(null);
-  const [fit, setFit] = useState(1);
+  const [frameSize, setFrameSize] = useState({ w: 0, h: 0 });
   useLayoutEffect(() => {
     const el = frameRef.current;
     if (!el) return;
     const compute = () => {
       const w = el.clientWidth, h = el.clientHeight;
-      if (w > 0 && h > 0) setFit(Math.min(w / DESIGN_W, h / DESIGN_H));
+      if (w > 0 && h > 0) setFrameSize({ w, h });
     };
     const ro = new ResizeObserver(compute);
     ro.observe(el);
     compute();
     return () => ro.disconnect();
   }, []);
+  const fit = frameSize.w > 0 ? Math.min(frameSize.w / DESIGN_W, frameSize.h / DESIGN_H) : 1;
 
   const cam = framedCamera(CAMERAS[step.camera] || CAMERAS.full);
   const camTx = DESIGN_W / 2 - cam.z * cam.cx;
   const camTy = DESIGN_H / 2 - cam.z * cam.cy;
+
+  // Where the current note's design anchor lands in FRAME pixels, so we can
+  // render the note in screen space (readable size, independent of the camera
+  // zoom / mobile fit) while staying pinned to the element it points at.
+  const noteScreen = step.note && frameSize.w > 0
+    ? {
+        x: frameSize.w / 2 + fit * cam.z * (step.note.x - cam.cx),
+        y: frameSize.h / 2 + fit * cam.z * (step.note.y - cam.cy),
+      }
+    : null;
 
   return (
     <div className="htp-overlay" role="dialog" aria-label="How to play">
@@ -344,11 +355,13 @@ export default function HowToPlay({ onClose }) {
                 />
               </div>
             )}
-
-            {/* In-scene info callout (health bar / super meter / strategies) */}
-            {step.note && <SceneNote note={step.note} />}
           </div>
         </div>
+
+        {/* Info callout — rendered in FRAME screen space (not scaled by the
+            camera) so it stays a readable size on mobile, but positioned to stay
+            pinned to the element it points at. */}
+        {noteScreen && <SceneNote note={step.note} x={noteScreen.x} y={noteScreen.y} />}
 
         {!stageReady && <div className="htp-loading">Loading arena…</div>}
       </div>
@@ -356,11 +369,11 @@ export default function HowToPlay({ onClose }) {
   );
 }
 
-// A small labelled callout pinned in the scene at design coords, with a caret
+// A small labelled callout pinned at a frame-pixel position, with a caret
 // pointing at the element it describes.
-function SceneNote({ note }) {
+function SceneNote({ note, x, y }) {
   return (
-    <div className="htp-note" style={{ left: note.x, top: note.y }}>
+    <div className="htp-note" style={{ left: x, top: y }}>
       {note.arrow === 'up' && <span className="htp-note-caret up" />}
       <span className="htp-note-text">{note.text}</span>
       {note.arrow === 'down' && <span className="htp-note-caret down" />}

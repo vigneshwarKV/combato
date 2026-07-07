@@ -155,8 +155,17 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
   // 1100×520 design surface inside the available area. Listens to
   // ResizeObserver (covers most cases) plus orientationchange/resize as a
   // safety net for iOS Safari's mid-rotate layout settle.
+  // The live strategy switcher renders as a position:fixed bar pinned to the
+  // bottom of the screen. When it's shown we must reserve room for it under the
+  // fighters, otherwise on short mobile-landscape screens the bar clips over
+  // the fighters' feet.
+  const showSwitcher = Array.isArray(strategies) && strategies.length > 1;
+
   const stageWrapperRef = useRef(null);
   const [stageScale, setStageScale] = useState(1);
+  // Bottom padding reserved under the fighter canvas — driven by the compute()
+  // below so the inline style and the scale math always agree.
+  const [bottomPad, setBottomPad] = useState(0);
   // Responsive action-callout font size: ~28px on desktop, shrinking on
   // narrow (mobile-landscape) arenas so the verb doesn't dwarf the fighters.
   const [calloutSize, setCalloutSize] = useState(28);
@@ -167,9 +176,14 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
       const el = stageWrapperRef.current;
       if (!el) return;
       const w = el.clientWidth;
-      // Mirror the 4vh paddingBottom on the fighter container so the canvas
-      // doesn't overlap the ground edge on small screens.
-      const padBottom = window.innerHeight * 0.04;
+      // Base clearance (keeps the canvas off the ground edge on small screens)
+      // plus room for the fixed strategy switcher bar when it's visible, so the
+      // fighters sit ABOVE it rather than being clipped by it. The switcher is
+      // more compact on short/narrow (mobile) viewports, so reserve less there.
+      const isCompact = window.innerWidth <= 820 || window.innerHeight <= 480;
+      const switcherClearance = showSwitcher ? (isCompact ? 48 : 64) : 0;
+      const padBottom = window.innerHeight * 0.04 + switcherClearance;
+      setBottomPad(padBottom);
       const h = el.clientHeight - padBottom;
       if (w <= 0 || h <= 0) return;
       const s = Math.min(w / DESIGN_W, h / DESIGN_H, 1);
@@ -191,7 +205,7 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
       window.removeEventListener('resize', schedule);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, []);
+  }, [showSwitcher]);
 
   const host = useFight(fighterA, fighterB, fightConfig, broadcastRef);
   const spectator = useFightRenderer();
@@ -395,7 +409,7 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
           <div style={{
             position: 'absolute', inset: 0,
             display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-            paddingBottom: '4vh', zIndex: 10,
+            paddingBottom: bottomPad, zIndex: 10,
           }}>
             {hasSpriteA && hasSpriteB ? (
               <div style={{
