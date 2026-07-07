@@ -128,8 +128,10 @@ export function useMatchHost(matchCode, opts = {}) {
 
   const [lobbyState, setLobbyState] = useState({ fighters: [], phase: 'lobby', matchCode, tournamentName });
   const [myConfig, setMyConfig] = useState({
-    name: 'Host', character: null, prompt: '',
-    strategy: '', promptMode: 'advanced',
+    name: 'Host', character: null,
+    // Plain-English strategy playbook; activeStrategyIndex is switched live
+    // during a fight and read fresh each batch in getMoves.
+    strategies: [], activeStrategyIndex: 0,
   });
   const [connected, setConnected] = useState(false);
   const [error, setError]         = useState(null);
@@ -452,8 +454,11 @@ export function useMatchHost(matchCode, opts = {}) {
         const oppSt  = role === 'A' ? context.statusB : context.statusA;
         const opp    = role === 'A' ? fB : fA;
 
+        // Read my ACTIVE strategy fresh each batch so a live switch takes effect
+        // on the next set of moves.
+        const activeStrategy = cfg.strategies?.[cfg.activeStrategyIndex ?? 0];
         const fighterData = {
-          ...fighter, prompt: cfg.prompt, promptMode: cfg.promptMode || 'advanced', hp,
+          ...fighter, prompt: activeStrategy?.text || '', promptMode: 'simple', hp,
         };
         const fightState = {
           n: context.n, batchNumber,

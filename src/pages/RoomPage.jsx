@@ -3,8 +3,8 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useMatchHost } from '../hooks/useMatchHost.js';
 import { useMatchClient } from '../hooks/useMatchClient.js';
 import { CHARACTERS } from '../data/characters.js';
-import { getCharacterTemplate, DEFAULT_PROMPT } from '../data/promptTemplates.js';
-import { charById, loadProfile, isProfileReady } from '../data/designData.js';
+import { DEFAULT_SIMPLE_STRATEGY } from '../data/promptTemplates.js';
+import { charById, loadProfile, isProfileReady, usableStrategies, makeStrategy } from '../data/designData.js';
 import Icon from '../components/design/Icons.jsx';
 import { Modal, SlotSprite } from '../components/design/DesignKit.jsx';
 import NeedSetupPrompt from '../components/design/NeedSetupPrompt.jsx';
@@ -310,14 +310,10 @@ export default function RoomPage() {
     const want = {};
     if (!myConfig.name && profile.handle) want.name = profile.handle;
     if (!myConfig.character && profile.charId) want.character = profile.charId;
-    if (!myConfig.prompt && profile.charId) {
-      const baseStrategy = profile.strategyMode === 'advanced'
-        ? profile.strategyAdvanced
-        : profile.strategySimple;
-      const template = getCharacterTemplate(profile.charId) || DEFAULT_PROMPT;
-      want.prompt = baseStrategy ? `${baseStrategy}\n\n${template}` : template;
-      want.strategy = baseStrategy || '';
-      want.promptMode = 'advanced';
+    if ((!myConfig.strategies || myConfig.strategies.length === 0) && profile.charId) {
+      const strategies = usableStrategies(profile.strategies);
+      want.strategies = strategies.length ? strategies : [makeStrategy(0, DEFAULT_SIMPLE_STRATEGY)];
+      want.activeStrategyIndex = Math.min(profile.activeStrategyIndex ?? 0, Math.max(0, want.strategies.length - 1));
     }
     if (Object.keys(want).length > 0) {
       updateMyConfig(want);
@@ -392,18 +388,22 @@ export default function RoomPage() {
   if (phase === 'fighting' && !spectating && (currentMatch || matchFighters)) {
     const rawA = isHost ? currentMatch?.fA : matchFighters?.find(f => f.role === 'A');
     const rawB = isHost ? currentMatch?.fB : matchFighters?.find(f => f.role === 'B');
-    const hostPeerId = isHost ? host.lobbyState?.fighters?.find(f => f.isHost)?.peerId : null;
 
-    const inject = (f) => {
-      if (!f) return f;
-      if (isHost && f.peerId === hostPeerId) {
-        return { ...f, prompt: host.myConfig.prompt, promptMode: host.myConfig.promptMode || 'advanced' };
-      }
-      return { ...f, prompt: '', promptMode: 'advanced' };
-    };
+    // Move computation happens locally per player (host.getMoves / client
+    // REQUEST_MOVES), so the injected prompt is unused here — just normalize the
+    // mode for the renderer.
+    const inject = (f) => (f ? { ...f, promptMode: 'simple' } : f);
 
     const fighterA = inject(rawA);
     const fighterB = inject(rawB);
+
+    // Live strategy switcher — shown only when the LOCAL player is one of the two
+    // fighters in this match (not a spectator). Switching updates myConfig, which
+    // the local move computation reads fresh for the next batch.
+    const iAmFighting = isHost
+      ? !!(rawA?.peerId === myPeerId || rawB?.peerId === myPeerId)
+      : (client.matchRole === 'A' || client.matchRole === 'B');
+    const myStrategies = iAmFighting ? (myConfig?.strategies || []) : undefined;
 
     return (
       <>
@@ -418,6 +418,9 @@ export default function RoomPage() {
           onFightEnd={handleFightEnd}
           mode={isHost ? 'host' : 'spectator'}
           fightEvents={!isHost ? client.fightEvents : undefined}
+          strategies={myStrategies}
+          activeStrategyIndex={myConfig?.activeStrategyIndex ?? 0}
+          onSelectStrategy={(i) => updateMyConfig({ activeStrategyIndex: i })}
         />
         {spectatorBar}
       </>

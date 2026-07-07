@@ -7,7 +7,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { CHARACTERS, BASE_DAMAGE, METER, throwbackDmgFor } from './characters.js';
-import { DEFAULT_ADVANCED_TEMPLATE } from './promptTemplates.js';
+
+// Players build up to this many named strategies and switch between them live
+// during a fight (see the arena strategy switcher). The currently-selected
+// strategy drives the AI's next batch of moves.
+export const MAX_STRATEGIES = 3;
 
 // Archetype presentation. `class` drives the accent colour in DesignKit
 // (atk→red, def→cyan, mage→plasma, range→green, else→gold).
@@ -73,12 +77,29 @@ function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-/** A random plain-English strategy suggestion for the Simple editor. */
+/** A random plain-English strategy suggestion for the strategy editor. */
 export function randomSimpleStrategy() { return pickRandom(SAMPLE_SIMPLE_STRATEGIES); }
 
-/** Advanced seed = the canonical full template (correct structure + variables),
- *  so opening Advanced for the first time starts from something valid & editable. */
-export function randomAdvancedStrategy() { return DEFAULT_ADVANCED_TEMPLATE; }
+// Short default names for the strategy slots (used as the fallback label on the
+// arena switch buttons when the player leaves a slot unnamed).
+const DEFAULT_STRATEGY_NAMES = ['Attack', 'Defend', 'Adapt'];
+
+/** Build a fresh strategy slot for the given index (0-based). */
+export function makeStrategy(index = 0, text = '') {
+  return { name: DEFAULT_STRATEGY_NAMES[index] || `Strategy ${index + 1}`, text };
+}
+
+/** Display label for a strategy slot, falling back to "Strategy N" when unnamed. */
+export function strategyLabel(strategy, index = 0) {
+  const name = (strategy?.name || '').trim();
+  return name || `Strategy ${index + 1}`;
+}
+
+/** Only strategies with real text count as usable (mirrors isProfileReady). */
+export function usableStrategies(strategies) {
+  return (Array.isArray(strategies) ? strategies : [])
+    .filter(s => typeof s?.text === 'string' && s.text.trim().length > 8);
+}
 
 // Simple deterministic per-character design stats (1–5 scale) derived from the
 // engine stats, plus a tagline + rank for the detail card.
@@ -167,17 +188,40 @@ function defaultProfile() {
     rank: 'C',
     wins: 0,
     charId: null,
-    strategyMode: 'simple',   // 'simple' | 'advanced'
-    strategySimple: '',
-    strategyAdvanced: '',
+    // Up to MAX_STRATEGIES named plain-English strategies. The player switches
+    // between them live during a fight; each slot is { name, text }.
+    strategies: [makeStrategy(0)],
+    activeStrategyIndex: 0,
   };
+}
+
+// Fold a legacy profile (single strategySimple/strategyAdvanced + strategyMode)
+// into the new `strategies` array so returning players don't lose their prompt.
+function migrateStrategies(profile) {
+  if (Array.isArray(profile.strategies) && profile.strategies.length > 0) {
+    profile.strategies = profile.strategies
+      .slice(0, MAX_STRATEGIES)
+      .map((s, i) => makeStrategy(i, typeof s?.text === 'string' ? s.text : ''));
+  } else {
+    const legacy = profile.strategySimple || profile.strategyAdvanced || '';
+    profile.strategies = [makeStrategy(0, typeof legacy === 'string' ? legacy : '')];
+  }
+  if (typeof profile.activeStrategyIndex !== 'number'
+      || profile.activeStrategyIndex < 0
+      || profile.activeStrategyIndex >= profile.strategies.length) {
+    profile.activeStrategyIndex = 0;
+  }
+  delete profile.strategyMode;
+  delete profile.strategySimple;
+  delete profile.strategyAdvanced;
+  return profile;
 }
 
 export function loadProfile() {
   try {
     const raw = localStorage.getItem(PROFILE_KEY);
     if (!raw) return defaultProfile();
-    const profile = { ...defaultProfile(), ...JSON.parse(raw) };
+    const profile = migrateStrategies({ ...defaultProfile(), ...JSON.parse(raw) });
     // A profile saved on another machine may reference a character id that no
     // longer exists in the roster, or one that's since been locked. Drop it so
     // the UI prompts a fresh pick instead of rendering a missing/locked fighter.
@@ -200,10 +244,8 @@ export function saveProfile(profile) {
 
 export function isProfileReady(profile) {
   if (!profile || !profile.charId) return false;
-  const strategy = profile.strategyMode === 'advanced'
-    ? profile.strategyAdvanced
-    : profile.strategySimple;
-  return typeof strategy === 'string' && strategy.trim().length > 8;
+  // Ready once at least one strategy slot has real text.
+  return usableStrategies(profile.strategies).length > 0;
 }
 
 // ── Public tournament listings (dummy placeholder data) ──────────────────────

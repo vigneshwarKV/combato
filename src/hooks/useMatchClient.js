@@ -10,9 +10,10 @@ export function useMatchClient(matchCode) {
     name: '',
     character: null,
     color: '#FF4444',
-    prompt: '',
-    strategy: '',
-    promptMode: 'advanced',
+    // Plain-English strategy playbook; activeStrategyIndex is switched live and
+    // read fresh each time the host requests my moves.
+    strategies: [],
+    activeStrategyIndex: 0,
     ready: false,
   });
   const [connected, setConnected] = useState(false);
@@ -71,11 +72,13 @@ export function useMatchClient(matchCode) {
         const cfg = myConfigRef.current;
         const role = msg.yourRole;
         const ctx = msg.context;
+        // Read my ACTIVE strategy fresh so a live switch applies to this batch.
+        const activeStrategy = cfg.strategies?.[cfg.activeStrategyIndex ?? 0];
         const fighterData = {
           name: cfg.name,
           character: cfg.character,
-          prompt: cfg.prompt,
-          promptMode: cfg.promptMode || 'advanced',
+          prompt: activeStrategy?.text || '',
+          promptMode: 'simple',
           hp: role === 'A' ? ctx.hpA : ctx.hpB,
         };
         const opponentData = {

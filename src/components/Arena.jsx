@@ -86,9 +86,58 @@ const DESIGN_W = 1100;
 // at y=330; a 300px sprite clears the top by ~30px.
 const DESIGN_H = 760;
 
+// Bottom-of-arena strategy switcher. One button per strategy (up to 3).
+//   • The EFFECTIVE strategy (driving the current moves) is green.
+//   • Tapping another marks it PENDING (orange) with a loader that fills across
+//     the current 3-move batch — while the old one STAYS green (still active).
+//   • When the loader fills, the orange takes over: it turns green and the old
+//     green switches off.
+// When nothing is pending, the single green button shows the same loader as a
+// 3-move cycle indicator.
+export function StrategySwitcher({
+  strategies, selectedIndex, effectiveIndex, onSelect, disabled, pending, progress,
+}) {
+  if (!Array.isArray(strategies) || strategies.length === 0) return null;
+  return (
+    <div className="strategy-switcher">
+      <div className="strategy-switcher-btns">
+        {strategies.map((s, i) => {
+          const name = (s?.name || '').trim() || `Strategy ${i + 1}`;
+          const isEffective = i === effectiveIndex;
+          const isPendingSel = pending && i === selectedIndex;
+          const tone = isPendingSel ? 'pending' : isEffective ? 'live' : '';
+          // Loader rides the incoming strategy: the pending (orange) one while a
+          // switch is queued, otherwise the active (green) one.
+          const showLoader = i === selectedIndex;
+          return (
+            <button
+              key={i}
+              type="button"
+              className={`strategy-btn ${tone}`}
+              onClick={() => !disabled && onSelect?.(i)}
+              disabled={disabled}
+              title={s?.text || name}
+              aria-label={isPendingSel ? `${name} — taking over` : isEffective ? `${name} — active` : name}
+            >
+              {showLoader && (
+                <span className={`strategy-btn-fill ${pending ? 'pending' : 'live'}`}
+                      style={{ width: `${Math.round(progress * 100)}%` }} />
+              )}
+              <span className="strategy-btn-num">{i + 1}</span>
+              <span className="strategy-btn-name">{name}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // mode="host"      → runs its own fight via useFight (getMoves from fightConfig for P2P)
 // mode="spectator" → renders fight events from fightEvents prop via useFightRenderer
-export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd, onForceNext, mode = 'host', fightEvents = [], randomBackground = false, onHome }) {
+// strategies / activeStrategyIndex / onSelectStrategy → live strategy switcher for
+//   the local player (both bot matches and P2P rooms). Omitted → switcher hidden.
+export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd, onForceNext, mode = 'host', fightEvents = [], randomBackground = false, onHome, strategies, activeStrategyIndex = 0, onSelectStrategy }) {
   // Keep a ref to the broadcast function so the fight loop always uses the latest
   // value without needing it in useCallback deps (avoids stale-closure issues).
   const broadcastRef = useRef(null);
@@ -157,8 +206,43 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
     meterA, meterB, statusA, statusB,
     movesA, movesB, currentTurnIndex, completedTurns,
     animClassA, animClassB, animKeyA, animKeyB,
-    shakeScreen, isPaused, timeLimitMs,
+    shakeScreen, isPaused, timeLimitMs, batchNumber,
   } = activeFightState;
+
+  // ── Live strategy tracking ────────────────────────────────────────────────
+  // `activeStrategyIndex` is what the player SELECTED (read by the engine for the
+  // NEXT batch). `effectiveIndex` is what's actually driving the CURRENT batch —
+  // it catches up to the selection at each new batch. So a freshly-tapped
+  // strategy shows as "pending" until the next 3 moves begin.
+  const activeIndexRef = useRef(activeStrategyIndex);
+  activeIndexRef.current = activeStrategyIndex;
+  const [effectiveIndex, setEffectiveIndex] = useState(activeStrategyIndex);
+  const lastBatchRef = useRef(0);
+  useEffect(() => {
+    if (batchNumber && batchNumber !== lastBatchRef.current) {
+      lastBatchRef.current = batchNumber;
+      // The batch's moves were just computed from the current selection.
+      setEffectiveIndex(activeIndexRef.current);
+    }
+  }, [batchNumber]);
+  // If the fight resets (batchNumber back to 0), realign to the selection.
+  useEffect(() => {
+    if (!batchNumber) { lastBatchRef.current = 0; setEffectiveIndex(activeStrategyIndex); }
+  }, [batchNumber, activeStrategyIndex]);
+
+  const strategyPending = activeStrategyIndex !== effectiveIndex;
+  // Progress toward the switch: how far through the current batch of moves we are.
+  const movesPerBatch = movesA.length || 3;
+  const movesPlayed = Math.max(0, currentTurnIndex + 1);
+  const switchProgress = Math.min(1, movesPlayed / movesPerBatch);   // 0 → 1
+  const movesUntilSwitch = Math.max(0, movesPerBatch - movesPlayed); // 3 → 0
+
+  // Once the loader is full (the last move of the batch has begun), flip a
+  // pending selection to green immediately — don't wait out the gap before the
+  // next batch's moves arrive.
+  useEffect(() => {
+    if (movesUntilSwitch === 0 && strategyPending) setEffectiveIndex(activeStrategyIndex);
+  }, [movesUntilSwitch, strategyPending, activeStrategyIndex]);
 
   const currentActionA = currentTurnIndex >= 0 && movesA[currentTurnIndex] ? movesA[currentTurnIndex] : null;
   const currentActionB = currentTurnIndex >= 0 && movesB[currentTurnIndex] ? movesB[currentTurnIndex] : null;
@@ -353,6 +437,20 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
           </div>
         </ArenaBackground>
       </div>
+
+      {/* Live strategy switcher (only when the player made more than one). Hidden
+          once the match ends so it can't be tapped after the fight is over. */}
+      {Array.isArray(strategies) && strategies.length > 1 && (
+        <StrategySwitcher
+          strategies={strategies}
+          selectedIndex={activeStrategyIndex}
+          effectiveIndex={effectiveIndex}
+          pending={strategyPending}
+          progress={switchProgress}
+          onSelect={onSelectStrategy}
+          disabled={status === 'ko' || status === 'decision' || status === 'draw'}
+        />
+      )}
 
       {/* Landscape toggle — fullscreen + orientation.lock both need a user
           gesture, so we trigger them from a button click. iOS Safari doesn't
