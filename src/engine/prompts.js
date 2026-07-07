@@ -190,10 +190,8 @@ export function buildFighterPrompt(fighter, opponent, fightState) {
     history: buildActionHistory(history),
   };
 
-  const isAdvanced = fighter.promptMode === 'advanced';
-  const template = isAdvanced
-    ? (fighter.prompt || '')
-    : wrapSimpleStrategy(fighter.prompt || '');
+  // Players only ever write a plain-English strategy now — always wrap it.
+  const template = wrapSimpleStrategy(fighter.prompt || '');
 
   const system = substituteVariables(template, ctx);
 
@@ -213,12 +211,9 @@ export function buildFighterPrompt(fighter, opponent, fightState) {
     ? `FACT: super_move is available this turn (meter ${meter}/${METER.MAX}); firing it spends the whole meter, so it can land at most once.`
     : `FACT: super_move is NOT available this turn (meter ${meter}/${METER.MAX}, needs ${METER.MAX}) — if picked it is wasted (you do nothing that turn).`;
 
-  // Simple-mode strategy is short — echo it as the LAST line so the player's
-  // intent outranks the generic rulebook and the FACT above. ONLY this echo is
-  // Simple-only: an Advanced author writes their own full prompt (their strategy
-  // already lives there), so re-injecting it would be redundant. The FACT above
-  // is still sent in Advanced — see its note.
-  const strategyReminder = (!isAdvanced && fighter.prompt?.trim())
+  // Echo the player's strategy as the LAST line so their intent outranks the
+  // generic rulebook and the FACT above.
+  const strategyReminder = fighter.prompt?.trim()
     ? `\nYour strategy decides your moves — follow it: ${fighter.prompt.trim()}`
     : '';
 
@@ -291,7 +286,7 @@ export async function callAI(fighter, { system, messages, maxTokens = 2048 }) {
   const tag = `[AI:${fighter.name}]`;
 
   if (MOCK_AI) return null;
-  if (!fighter.prompt && fighter.promptMode !== 'advanced') return null;
+  if (!fighter.prompt) return null;
 
   const t0 = Date.now();
   try {

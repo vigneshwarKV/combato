@@ -4,10 +4,12 @@ import Icon from '../components/design/Icons.jsx';
 import { Modal } from '../components/design/DesignKit.jsx';
 import NeedSetupPrompt from '../components/design/NeedSetupPrompt.jsx';
 import HomeArena from '../components/design/HomeArena.jsx';
+import HowToPlay from '../components/HowToPlay.jsx';
 import MobileHome from '../components/mobile/MobileHome.jsx';
 import { useIsPortrait } from '../hooks/useIsPortrait.js';
 import { PUBLIC_TOURNAMENTS, loadProfile, isProfileReady } from '../data/designData.js';
 import { generateMatchCode } from '../engine/peerEngine.js';
+import { unlockAudio } from '../engine/soundEngine.js';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -22,6 +24,12 @@ export default function HomePage() {
   const [showJoin, setShowJoin] = useState(() => initialIntent === 'join' && isProfileReady(loadProfile()));
   const [showHost, setShowHost] = useState(() => initialIntent === 'host' && isProfileReady(loadProfile()));
   const [showNeedSetup, setShowNeedSetup] = useState(false);
+  const [showHowTo, setShowHowTo] = useState(false);
+  // First-ever play attempt shows the How-to-Play tour instead of the usual
+  // flow. Persisted so it only happens once per browser.
+  const [seenHowTo, setSeenHowTo] = useState(() => {
+    try { return localStorage.getItem('pk.seenHowTo') === '1'; } catch { return false; }
+  });
   // Where to send the player after they finish setup, captured when an action
   // is gated (e.g. '/bot', or '/?intent=host' to reopen the host modal).
   const [needSetupReturn, setNeedSetupReturn] = useState('/');
@@ -71,15 +79,46 @@ export default function HomePage() {
     navigate(`/room/${code}`, { state: { isHost: false } });
   }
 
+  // Opening the tour is a user gesture — unlock audio here so the theme can
+  // start when HowToPlay mounts (and stops when it closes).
+  function openHowTo() {
+    unlockAudio();
+    setShowHowTo(true);
+  }
+
+  // A play/host/join click: first time ever, play the tour instead; afterwards
+  // fall through to the normal gate (setup prompt or the action itself).
+  function playIntent(action, returnTo) {
+    if (!seenHowTo) {
+      try { localStorage.setItem('pk.seenHowTo', '1'); } catch { /* ignore */ }
+      setSeenHowTo(true);
+      openHowTo();
+      return;
+    }
+    gate(action, returnTo);
+  }
+
+  // Rendered in both the portrait and desktop layouts. Mounts the tour only
+  // while open (it spins up a PIXI stage), and offers next-step CTAs at the end.
+  const howToEl = showHowTo && (
+    <HowToPlay
+      onClose={() => setShowHowTo(false)}
+      onSetup={() => { setShowHowTo(false); navigate('/setup'); }}
+      onPlay={() => { setShowHowTo(false); playIntent(() => navigate('/bot'), '/bot'); }}
+    />
+  );
+
   if (isPortrait) {
     return (
       <>
         <MobileHome
           profile={profile}
-          onQuick={() => gate(() => navigate('/bot'), '/bot')}
-          onHost={() => gate(() => setShowHost(true), '/?intent=host')}
-          onJoin={() => gate(() => setShowJoin(true), '/?intent=join')}
+          onQuick={() => playIntent(() => navigate('/bot'), '/bot')}
+          onHost={() => playIntent(() => setShowHost(true), '/?intent=host')}
+          onJoin={() => playIntent(() => setShowJoin(true), '/?intent=join')}
           onSettings={() => navigate('/setup')}
+          onHowTo={openHowTo}
+          showArena={!showHowTo}
         />
         <Modal open={showJoin} onClose={() => setShowJoin(false)} width={680}>
           <JoinTournamentModal
@@ -99,6 +138,7 @@ export default function HomePage() {
             onChoose={() => { setShowNeedSetup(false); navigate(`/setup?returnTo=${encodeURIComponent(needSetupReturn)}`); }}
           />
         </Modal>
+        {howToEl}
       </>
     );
   }
@@ -114,6 +154,9 @@ export default function HomePage() {
           <span>PROMPT <span className="kk">K</span>OMBAT</span>
         </div>
         <div className="topbar-spacer" />
+        <button className="btn btn-ghost btn-sm" onClick={openHowTo}>
+          <Icon name="play" size={13} />&nbsp;HOW TO PLAY
+        </button>
         <button className="icon-btn" onClick={() => navigate('/setup')} aria-label="Settings">
           <Icon name="gear" />
         </button>
@@ -132,7 +175,10 @@ export default function HomePage() {
           <p className="wordmark-sub">The AI wrestling arena. Write the strategy. Watch the bots fight.</p>
         </div>
 
-        <HomeArena />
+        {/* Only one heavy PIXI stage at a time — pause the home fight while the
+            tour is open so its WebGL context can't get dropped (which left the
+            home animation blank on return). Remounts fresh when the tour closes. */}
+        {!showHowTo && <HomeArena />}
 
         <div className="action-row">
           <Action
@@ -140,21 +186,21 @@ export default function HomePage() {
             icon={<Icon name="bot" size={26} />}
             desc="Solo skirmish vs a random AI fighter."
             cta="Quick fight"
-            onClick={() => gate(() => navigate('/bot'), '/bot')}
+            onClick={() => playIntent(() => navigate('/bot'), '/bot')}
           />
           <Action
             tone="red" title="Host Tournament"
             icon={<Icon name="trophy" size={26} />}
             desc="Open a 4 / 8 / 16 player bracket. You set the rules."
             cta="Open lobby"
-            onClick={() => gate(() => setShowHost(true), '/?intent=host')}
+            onClick={() => playIntent(() => setShowHost(true), '/?intent=host')}
           />
           <Action
             tone="ink" title="Join Tournament"
             icon={<Icon name="enter" size={26} />}
             desc="Enter a private room code or drop into a public bracket."
             cta="Find a match"
-            onClick={() => gate(() => setShowJoin(true), '/?intent=join')}
+            onClick={() => playIntent(() => setShowJoin(true), '/?intent=join')}
           />
         </div>
       </div>
@@ -179,6 +225,8 @@ export default function HomePage() {
           onChoose={() => { setShowNeedSetup(false); navigate(`/setup?returnTo=${encodeURIComponent(needSetupReturn)}`); }}
         />
       </Modal>
+
+      {howToEl}
 
     </div>
   );

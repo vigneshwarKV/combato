@@ -99,19 +99,21 @@ export async function runFight(fighterA, fighterB, fightConfig, onEvent) {
           ? Promise.resolve(null)
           : callAI(fighter, buildFighterPrompt(self, opp, state), defaults);
 
+      // Resolve the fighter's ACTIVE strategy fresh each batch. When the player
+      // switches strategy mid-fight the arena updates `getPrompt`'s source, so
+      // the very next batch (the next 3 moves) uses the newly-selected strategy.
+      const resolveFighter = (fighter, hp, charId) => ({
+        ...fighter,
+        hp,
+        character: charId,
+        prompt: typeof fighter.getPrompt === 'function' ? fighter.getPrompt() : fighter.prompt,
+      });
+      const selfA = resolveFighter(fighterA, hpA, charIdA);
+      const selfB = resolveFighter(fighterB, hpB, charIdB);
+
       [rawA, rawB] = await Promise.all([
-        aiOrRandom(
-          { ...fighterA, character: charIdA },
-          { ...fighterA, hp: hpA, character: charIdA },
-          { ...fighterB, hp: hpB, character: charIdB },
-          fightStateA()
-        ),
-        aiOrRandom(
-          { ...fighterB, character: charIdB },
-          { ...fighterB, hp: hpB, character: charIdB },
-          { ...fighterA, hp: hpA, character: charIdA },
-          fightStateB()
-        ),
+        aiOrRandom(selfA, selfA, selfB, fightStateA()),
+        aiOrRandom(selfB, selfB, selfA, fightStateB()),
       ]);
     }
 

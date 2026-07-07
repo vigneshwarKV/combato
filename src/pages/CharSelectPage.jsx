@@ -6,9 +6,9 @@ import AssetPreloadModal from '../components/AssetPreloadModal.jsx';
 import {
   CHARS, BASE_MOVES,
   loadProfile, saveProfile, charById,
-  randomSimpleStrategy, randomAdvancedStrategy,
+  randomSimpleStrategy, makeStrategy, usableStrategies, strategyLabel,
+  MAX_STRATEGIES,
 } from '../data/designData.js';
-import VariableGuide from '../components/VariableGuide.jsx';
 import { CHARACTERS } from '../data/characters.js';
 import { preloadAll, isPreloaded } from '../engine/assetPreloader.js';
 
@@ -16,47 +16,36 @@ export default function CharSelectPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const params = new URLSearchParams(location.search);
-  const queryTab = params.get('tab');
-  const initialTab = (location.state?.tab === 'strategy' || queryTab === 'strategy') ? 'strategy' : 'fighter';
   // Where to send the player after saving. Defaults home; a relative path can be
   // passed (e.g. ?returnTo=/room/A4K9P2) so setup can round-trip back to a room.
   const rawReturn = params.get('returnTo');
   const returnTo = rawReturn && rawReturn.startsWith('/') ? rawReturn : '/';
-  const [tab, setTab] = useState(initialTab);
   const [savedFlash, setSavedFlash] = useState(false);
 
-  // First visit to the strategy tab with no saved strategy yet: prefill a random
-  // suggestion so the editor is never blank. This only touches the in-memory
+  // Ensure the first strategy slot is never blank: prefill it with a random
+  // suggestion so the editor always shows an example. Only touches the in-memory
   // draft — it is persisted exclusively when the player clicks Save.
   function withStrategyPrefill(profile) {
-    return {
-      ...profile,
-      strategySimple: profile.strategySimple || randomSimpleStrategy(),
-      strategyAdvanced: profile.strategyAdvanced || randomAdvancedStrategy(),
-    };
+    const strategies = Array.isArray(profile.strategies) && profile.strategies.length > 0
+      ? profile.strategies
+      : [makeStrategy(0)];
+    const first = strategies[0];
+    if (!first.text || !first.text.trim()) {
+      return {
+        ...profile,
+        strategies: [{ ...first, text: randomSimpleStrategy() }, ...strategies.slice(1)],
+      };
+    }
+    return { ...profile, strategies };
   }
 
   const [draft, setDraft] = useState(() => {
     const p = loadProfile();
-    const base = {
+    return withStrategyPrefill({
       ...p,
       charId: p.charId || CHARS.find(c => !c.locked)?.id || null,
-    };
-    // Deep-linked straight onto the strategy tab → prefill right away.
-    return initialTab === 'strategy' ? withStrategyPrefill(base) : base;
+    });
   });
-
-  // True once the strategy editor has been prefilled, so we only do it once.
-  const prefilledRef = useRef(initialTab === 'strategy');
-
-  // Switch tabs, prefilling the strategy editor the first time it is opened.
-  function selectTab(t) {
-    if (t === 'strategy' && !prefilledRef.current) {
-      prefilledRef.current = true;
-      setDraft(withStrategyPrefill);
-    }
-    setTab(t);
-  }
 
   useEffect(() => {
     document.body.classList.add('pk-design');
@@ -117,32 +106,56 @@ export default function CharSelectPage() {
   const fighter = draft.charId ? charById(draft.charId) : null;
   const fighterReady = !!fighter && !fighter.locked;
   const nameReady = (draft.handle || '').trim().length > 0;
-  const strategyText = draft.strategyMode === 'advanced' ? draft.strategyAdvanced : draft.strategySimple;
-  const strategyReady = strategyText.trim().length > 8;
+  const draftStrategies = Array.isArray(draft.strategies) && draft.strategies.length > 0
+    ? draft.strategies
+    : [makeStrategy(0)];
+  const strategyReady = usableStrategies(draftStrategies).length > 0;
   const canSave = fighterReady && nameReady && !preload.active;
 
   function save() {
     if (!canSave || savedFlash) return;
-    const cleaned = { ...draft, handle: (draft.handle || '').trim() };
+    // Drop empty trailing slots and clamp the active index into range.
+    const kept = draftStrategies.filter(s => (s.text || '').trim().length > 0);
+    const strategies = kept.length > 0 ? kept : [draftStrategies[0]];
+    const activeStrategyIndex = Math.min(draft.activeStrategyIndex ?? 0, strategies.length - 1);
+    const cleaned = {
+      ...draft,
+      handle: (draft.handle || '').trim(),
+      strategies,
+      activeStrategyIndex,
+    };
     saveProfile(cleaned);
     setSavedFlash(true);
-    const strategyEmpty = strategyText.trim().length === 0;
-    const jumpToStrategy = tab === 'fighter' && strategyEmpty;
-    setTimeout(() => {
-      if (jumpToStrategy) {
-        setSavedFlash(false);
-        selectTab('strategy');
-      } else {
-        navigate(returnTo);
-      }
-    }, 750);
+    setTimeout(() => navigate(returnTo), 750);
   }
 
   function setHandle(h)  { setDraft(d => ({ ...d, handle: h })); }
   function setCharId(id) { setDraft(d => ({ ...d, charId: id })); }
-  function setMode(m)    { setDraft(d => ({ ...d, strategyMode: m })); }
-  function setSimple(s)  { setDraft(d => ({ ...d, strategySimple:   typeof s === 'function' ? s(d.strategySimple)   : s })); }
-  function setAdv(s)     { setDraft(d => ({ ...d, strategyAdvanced: typeof s === 'function' ? s(d.strategyAdvanced) : s })); }
+
+  function updateStrategy(index, patch) {
+    setDraft(d => {
+      const list = (Array.isArray(d.strategies) && d.strategies.length > 0 ? d.strategies : [makeStrategy(0)]).slice();
+      list[index] = { ...list[index], ...patch };
+      return { ...d, strategies: list };
+    });
+  }
+  function addStrategy() {
+    setDraft(d => {
+      const list = (Array.isArray(d.strategies) ? d.strategies : []).slice();
+      if (list.length >= MAX_STRATEGIES) return d;
+      list.push(makeStrategy(list.length));
+      return { ...d, strategies: list };
+    });
+  }
+  function removeStrategy(index) {
+    setDraft(d => {
+      const list = (Array.isArray(d.strategies) ? d.strategies : []).slice();
+      if (list.length <= 1) return d;
+      list.splice(index, 1);
+      const active = Math.min(d.activeStrategyIndex ?? 0, list.length - 1);
+      return { ...d, strategies: list, activeStrategyIndex: active };
+    });
+  }
 
   return (
     <div className="bg-arena">
@@ -170,74 +183,79 @@ export default function CharSelectPage() {
       </div>
 
       <div className="setup-body">
-        <div style={{ marginBottom: 4 }}>
-          <div className="eyebrow">FIGHTER SETUP</div>
-          <h1 className="f-display" style={{
-            fontSize: 36, letterSpacing: '0.04em', color: 'var(--gold)',
-            margin: '6px 0 4px', textTransform: 'uppercase', lineHeight: 1,
-          }}>Build Your Loadout</h1>
-          <p style={{ color: 'var(--ink-soft)', margin: 0, fontSize: 13 }}>
-            Pick a character and write the strategy your AI will fight with.
-          </p>
+        <div className="setup-head">
+          <div>
+            <div className="eyebrow">FIGHTER SETUP</div>
+            <h1 className="setup-title">Build Your Loadout</h1>
+            <p className="setup-sub">Name your fighter, pick a character, and write the strategies your AI plays with.</p>
+          </div>
         </div>
 
-        <div className="settings-tabs">
-          <TabButton n="01" label="Fighter"  active={tab === 'fighter'}  ready={fighterReady && nameReady}  onClick={() => selectTab('fighter')} />
-          <TabButton n="02" label="Strategy" active={tab === 'strategy'} ready={strategyReady} onClick={() => selectTab('strategy')} />
-        </div>
+        {/* Everything on one view: identity on the left, strategies on the right. */}
+        <div className="setup-grid">
+          <SetupCard n={1} title="Your Fighter" done={fighterReady && nameReady}>
+            <label className="field-label">DISPLAY NAME</label>
+            <input
+              className="input setup-name-input"
+              value={draft.handle || ''}
+              onChange={e => setHandle(e.target.value.slice(0, 24))}
+              placeholder="Your fighter name"
+              maxLength={24}
+            />
 
-        {tab === 'fighter' && (
-          <>
-            <div style={{ marginTop: 18, marginBottom: 26 }}>
-              <div className="eyebrow" style={{
-                marginBottom: 6, fontSize: 15, letterSpacing: '0.2em', color: 'var(--gold)',
-              }}>DISPLAY NAME</div>
-              <input
-                className="input"
-                value={draft.handle || ''}
-                onChange={e => setHandle(e.target.value.slice(0, 24))}
-                placeholder="Your fighter name"
-                maxLength={24}
-                style={{
-                  fontFamily: 'var(--f-display)', fontSize: 18,
-                  letterSpacing: '0.04em', color: 'var(--gold)',
-                  border: '1px solid var(--gold)',
-                  boxShadow: '0 0 10px rgba(255,216,74,0.15)',
-                }}
-              />
-              <p style={{
-                margin: '8px 0 0', fontSize: 11.5, color: 'var(--ink-soft)',
-                display: 'flex', alignItems: 'center', gap: 6, lineHeight: 1.4,
-              }}>
-                <Icon name="info" size={13} />
-                <span>Click the <b style={{ color: 'var(--gold)' }}>info</b> button on any fighter to know more about it.</span>
-              </p>
+            <div className="field-label" style={{ marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>CHARACTER</span>
+              <span className="field-hint">
+                <Icon name="info" size={12} />&nbsp;Tap&nbsp;<b style={{ color: 'var(--gold)' }}>i</b>&nbsp;for details
+              </span>
             </div>
-            <FighterPicker value={draft.charId} onChange={setCharId} />
-          </>
-        )}
-        {tab === 'strategy' && (
-          <StrategyEditor
-            mode={draft.strategyMode} setMode={setMode}
-            simple={draft.strategySimple} setSimple={setSimple}
-            advanced={draft.strategyAdvanced} setAdvanced={setAdv}
-          />
-        )}
+            <div style={{ marginTop: 8 }}>
+              <FighterPicker value={draft.charId} onChange={setCharId} />
+            </div>
+          </SetupCard>
+
+          <SetupCard
+            n={2}
+            title="Your Strategies"
+            done={strategyReady}
+            headerAside={
+              <span className="setup-card-badge">
+                {usableStrategies(draftStrategies).length}/{MAX_STRATEGIES}
+              </span>
+            }
+          >
+            <StrategyEditor
+              strategies={draftStrategies}
+              onUpdate={updateStrategy}
+              onAdd={addStrategy}
+              onRemove={removeStrategy}
+            />
+          </SetupCard>
+        </div>
 
         <div className="setup-foot">
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
-            {!savedFlash && (!fighterReady || !nameReady) && (
-              <span className="f-mono" style={{ fontSize: 11, color: 'var(--ink-mute)' }}>
-                {!fighterReady ? 'Pick a fighter' : 'Enter your name'}
+          <div className="setup-foot-status">
+            {!savedFlash && !canSave && (
+              <span className="f-mono" style={{ fontSize: 11.5, color: 'var(--ink-mute)' }}>
+                {!nameReady ? 'Enter your name to continue'
+                  : !fighterReady ? 'Pick a fighter to continue'
+                  : 'Finishing up…'}
               </span>
             )}
+            {!savedFlash && canSave && !strategyReady && (
+              <span className="f-mono" style={{ fontSize: 11.5, color: 'var(--ink-mute)' }}>
+                Tip: add a strategy so your AI has a game plan
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="btn btn-sm btn-ghost" onClick={() => navigate('/')}>CANCEL</button>
             <button
               className={`btn btn-sm ${savedFlash ? 'btn-saved' : ''}`}
               onClick={save}
               disabled={!canSave || savedFlash}
             >
-              <Icon name="check" size={14} />&nbsp;{savedFlash ? 'SAVED' : 'SAVE'}
+              <Icon name="check" size={14} />&nbsp;{savedFlash ? 'SAVED' : 'SAVE & CONTINUE'}
             </button>
           </div>
         </div>
@@ -247,17 +265,24 @@ export default function CharSelectPage() {
   );
 }
 
-function TabButton({ n, label, active, ready, onClick }) {
+// A titled section card with a numbered badge that turns into a check when the
+// section is complete — gives the single-view setup clear at-a-glance progress.
+function SetupCard({ n, title, done, headerAside, children }) {
   return (
-    <button className={`settings-tab ${active ? 'active' : ''}`} onClick={onClick}>
-      <span className="num">{n}</span>
-      <span>{label}</span>
-      {ready && <span className="check"><Icon name="check" size={10} /></span>}
-    </button>
+    <section className="setup-card">
+      <div className="setup-card-head">
+        <span className={`setup-card-num ${done ? 'done' : ''}`}>
+          {done ? <Icon name="check" size={14} /> : n}
+        </span>
+        <span className="setup-card-title">{title}</span>
+        {headerAside && <span style={{ marginLeft: 'auto' }}>{headerAside}</span>}
+      </div>
+      {children}
+    </section>
   );
 }
 
-// ── Fighter tab ─────────────────────────────────────────────────────
+// ── Fighter picker ─────────────────────────────────────────────────────
 function FighterPicker({ value, onChange }) {
   const [previewId, setPreviewId] = useState(null);
   const previewChar = previewId ? charById(previewId) : null;
@@ -297,77 +322,80 @@ function FighterPicker({ value, onChange }) {
   );
 }
 
-// ── Strategy tab ────────────────────────────────────────────────────
-function StrategyEditor({ mode, setMode, simple, setSimple, advanced, setAdvanced }) {
-  const text = mode === 'simple' ? simple : advanced;
-  const setText = mode === 'simple' ? setSimple : setAdvanced;
+// ── Strategy editor ─────────────────────────────────────────────────
+// Up to MAX_STRATEGIES plain-language strategies. Each gets a short name and a
+// body. During a fight the player switches between them from the arena — the
+// selected one drives the next batch of moves.
 
-  function insertVar(v) {
-    setAdvanced(prev => prev + ' ' + v);
-  }
-
-  const lineCount = text.split('\n').length;
-
+function StrategyEditor({ strategies, onUpdate, onAdd, onRemove }) {
   return (
     <div>
-      <div style={{
-        display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
-        marginBottom: 8, gap: 12, flexWrap: 'wrap',
-      }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="eyebrow">STRATEGY MODE</div>
-          <div className="f-display" style={{
-            fontSize: 22, letterSpacing: '0.04em', color: 'var(--ink)', marginTop: 2,
-          }}>Battle Prompt</div>
-        </div>
-        <div className="mode-tabs">
-          <button className={`mode-tab ${mode === 'simple' ? 'active' : ''}`} onClick={() => setMode('simple')}>Simple</button>
-          <button className={`mode-tab ${mode === 'advanced' ? 'active' : ''}`} onClick={() => setMode('advanced')}>Advanced</button>
-        </div>
+      <p style={{ margin: '0 0 6px', fontSize: 12.5, color: 'var(--ink-soft)', lineHeight: 1.55 }}>
+        Write up to {MAX_STRATEGIES} strategies and switch between them mid-fight. Your pick auto-applies every 3 moves.
+      </p>
+      <p style={{ margin: '0 0 14px', fontSize: 12, color: 'var(--ink-mute)', lineHeight: 1.5 }}>
+        Valid moves: <span style={{ color: 'var(--gold)' }}>hit, shoot, slide, jump, defend high, defend low, super move</span>
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {strategies.map((s, i) => (
+          <StrategySlot
+            key={i}
+            index={i}
+            strategy={s}
+            canRemove={strategies.length > 1}
+            onUpdate={patch => onUpdate(i, patch)}
+            onRemove={() => onRemove(i)}
+          />
+        ))}
       </div>
 
-      <div style={{ margin: '0 0 12px' }}>
-        <p style={{ margin: 0, fontSize: 12, color: 'var(--ink-mute)', lineHeight: 1.5 }}>
-          {mode === 'simple'
-            ? 'Plain English. Tell the AI how to fight — the prompt builds itself.'
-            : 'Full prompt access. Drop in {variables} to react to live state.'}
-        </p>
-        <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--ink-soft)', lineHeight: 1.5 }}>
-          Moves the AI can use: <span style={{ color: 'var(--gold)' }}>hit, shoot, slide, jump, defend high, defend low, super move</span>. Mention these in your strategy to steer it.
-        </p>
-        <p style={{ margin: '4px 0 0', fontSize: 11.5, color: 'var(--ink-soft)', lineHeight: 1.5 }}>
-          Note: <span style={{ color: 'var(--gold)' }}>super move</span> only works when the super meter (SPM) is full — otherwise the turn is wasted.
-        </p>
-      </div>
-
-      <div className="editor-wrap">
-        <div className="editor-gutter">
-          {Array.from({ length: Math.max(lineCount, 6) }).map((_, i) => <div key={i}>{i + 1}</div>)}
-        </div>
-        <textarea
-          className="editor"
-          value={text}
-          onChange={e => setText(e.target.value)}
-          placeholder={mode === 'simple' ? 'Tell your AI how to fight…' : 'Write a full prompt. Use {variables} for live state…'}
-          rows={Math.max(lineCount, 6)}
-        />
-      </div>
-
-      {mode === 'advanced' && (
-        <div style={{ marginTop: 14 }}>
-          <div className="eyebrow" style={{ marginBottom: 4 }}>RUNTIME VARIABLES</div>
-          <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--ink-mute)', lineHeight: 1.5 }}>
-            Click a token to drop it into your prompt. Hit “what’s inside” to see the exact data it becomes each turn.
-          </p>
-          <VariableGuide onInsert={insertVar} />
-        </div>
+      {strategies.length < MAX_STRATEGIES && (
+        <button
+          type="button"
+          className="setup-add-strategy"
+          onClick={onAdd}
+        >
+          <span className="setup-add-plus">+</span> ADD ANOTHER STRATEGY
+        </button>
       )}
+    </div>
+  );
+}
 
-      <div style={{
-        marginTop: 10, fontFamily: 'var(--f-mono)', fontSize: 11, color: 'var(--ink-mute)',
-      }}>
-        <span>{text.length} chars · {lineCount} lines</span>
+function StrategySlot({ index, strategy, canRemove, onUpdate, onRemove }) {
+  const text = strategy.text || '';
+  return (
+    <div className="strat-slot">
+      <div className="strat-slot-head">
+        <span className="strat-num">{index + 1}</span>
+        <input
+          className="strat-name"
+          value={strategy.name || ''}
+          onChange={e => onUpdate({ name: e.target.value.slice(0, 20) })}
+          placeholder={strategyLabel(strategy, index)}
+          maxLength={20}
+          aria-label={`Strategy ${index + 1} name`}
+        />
+        {canRemove && (
+          <button
+            type="button"
+            className="strat-remove"
+            onClick={onRemove}
+            aria-label={`Remove strategy ${index + 1}`}
+          >
+            <Icon name="close" size={13} />
+          </button>
+        )}
       </div>
+
+      <textarea
+        className="strat-textarea"
+        value={text}
+        onChange={e => onUpdate({ text: e.target.value })}
+        placeholder="e.g. Defend until my meter is full, then land a super move."
+        rows={3}
+      />
     </div>
   );
 }

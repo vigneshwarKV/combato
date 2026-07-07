@@ -1,12 +1,13 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CHARACTER_LIST } from '../data/characters.js';
-import { getCharacterTemplate, DEFAULT_SIMPLE_STRATEGY } from '../data/promptTemplates.js';
-import PromptEditorSimple from '../components/PromptEditorSimple.jsx';
-import PromptEditorAdvanced from '../components/PromptEditorAdvanced.jsx';
+import { DEFAULT_SIMPLE_STRATEGY } from '../data/promptTemplates.js';
 import CharacterPreview from '../components/CharacterPreview.jsx';
 import Arena from '../components/Arena.jsx';
-import { loadProfile, isProfileReady, UNLOCKED_IDS } from '../data/designData.js';
+import {
+  loadProfile, isProfileReady, UNLOCKED_IDS,
+  usableStrategies, makeStrategy, strategyLabel, MAX_STRATEGIES,
+} from '../data/designData.js';
 import { unlockAudio } from '../engine/soundEngine.js';
 
 const ARCHETYPE_GLYPH = { tank: 'T', striker: 'S', mage: 'M', acrobat: 'A', ranger: 'R' };
@@ -40,18 +41,18 @@ function buildBotFighter() {
   };
 }
 
-function buildFighterFromProfile(profile) {
+// A ready-to-fight player descriptor built from the saved profile (or the inline
+// SetupScreen). Holds the strategy playbook; the live active strategy is tracked
+// in BotMatchPage state.
+function playerFromProfile(profile) {
   if (!isProfileReady(profile)) return null;
-  const promptMode = profile.strategyMode === 'advanced' ? 'advanced' : 'simple';
-  const prompt = promptMode === 'advanced'
-    ? profile.strategyAdvanced
-    : profile.strategySimple;
+  const strategies = usableStrategies(profile.strategies);
   return {
     id: `player-${Date.now()}`,
     name: profile.handle || 'YOU',
     character: profile.charId,
-    promptMode,
-    prompt,
+    strategies: strategies.length ? strategies : [makeStrategy(0, DEFAULT_SIMPLE_STRATEGY)],
+    activeStrategyIndex: Math.min(profile.activeStrategyIndex ?? 0, Math.max(0, strategies.length - 1)),
   };
 }
 
@@ -128,22 +129,76 @@ function CharGrid({ selected, onSelect }) {
   );
 }
 
+// ── Strategy list (inline setup) ───────────────────────────────────────────────
+
+function StrategyListEditor({ strategies, onUpdate, onAdd, onRemove }) {
+  return (
+    <div className="flex flex-col gap-3">
+      {strategies.map((s, i) => (
+        <div key={i} style={{
+          border: '1px solid var(--arena-panel-border)', borderRadius: 6, padding: '0.75rem',
+        }}>
+          <div className="flex items-center gap-2" style={{ marginBottom: 8 }}>
+            <span className="section-label" style={{ color: 'var(--neon-gold)' }}>#{i + 1}</span>
+            <input
+              className="arena-input"
+              value={s.name || ''}
+              onChange={e => onUpdate(i, { name: e.target.value.slice(0, 20) })}
+              placeholder={strategyLabel(s, i)}
+              maxLength={20}
+              style={{ flex: 1 }}
+            />
+            {strategies.length > 1 && (
+              <button
+                type="button"
+                className="provider-tab"
+                onClick={() => onRemove(i)}
+                aria-label={`Remove strategy ${i + 1}`}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <textarea
+            className="arena-input arena-textarea"
+            style={{ minHeight: 90 }}
+            value={s.text || ''}
+            onChange={e => onUpdate(i, { text: e.target.value })}
+            placeholder={`Describe how your fighter should play...\n\nExample:\n${DEFAULT_SIMPLE_STRATEGY}`}
+          />
+        </div>
+      ))}
+      {strategies.length < MAX_STRATEGIES && (
+        <button type="button" className="provider-tab" onClick={onAdd} style={{ alignSelf: 'flex-start' }}>
+          + Add strategy ({strategies.length}/{MAX_STRATEGIES})
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ── Setup Screen ─────────────────────────────────────────────────────────────
 
 function SetupScreen({ onFight }) {
   const [name, setName] = useState('');
   const [character, setCharacter] = useState('');
-  const [mode, setMode] = useState('simple'); // 'simple' | 'advanced'
-  const [strategy, setStrategy] = useState('');
-  const [prompt, setPrompt] = useState('');
+  const [strategies, setStrategies] = useState([makeStrategy(0)]);
   const [nameError, setNameError] = useState('');
   const [charError, setCharError] = useState('');
 
   function handleCharacterSelect(charId) {
     setCharacter(charId);
     setCharError('');
-    // Seed the advanced editor with the default template once a character exists.
-    if (!prompt) setPrompt(getCharacterTemplate(charId));
+  }
+
+  function updateStrategy(i, patch) {
+    setStrategies(list => list.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+  }
+  function addStrategy() {
+    setStrategies(list => (list.length >= MAX_STRATEGIES ? list : [...list, makeStrategy(list.length)]));
+  }
+  function removeStrategy(i) {
+    setStrategies(list => (list.length <= 1 ? list : list.filter((_, idx) => idx !== i)));
   }
 
   function handleFight() {
@@ -156,14 +211,15 @@ function SetupScreen({ onFight }) {
     // right after has a live AudioContext (and the theme starts).
     unlockAudio();
 
+    const kept = usableStrategies(strategies);
+    const finalStrategies = kept.length ? kept : [makeStrategy(0, DEFAULT_SIMPLE_STRATEGY)];
+
     onFight({
       id: `player-${Date.now()}`,
       name: name.trim(),
       character,
-      promptMode: mode,
-      prompt: mode === 'advanced'
-        ? (prompt || getCharacterTemplate(character))
-        : (strategy.trim() || DEFAULT_SIMPLE_STRATEGY),
+      strategies: finalStrategies,
+      activeStrategyIndex: 0,
     });
   }
 
@@ -176,7 +232,7 @@ function SetupScreen({ onFight }) {
         {/* Header */}
         <div className="text-center">
           <div className="logo-text" style={{ fontSize: '2.2rem' }}>Fight the Machine</div>
-          <div className="logo-sub mt-1">Choose your fighter · Write your strategy · Battle the bot</div>
+          <div className="logo-sub mt-1">Choose your fighter · Write your strategies · Battle the bot</div>
         </div>
 
         <div className="w-full h-px" style={{ background: 'linear-gradient(90deg, transparent, #c8a20066, #c8a200, #c8a20066, transparent)' }} />
@@ -204,25 +260,18 @@ function SetupScreen({ onFight }) {
           </div>
         </section>
 
-        {/* Strategy */}
+        {/* Strategies */}
         <section className="arena-panel" style={{ padding: '1rem', borderRadius: 6 }}>
           <div className="flex items-center justify-between" style={{ marginBottom: '0.75rem' }}>
-            <label className="section-label">Strategy</label>
-            <div className="flex gap-1">
-              {[['simple', 'Simple'], ['advanced', 'Advanced']].map(([key, label]) => (
-                <button key={key} type="button" onClick={() => setMode(key)}
-                  className={`provider-tab ${mode === key ? 'active' : ''}`}>
-                  {label}
-                </button>
-              ))}
-            </div>
+            <label className="section-label">Strategies</label>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Switch between them mid-fight</span>
           </div>
-
-          {mode === 'simple' ? (
-            <PromptEditorSimple strategy={strategy} onChange={setStrategy} />
-          ) : (
-            <PromptEditorAdvanced prompt={prompt} onChange={setPrompt} />
-          )}
+          <StrategyListEditor
+            strategies={strategies}
+            onUpdate={updateStrategy}
+            onAdd={addStrategy}
+            onRemove={removeStrategy}
+          />
         </section>
 
         {/* Fight button */}
@@ -243,8 +292,44 @@ function SetupScreen({ onFight }) {
 
 export default function BotMatchPage() {
   const navigate = useNavigate();
-  const [playerFighter, setPlayerFighter] = useState(() => buildFighterFromProfile(loadProfile()));
+  const [player, setPlayer] = useState(() => playerFromProfile(loadProfile()));
   const [botFighter] = useState(buildBotFighter);
+
+  // Live-selected strategy index + a ref the fight engine reads each batch.
+  const [activeIdx, setActiveIdx] = useState(() => player?.activeStrategyIndex ?? 0);
+  const promptRef = useRef(player?.strategies?.[player?.activeStrategyIndex ?? 0]?.text || '');
+
+  // Keep the engine-facing prompt ref pointed at the active strategy.
+  useEffect(() => {
+    if (player) promptRef.current = player.strategies[activeIdx]?.text || '';
+  }, [player, activeIdx]);
+
+  const selectStrategy = useCallback((i) => {
+    setActiveIdx(i);
+    setPlayer(p => {
+      if (p) promptRef.current = p.strategies[i]?.text || '';
+      return p;
+    });
+  }, []);
+
+  // Reads the live active-strategy text. Defined as a stable callback (a ref may
+  // be read from a callback, not during render) so the fight engine can call it
+  // at the start of each batch — a mid-fight switch takes effect on the next 3
+  // moves. See fightEngine.resolveFighter.
+  const getPrompt = useCallback(() => promptRef.current, []);
+
+  // Engine fighter object — stable across strategy switches.
+  const playerFighter = useMemo(() => {
+    if (!player) return null;
+    return {
+      id: player.id,
+      name: player.name,
+      character: player.character,
+      promptMode: 'simple',
+      prompt: player.strategies[player.activeStrategyIndex ?? 0]?.text || '',
+      getPrompt,
+    };
+  }, [player, getPrompt]);
 
   // After the match ends, let the winner's celebration play for a beat, then
   // return to the home screen automatically. Cleared on unmount (and if the
@@ -257,7 +342,7 @@ export default function BotMatchPage() {
   }, [navigate]);
 
   if (!playerFighter) {
-    return <SetupScreen onFight={setPlayerFighter} />;
+    return <SetupScreen onFight={setPlayer} />;
   }
 
   return (
@@ -269,6 +354,9 @@ export default function BotMatchPage() {
       mode="host"
       randomBackground
       onHome={() => navigate('/')}
+      strategies={player.strategies}
+      activeStrategyIndex={activeIdx}
+      onSelectStrategy={selectStrategy}
     />
   );
 }

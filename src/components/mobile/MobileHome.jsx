@@ -7,7 +7,7 @@ import HomeArena from '../design/HomeArena.jsx';
 // so it inherits the same compact 3-up colored styling the landscape mobile
 // view already uses (design.css @media max-width: 760px).
 
-function MHTopbar({ onSettings }) {
+function MHTopbar({ onSettings, onHowTo }) {
   return (
     <div className="mh-topbar">
       <div className="mh-brand">
@@ -19,6 +19,11 @@ function MHTopbar({ onSettings }) {
         <span className="crumb-active">Home</span>
       </div>
       <div style={{ flex: 1 }} />
+      {onHowTo && (
+        <button className="mh-howto" onClick={onHowTo}>
+          <Icon name="play" size={11} />&nbsp;How to Play
+        </button>
+      )}
       <button className="mh-iconbtn" aria-label="Settings" onClick={onSettings}>
         <Icon name="gear" size={14} />
       </button>
@@ -48,12 +53,12 @@ function MHAction({ tone, title, icon, desc, cta, onClick }) {
   );
 }
 
-export default function MobileHome({ onQuick, onHost, onJoin, onSettings }) {
+export default function MobileHome({ onQuick, onHost, onJoin, onSettings, onHowTo, showArena = true }) {
   // Fighter loadout lives in /setup (the gear icon in the topbar) so the home
   // page stays focused on Play / Host / Join.
   return (
     <div className="mh-page mh-var-b">
-      <MHTopbar onSettings={onSettings} />
+      <MHTopbar onSettings={onSettings} onHowTo={onHowTo} />
       <div className="mh-body">
         <div className="mh-hero-b">
           <h1 className="mh-wordmark-b">
@@ -64,7 +69,7 @@ export default function MobileHome({ onQuick, onHost, onJoin, onSettings }) {
           </p>
         </div>
 
-        <HomeArena />
+        {showArena && <HomeArena />}
 
         <div className="action-row">
           <MHAction

@@ -35,6 +35,10 @@ export default function ArenaStage({
   width = 1100,
   height = 600,
   onReady,
+  // Optional: hide a fighter entirely (used by the How-to-Play tour to demo one
+  // fighter's moves with the opponent off-screen).
+  hideA = false,
+  hideB = false,
 }) {
   const containerRef = useRef(null);
   const appRef = useRef(null);
@@ -232,6 +236,20 @@ export default function ArenaStage({
     const fb = fighterBRef.current;
     if (fb?.sprite) fb.sprite._plannedAction = plannedActionB;
   }, [plannedActionB]);
+
+  // Show/hide a whole fighter (+ its defend shield). Runs after the sprites
+  // exist; re-applied whenever the flag flips. Also re-asserted after the anim
+  // effects below so a fresh idle/move on the hidden side can't reveal it.
+  useEffect(() => {
+    const fa = fighterARef.current;
+    if (fa?.sprite) fa.sprite.visible = !hideA;
+    if (hideA && fa?.shield) fa.shield.visible = false;
+  }, [hideA, animClassA, animKeyA]);
+  useEffect(() => {
+    const fb = fighterBRef.current;
+    if (fb?.sprite) fb.sprite.visible = !hideB;
+    if (hideB && fb?.shield) fb.shield.visible = false;
+  }, [hideB, animClassB, animKeyB]);
 
   // Drive Fighter A animation. Trust useFight as the single source of truth —
   // it dispatches anim-death on KO and anim-celebrate on victory; do NOT
