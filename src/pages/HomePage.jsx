@@ -81,17 +81,23 @@ export default function HomePage() {
 
   // Opening the tour is a user gesture — unlock audio here so the theme can
   // start when HowToPlay mounts (and stops when it closes).
+  function markHowToSeen() {
+    try { localStorage.setItem('pk.seenHowTo', '1'); } catch { /* ignore */ }
+    setSeenHowTo(true);
+  }
+
+  // Any viewing counts as "seen" — whether opened from the How to Play button or
+  // auto-shown on a first play attempt — so it's never auto-shown again.
   function openHowTo() {
     unlockAudio();
+    markHowToSeen();
     setShowHowTo(true);
   }
 
-  // A play/host/join click: first time ever, play the tour instead; afterwards
-  // fall through to the normal gate (setup prompt or the action itself).
+  // A play/host/join click: auto-show the tour only if it's NEVER been seen;
+  // otherwise go straight to the normal gate (setup prompt or the action).
   function playIntent(action, returnTo) {
     if (!seenHowTo) {
-      try { localStorage.setItem('pk.seenHowTo', '1'); } catch { /* ignore */ }
-      setSeenHowTo(true);
       openHowTo();
       return;
     }

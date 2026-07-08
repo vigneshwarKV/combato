@@ -333,8 +333,11 @@ function StrategyEditor({ strategies, onUpdate, onAdd, onRemove }) {
       <p style={{ margin: '0 0 6px', fontSize: 12.5, color: 'var(--ink-soft)', lineHeight: 1.55 }}>
         Write up to {MAX_STRATEGIES} strategies and switch between them mid-fight. Your pick auto-applies every 3 moves.
       </p>
-      <p style={{ margin: '0 0 14px', fontSize: 12, color: 'var(--ink-mute)', lineHeight: 1.5 }}>
+      <p style={{ margin: '0 0 4px', fontSize: 12, color: 'var(--ink-mute)', lineHeight: 1.5 }}>
         Valid moves: <span style={{ color: 'var(--gold)' }}>hit, shoot, slide, jump, defend high, defend low, super move</span>
+      </p>
+      <p style={{ margin: '0 0 14px', fontSize: 12, color: 'var(--ink-mute)', lineHeight: 1.5 }}>
+        Can react to both fighters’ <span style={{ color: 'var(--gold)' }}>HP, super meter, recent moves, and each move’s damage</span>
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
