@@ -252,10 +252,10 @@ export function Bar({ label, value, red, gold }) {
 export function LandscapeLock() {
   return (
     <div className="landscape-lock">
-      <Icon name="rotate" size={96} />
-      <div className="ll-title">Rotate your device</div>
+      <Icon name="rotate" size={64} />
+      <div className="ll-title">Rotate your phone</div>
       <p className="ll-sub">
-        Prompt Kombat is built for landscape. Turn your phone sideways to enter the ring.
+        Turn your phone sideways to play full screen.
       </p>
     </div>
   );

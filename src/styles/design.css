@@ -1152,8 +1152,29 @@ body.pk-design {
    character select, and the /room lobby/bracket-preview/champion phases
    render portrait-first on phones (see styles/mobile.css). */
 body.needs-landscape .landscape-lock { display: none; }
+
+/* Portrait phone during a fight: instead of hiding the running fight behind a
+   full-screen overlay, show it as a landscape strip pinned to the top and put
+   the "rotate your phone" prompt in the space below it. */
 @media (max-width: 760px) and (orientation: portrait) {
-  body.needs-landscape .landscape-lock { display: flex; }
+  body.needs-landscape .arena-shell {
+    height: 68vw;          /* ≈ the arena's landscape aspect at 100vw wide */
+    min-height: 0;
+  }
+  body.needs-landscape .landscape-lock {
+    display: flex;
+    top: 68vw;             /* sit BELOW the game strip, not over it */
+    left: 0; right: 0; bottom: 0;
+    background: linear-gradient(180deg, #0a0612 0%, #050309 100%);
+    padding: 24px 20px;
+    z-index: 40;
+  }
+  body.needs-landscape .landscape-lock svg { width: 52px; height: 52px; margin-bottom: 12px; }
+  body.needs-landscape .landscape-lock .ll-title { font-size: 22px; }
+  body.needs-landscape .landscape-lock .ll-sub { font-size: 13px; margin-top: 6px; }
+  /* The strategy switcher + landscape button belong to the full-screen mode. */
+  body.needs-landscape .landscape-btn,
+  body.needs-landscape .strategy-switcher { display: none; }
 }
 
 /* ─── Tags ──────────────────────────────────────────────────── */

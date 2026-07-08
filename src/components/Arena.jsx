@@ -330,7 +330,7 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
   const bgSeed = `${fighterA?.id || fighterA?.name}-${fighterB?.id || fighterB?.name}`;
 
   return (
-    <div className={`h-screen flex flex-col overflow-x-hidden ${shakeScreen ? 'screen-shake' : ''}`}
+    <div className={`arena-shell h-screen flex flex-col overflow-x-hidden ${shakeScreen ? 'screen-shake' : ''}`}
          style={{ backgroundColor: 'var(--arena-bg)' }}>
 
       <LandscapeLock />
