@@ -2580,6 +2580,11 @@ body.needs-landscape .landscape-lock { display: none; }
 .htp-hud { position: absolute; top: 16px; z-index: 20; }
 .htp-hud-a { left: 18px; }
 .htp-hud-b { right: 18px; }
+/* StatusBars sizes its width with vw, which shifts the bars in portrait and
+   throws off the pinned HP / super callouts. Inside the tour the scene is a
+   fixed design space, so lock the HUD to a constant width for consistent
+   alignment in every orientation. */
+.htp-hud > div { width: 380px !important; max-width: none !important; }
 .htp-vs {
   position: absolute;
   top: 26px; left: 50%; transform: translateX(-50%);
@@ -2656,6 +2661,116 @@ body.needs-landscape .landscape-lock { display: none; }
 .htp-note-caret.up { border-bottom: 9px solid var(--gold); }
 .htp-note-caret.down { border-top: 9px solid var(--gold); }
 
+/* Practice prompt — a banner near the top telling the player what to tap. */
+.htp-prompt {
+  position: absolute;
+  top: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  max-width: 88%;
+  text-align: center;
+  background: rgba(10, 6, 20, 0.92);
+  border: 1.5px solid var(--cyan);
+  border-radius: 10px;
+  padding: 8px 16px;
+  color: var(--ink);
+  font-family: var(--f-display);
+  font-size: clamp(15px, 3.4vw, 24px);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  line-height: 1.15;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5), 0 0 14px rgba(74, 215, 255, 0.25);
+}
+
+/* End-of-tour / win call-to-action panel. */
+.htp-cta {
+  position: absolute;
+  inset: 0;
+  z-index: 35;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 24px;
+  background: rgba(5, 3, 9, 0.72);
+  backdrop-filter: blur(3px);
+  animation: htpFade 0.25s ease-out;
+}
+.htp-cta-title {
+  font-family: var(--f-display);
+  font-size: clamp(24px, 5vw, 40px);
+  letter-spacing: 0.04em;
+  color: var(--gold);
+  text-transform: uppercase;
+}
+.htp-cta-sub {
+  font-size: clamp(12px, 2.6vw, 15px);
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+}
+.htp-cta-btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.htp-cta-btn {
+  padding: 11px 22px;
+  border-radius: 8px;
+  border: 1px solid var(--line-2);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: clamp(12px, 2.6vw, 14px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s, filter 0.15s;
+}
+.htp-cta-btn:hover { border-color: var(--gold); color: var(--gold); }
+.htp-cta-btn.primary {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #17110a;
+  font-weight: 700;
+}
+.htp-cta-btn.primary:hover { color: #17110a; filter: brightness(1.06); }
+
+/* Moves card — the setup page's per-move DMG/SPM table shown as a floating
+   panel (not a full-screen overlay); the arena stays visible behind it. */
+.htp-movescard {
+  position: absolute;
+  top: 50%;
+  right: 3%;
+  transform: translateY(-50%);
+  z-index: 34;
+  width: min(430px, 46%);
+  max-height: 94%;
+  overflow: hidden;               /* fit, don't scroll — compacted below */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: rgba(10, 6, 20, 0.96);
+  border: 1px solid var(--gold-dim);
+  border-radius: 12px;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.6);
+  animation: htpFade 0.25s ease-out;
+}
+.htp-movescard-title {
+  font-family: var(--f-display);
+  font-size: clamp(13px, 2.6vw, 18px);
+  letter-spacing: 0.03em;
+  color: var(--gold);
+  text-transform: uppercase;
+  text-align: center;
+}
+.htp-movescard-body { width: 100%; }
+/* Compact the reused MovesPanel so all rows fit without scrolling. */
+.htp-movescard .eyebrow { margin-bottom: 4px !important; }
+.htp-movescard .move-head { padding-bottom: 1px; }
+.htp-movescard .move { padding: 3px 8px !important; }
+.htp-movescard .move-name { font-size: 12px; }
+.htp-movescard .move-legend { display: none !important; }
+
 /* Mobile "How to Play" chip in the portrait home topbar. */
 .mh-howto {
   display: inline-flex;
@@ -2672,3 +2787,68 @@ body.needs-landscape .landscape-lock { display: none; }
   text-transform: uppercase;
   cursor: pointer;
 }
+
+/* ─── Guided coach-mark (setup onboarding) ──────────────────────── */
+.guide-coach { position: fixed; inset: 0; z-index: 4000; pointer-events: none; }
+.guide-dim {
+  position: fixed;
+  background: rgba(5, 3, 9, 0.74);
+  pointer-events: auto;          /* blocks everything outside the hole */
+}
+.guide-ring {
+  position: fixed;
+  border: 2px solid var(--gold);
+  border-radius: 10px;
+  box-shadow: 0 0 0 2px rgba(255, 216, 74, 0.25), 0 0 18px rgba(255, 216, 74, 0.4);
+  pointer-events: none;
+  animation: guideRingPulse 1.4s ease-in-out infinite;
+}
+@keyframes guideRingPulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255,216,74,0.2), 0 0 14px rgba(255,216,74,0.35); }
+  50%      { box-shadow: 0 0 0 4px rgba(255,216,74,0.3), 0 0 24px rgba(255,216,74,0.55); }
+}
+.guide-tip {
+  position: fixed;
+  z-index: 4002;
+  pointer-events: auto;
+  box-sizing: border-box;
+  background: rgba(13, 9, 23, 0.98);
+  border: 1px solid var(--gold-dim);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
+}
+.guide-tip-step {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  margin-bottom: 4px;
+}
+.guide-tip-title {
+  font-family: var(--f-display);
+  font-size: 20px;
+  letter-spacing: 0.03em;
+  color: var(--gold);
+  text-transform: uppercase;
+  line-height: 1.05;
+}
+.guide-tip-body {
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  margin: 6px 0 12px;
+}
+.guide-tip-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.guide-tip-skip {
+  background: none;
+  border: none;
+  color: var(--ink-mute);
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.guide-tip-skip:hover { color: var(--ink); }

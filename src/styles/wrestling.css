@@ -1360,6 +1360,49 @@ body {
   justify-content: center;
 }
 
+.strategy-btn-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Practice "press here" cue — a bouncing down-arrow + label above the button. */
+.strategy-cue {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+  animation: strategyCueBounce 0.8s ease-in-out infinite;
+}
+.strategy-cue-text {
+  background: #fff;
+  color: #17110a;
+  font-family: var(--font-arena);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+.strategy-cue-arrow {
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+@keyframes strategyCueBounce {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50%      { transform: translateX(-50%) translateY(-5px); }
+}
+
 .strategy-btn {
   position: relative;
   overflow: hidden;
@@ -1433,6 +1476,16 @@ body {
 }
 
 .strategy-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* Practice-mode hint — pulse the button the player should tap next. */
+.strategy-btn.hint {
+  border-color: #ffffff;
+  animation: strategyHintPulse 0.9s ease-in-out infinite;
+}
+@keyframes strategyHintPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.0), 0 0 8px rgba(255, 255, 255, 0.3); }
+  50%      { box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.18), 0 0 16px rgba(255, 255, 255, 0.55); }
+}
 
 .strategy-btn-num {
   position: relative;

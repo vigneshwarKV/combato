@@ -95,7 +95,7 @@ const DESIGN_H = 760;
 // When nothing is pending, the single green button shows the same loader as a
 // 3-move cycle indicator.
 export function StrategySwitcher({
-  strategies, selectedIndex, effectiveIndex, onSelect, disabled, pending, progress,
+  strategies, selectedIndex, effectiveIndex, onSelect, disabled, pending, progress, hintIndex,
 }) {
   if (!Array.isArray(strategies) || strategies.length === 0) return null;
   return (
@@ -109,23 +109,31 @@ export function StrategySwitcher({
           // Loader rides the incoming strategy: the pending (orange) one while a
           // switch is queued, otherwise the active (green) one.
           const showLoader = i === selectedIndex;
+          const isHint = i === hintIndex;   // practice mode: pulse + "press here" cue
           return (
-            <button
-              key={i}
-              type="button"
-              className={`strategy-btn ${tone}`}
-              onClick={() => !disabled && onSelect?.(i)}
-              disabled={disabled}
-              title={s?.text || name}
-              aria-label={isPendingSel ? `${name} — taking over` : isEffective ? `${name} — active` : name}
-            >
-              {showLoader && (
-                <span className={`strategy-btn-fill ${pending ? 'pending' : 'live'}`}
-                      style={{ width: `${Math.round(progress * 100)}%` }} />
+            <div key={i} className="strategy-btn-wrap">
+              {isHint && (
+                <span className="strategy-cue">
+                  <span className="strategy-cue-text">Press here</span>
+                  <span className="strategy-cue-arrow">▼</span>
+                </span>
               )}
-              <span className="strategy-btn-num">{i + 1}</span>
-              <span className="strategy-btn-name">{name}</span>
-            </button>
+              <button
+                type="button"
+                className={`strategy-btn ${tone} ${isHint ? 'hint' : ''}`}
+                onClick={() => !disabled && onSelect?.(i)}
+                disabled={disabled}
+                title={s?.text || name}
+                aria-label={isPendingSel ? `${name} — taking over` : isEffective ? `${name} — active` : name}
+              >
+                {showLoader && (
+                  <span className={`strategy-btn-fill ${pending ? 'pending' : 'live'}`}
+                        style={{ width: `${Math.round(progress * 100)}%` }} />
+                )}
+                <span className="strategy-btn-num">{i + 1}</span>
+                <span className="strategy-btn-name">{name}</span>
+              </button>
+            </div>
           );
         })}
       </div>
