@@ -20,6 +20,9 @@ export default function CharSelectPage() {
   // passed (e.g. ?returnTo=/room/A4K9P2) so setup can round-trip back to a room.
   const rawReturn = params.get('returnTo');
   const returnTo = rawReturn && rawReturn.startsWith('/') ? rawReturn : '/';
+  // Arriving from the How-to-Play tour: pre-fill 3 example strategies and scroll
+  // straight to the strategy section.
+  const guide = params.get('guide') === '1';
   const [savedFlash, setSavedFlash] = useState(false);
 
   // Ensure the first strategy slot is never blank: prefill it with a random
@@ -41,11 +44,28 @@ export default function CharSelectPage() {
 
   const [draft, setDraft] = useState(() => {
     const p = loadProfile();
-    return withStrategyPrefill({
-      ...p,
-      charId: p.charId || CHARS.find(c => !c.locked)?.id || null,
-    });
+    const base = { ...p, charId: p.charId || CHARS.find(c => !c.locked)?.id || null };
+    // From the tour: seed three named example strategies, unless the player has
+    // already written some of their own.
+    if (guide && usableStrategies(base.strategies).length === 0) {
+      return {
+        ...base,
+        strategies: [
+          { name: 'Strategy 1', text: 'Rush in with hits and shoots to pressure them.' },
+          { name: 'Strategy 2', text: 'Block high and low, then punish their whiffs.' },
+          { name: 'Strategy 3', text: 'Read their pattern and counter, defend when low.' },
+        ],
+        activeStrategyIndex: 0,
+      };
+    }
+    return withStrategyPrefill(base);
   });
+
+  // Guided coach-mark tour on the guided path: name → fighter → strategies.
+  const nameRef = useRef(null);
+  const fighterRef = useRef(null);
+  const strategyRef = useRef(null);
+  const [guideStep, setGuideStep] = useState(guide ? 0 : null);
 
   useEffect(() => {
     document.body.classList.add('pk-design');
@@ -194,43 +214,49 @@ export default function CharSelectPage() {
         {/* Everything on one view: identity on the left, strategies on the right. */}
         <div className="setup-grid">
           <SetupCard n={1} title="Your Fighter" done={fighterReady && nameReady}>
-            <label className="field-label">DISPLAY NAME</label>
-            <input
-              className="input setup-name-input"
-              value={draft.handle || ''}
-              onChange={e => setHandle(e.target.value.slice(0, 24))}
-              placeholder="Your fighter name"
-              maxLength={24}
-            />
-
-            <div className="field-label" style={{ marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>CHARACTER</span>
-              <span className="field-hint">
-                <Icon name="info" size={12} />&nbsp;Tap&nbsp;<b style={{ color: 'var(--gold)' }}>i</b>&nbsp;for details
-              </span>
+            <div ref={nameRef}>
+              <label className="field-label">DISPLAY NAME</label>
+              <input
+                className="input setup-name-input"
+                value={draft.handle || ''}
+                onChange={e => setHandle(e.target.value.slice(0, 24))}
+                placeholder="Your fighter name"
+                maxLength={24}
+              />
             </div>
-            <div style={{ marginTop: 8 }}>
-              <FighterPicker value={draft.charId} onChange={setCharId} />
+
+            <div ref={fighterRef}>
+              <div className="field-label" style={{ marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>CHARACTER</span>
+                <span className="field-hint">
+                  <Icon name="info" size={12} />&nbsp;Tap&nbsp;<b style={{ color: 'var(--gold)' }}>i</b>&nbsp;for details
+                </span>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <FighterPicker value={draft.charId} onChange={setCharId} />
+              </div>
             </div>
           </SetupCard>
 
-          <SetupCard
-            n={2}
-            title="Your Strategies"
-            done={strategyReady}
-            headerAside={
-              <span className="setup-card-badge">
-                {usableStrategies(draftStrategies).length}/{MAX_STRATEGIES}
-              </span>
-            }
-          >
-            <StrategyEditor
-              strategies={draftStrategies}
-              onUpdate={updateStrategy}
-              onAdd={addStrategy}
-              onRemove={removeStrategy}
-            />
-          </SetupCard>
+          <div ref={strategyRef}>
+            <SetupCard
+              n={2}
+              title="Your Strategies"
+              done={strategyReady}
+              headerAside={
+                <span className="setup-card-badge">
+                  {usableStrategies(draftStrategies).length}/{MAX_STRATEGIES}
+                </span>
+              }
+            >
+              <StrategyEditor
+                strategies={draftStrategies}
+                onUpdate={updateStrategy}
+                onAdd={addStrategy}
+                onRemove={removeStrategy}
+              />
+            </SetupCard>
+          </div>
         </div>
 
         <div className="setup-foot">
@@ -261,6 +287,111 @@ export default function CharSelectPage() {
         </div>
       </div>
 
+      {guideStep !== null && (() => {
+        const guideSteps = [
+          { ref: nameRef, title: 'Name your fighter', body: 'Type a display name to fight under.', can: nameReady, next: 'Next' },
+          { ref: fighterRef, title: 'Pick your fighter', body: 'Choose the character you’ll play as.', can: fighterReady, next: 'Next' },
+          { ref: strategyRef, title: 'Set your strategies', body: 'Tweak your game plans, then you’re ready.', can: canSave, next: 'Done' },
+        ];
+        const g = guideSteps[guideStep];
+        return (
+          <GuideCoach
+            targetRef={g.ref}
+            step={guideStep}
+            total={guideSteps.length}
+            title={g.title}
+            body={g.body}
+            nextLabel={g.next}
+            canAdvance={g.can}
+            onSkip={() => setGuideStep(null)}
+            onNext={() => {
+              if (guideStep < guideSteps.length - 1) setGuideStep(guideStep + 1);
+              else { setGuideStep(null); save(); }
+            }}
+          />
+        );
+      })()}
+
+    </div>
+  );
+}
+
+// How far below the viewport top the target is scrolled, leaving room for the
+// tooltip above it.
+const GUIDE_TOP_MARGIN = 210;
+
+// Coach-mark overlay: dims everything except the target element (four blocker
+// panels around it, so only the hole is interactive), draws a highlight ring,
+// and shows a step tooltip. Tracks the target's live position via rAF so it
+// stays aligned through scrolling / layout shifts.
+function GuideCoach({ targetRef, step, total, title, body, nextLabel, canAdvance, onNext, onSkip }) {
+  const [rect, setRect] = useState(null);
+
+  // Bring the target into view when the step changes — leave a top margin so the
+  // tooltip (placed above the target) is on-screen, without over-scrolling.
+  useEffect(() => {
+    const el = targetRef.current;
+    if (!el) return;
+    const y = el.getBoundingClientRect().top + window.scrollY - GUIDE_TOP_MARGIN;
+    window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+  }, [targetRef, step]);
+
+  // Keep the spotlight locked to the target every frame while active.
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const el = targetRef.current;
+      if (el) {
+        const r = el.getBoundingClientRect();
+        setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [targetRef]);
+
+  if (!rect) return null;
+  const pad = 8;
+  const hole = {
+    top: Math.max(0, rect.top - pad),
+    left: Math.max(0, rect.left - pad),
+    width: rect.width + pad * 2,
+    height: rect.height + pad * 2,
+  };
+  const vw = window.innerWidth;
+  const tipW = Math.min(340, vw - 24);
+  const tipLeft = Math.min(Math.max(hole.left, 12), vw - tipW - 12);
+  // Sit the tooltip ABOVE the target (in the top margin left by the scroll);
+  // fall back to below if the target is too near the top to fit above.
+  const above = hole.top >= 168;
+  const tipStyle = above
+    ? { top: hole.top - 12, left: tipLeft, transform: 'translateY(-100%)' }
+    : { top: hole.top + hole.height + 12, left: tipLeft };
+
+  return (
+    <div className="guide-coach">
+      <div className="guide-dim" style={{ top: 0, left: 0, width: '100%', height: hole.top }} />
+      <div className="guide-dim" style={{ top: hole.top + hole.height, left: 0, width: '100%', bottom: 0 }} />
+      <div className="guide-dim" style={{ top: hole.top, left: 0, width: hole.left, height: hole.height }} />
+      <div className="guide-dim" style={{ top: hole.top, left: hole.left + hole.width, right: 0, height: hole.height }} />
+      <div className="guide-ring" style={{ top: hole.top, left: hole.left, width: hole.width, height: hole.height }} />
+      <div className="guide-tip" style={{ ...tipStyle, width: tipW }}>
+        <div className="guide-tip-step">Step {step + 1} of {total}</div>
+        <div className="guide-tip-title">{title}</div>
+        <div className="guide-tip-body">{body}</div>
+        <div className="guide-tip-actions">
+          <button className="guide-tip-skip" onClick={onSkip}>Skip</button>
+          <button
+            className="btn btn-sm"
+            onClick={onNext}
+            disabled={!canAdvance}
+            style={!canAdvance ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+          >
+            {nextLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

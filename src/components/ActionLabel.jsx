@@ -20,7 +20,7 @@ const BASE_LABELS = {
 const ULTIMATE_COLOR = '#ff5fae'; // OVERDRIVE pink
 const INK = '#0c0c10';            // dark stroke / drop shadow
 
-const REACTION_KEYS = new Set(['hurt', 'death', 'celebrate']);
+const REACTION_KEYS = new Set(['hurt', 'death', 'celebrate', 'knockback', 'knockout']);
 const SILENT_KEYS = new Set(['idle', 'none']);
 
 function labelFor(action) {
