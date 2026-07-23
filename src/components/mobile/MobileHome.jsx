@@ -53,9 +53,9 @@ function MHAction({ tone, title, icon, desc, cta, onClick }) {
   );
 }
 
-export default function MobileHome({ onQuick, onHost, onJoin, onSettings, onHowTo, showArena = true }) {
+export default function MobileHome({ onQuick, on1v1, onTournament, onSettings, onHowTo, showArena = true }) {
   // Fighter loadout lives in /setup (the gear icon in the topbar) so the home
-  // page stays focused on Play / Host / Join.
+  // page stays focused on the three ways to play.
   return (
     <div className="mh-page mh-var-b">
       <MHTopbar onSettings={onSettings} onHowTo={onHowTo} />
@@ -82,19 +82,19 @@ export default function MobileHome({ onQuick, onHost, onJoin, onSettings, onHowT
           />
           <MHAction
             tone="red"
-            title="Host Tournament"
-            icon={<Icon name="trophy" size={26} />}
-            desc="Open a 4 / 8 / 16 player bracket. You set the rules."
-            cta="Open lobby"
-            onClick={onHost}
+            title="Play 1v1"
+            icon={<Icon name="swords" size={26} />}
+            desc="Duel a friend head-to-head. Share a code."
+            cta="Start a duel"
+            onClick={on1v1}
           />
           <MHAction
             tone="ink"
-            title="Join Tournament"
-            icon={<Icon name="enter" size={26} />}
-            desc="Enter a private room code or drop into a public bracket."
-            cta="Find a match"
-            onClick={onJoin}
+            title="Tournament"
+            icon={<Icon name="trophy" size={26} />}
+            desc="Host a 2–16 player bracket or join one."
+            cta="Host or join"
+            onClick={onTournament}
           />
         </div>
       </div>

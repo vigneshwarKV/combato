@@ -12,9 +12,13 @@ import { unlockAudio } from '../engine/soundEngine.js';
 
 const ARCHETYPE_GLYPH = { tank: 'T', striker: 'S', mage: 'M', acrobat: 'A', ranger: 'R' };
 
+// Human-style handles so a quick match reads like you're up against another
+// player, not a bot. (The opponent is still engine-driven — see randomOnly.)
 const BOT_NAMES = [
-  'THE MACHINE', 'IRON KOMBATANT', 'CIRCUIT BREAKER',
-  'NULL POINTER', 'BYTE CRUSHER', 'STACK OVERFLOW',
+  'RedViper', 'K.O.King', 'NightOwl', 'ShadowJab', 'BlazeFury',
+  'IronMike92', 'QuickHands', 'GhostStep', 'ThunderClap', 'MadDog',
+  'ComboQueen', 'SoloWolf', 'ApexRyu', 'NovaStrike', 'xToxicx',
+  'FrostByte', 'RiptideRex', 'ZenMaster', 'JabsMcGee', 'LowBlow',
 ];
 
 // After a bot match ends, how long the winner's celebration plays before we

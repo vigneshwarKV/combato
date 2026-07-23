@@ -16,13 +16,13 @@ export default function HomePage() {
   const location = useLocation();
   const isPortrait = useIsPortrait();
   const [profile, setProfile] = useState(() => loadProfile());
-  // Returning from /setup with ?intent=host|join means the player came to
-  // host/join but had to set up a fighter first — reopen that action now that
-  // they're ready. Derived at mount; the effect below strips the param so a
-  // refresh or back-nav doesn't reopen it.
+  // Returning from /setup with ?intent=1v1|tournament means the player came to
+  // start a duel / tournament but had to set up a fighter first — reopen that
+  // action now that they're ready. Derived at mount; the effect below strips the
+  // param so a refresh or back-nav doesn't reopen it.
   const initialIntent = new URLSearchParams(location.search).get('intent');
-  const [showJoin, setShowJoin] = useState(() => initialIntent === 'join' && isProfileReady(loadProfile()));
-  const [showHost, setShowHost] = useState(() => initialIntent === 'host' && isProfileReady(loadProfile()));
+  const [show1v1, setShow1v1] = useState(() => initialIntent === '1v1' && isProfileReady(loadProfile()));
+  const [showTournament, setShowTournament] = useState(() => initialIntent === 'tournament' && isProfileReady(loadProfile()));
   const [showNeedSetup, setShowNeedSetup] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
   // First-ever play attempt shows the How-to-Play tour instead of the usual
@@ -31,7 +31,7 @@ export default function HomePage() {
     try { return localStorage.getItem('pk.seenHowTo') === '1'; } catch { return false; }
   });
   // Where to send the player after they finish setup, captured when an action
-  // is gated (e.g. '/bot', or '/?intent=host' to reopen the host modal).
+  // is gated (e.g. '/bot', or '/?intent=1v1' to reopen the duel modal).
   const [needSetupReturn, setNeedSetupReturn] = useState('/');
 
   // Re-read profile when returning from /setup (storage event for cross-tab,
@@ -79,6 +79,20 @@ export default function HomePage() {
     navigate(`/room/${code}`, { state: { isHost: false } });
   }
 
+  // 1v1 duel — a lightweight 2-player room (mode: '1v1'). Creating one drops
+  // the host straight into the duel lobby with a code to share; joining goes to
+  // the same room as the opponent.
+  function do1v1Create() {
+    unlockAudio();
+    const code = generateMatchCode();
+    navigate(`/room/${code}`, { state: { isHost: true, mode: '1v1', tournamentName: '1v1 Duel' } });
+  }
+
+  function do1v1Join(code) {
+    unlockAudio();
+    navigate(`/room/${code}`, { state: { isHost: false, mode: '1v1' } });
+  }
+
   // Opening the tour is a user gesture — unlock audio here so the theme can
   // start when HowToPlay mounts (and stops when it closes).
   function markHowToSeen() {
@@ -94,8 +108,8 @@ export default function HomePage() {
     setShowHowTo(true);
   }
 
-  // A play/host/join click: auto-show the tour only if it's NEVER been seen;
-  // otherwise go straight to the normal gate (setup prompt or the action).
+  // A play click: auto-show the tour only if it's NEVER been seen; otherwise go
+  // straight to the normal gate (setup prompt or the action).
   function playIntent(action, returnTo) {
     if (!seenHowTo) {
       openHowTo();
@@ -113,36 +127,47 @@ export default function HomePage() {
     />
   );
 
+  // The three action modals live in one place and render in both layouts.
+  const modalsEl = (
+    <>
+      <Modal open={show1v1} onClose={() => setShow1v1(false)} width={520}>
+        <Play1v1Modal
+          onCreate={() => { setShow1v1(false); do1v1Create(); }}
+          onJoin={(code) => { setShow1v1(false); do1v1Join(code); }}
+        />
+      </Modal>
+      <Modal open={showTournament} onClose={() => setShowTournament(false)} width={680}>
+        <TournamentModal
+          onHost={(name) => { setShowTournament(false); doHost(name); }}
+          onJoin={(code) => { setShowTournament(false); doJoin(code); }}
+        />
+      </Modal>
+      <Modal open={showNeedSetup} onClose={() => setShowNeedSetup(false)}>
+        <NeedSetupPrompt
+          onClose={() => setShowNeedSetup(false)}
+          onChoose={() => { setShowNeedSetup(false); navigate(`/setup?returnTo=${encodeURIComponent(needSetupReturn)}`); }}
+        />
+      </Modal>
+    </>
+  );
+
+  const onQuick      = () => playIntent(() => navigate('/bot'), '/bot');
+  const on1v1        = () => playIntent(() => setShow1v1(true), '/?intent=1v1');
+  const onTournament = () => playIntent(() => setShowTournament(true), '/?intent=tournament');
+
   if (isPortrait) {
     return (
       <>
         <MobileHome
           profile={profile}
-          onQuick={() => playIntent(() => navigate('/bot'), '/bot')}
-          onHost={() => playIntent(() => setShowHost(true), '/?intent=host')}
-          onJoin={() => playIntent(() => setShowJoin(true), '/?intent=join')}
+          onQuick={onQuick}
+          on1v1={on1v1}
+          onTournament={onTournament}
           onSettings={() => navigate('/setup')}
           onHowTo={openHowTo}
           showArena={!showHowTo}
         />
-        <Modal open={showJoin} onClose={() => setShowJoin(false)} width={680}>
-          <JoinTournamentModal
-            onClose={() => setShowJoin(false)}
-            onJoin={(code) => { setShowJoin(false); doJoin(code); }}
-          />
-        </Modal>
-        <Modal open={showHost} onClose={() => setShowHost(false)}>
-          <HostTournamentForm
-            onClose={() => setShowHost(false)}
-            onHost={(name) => { setShowHost(false); doHost(name); }}
-          />
-        </Modal>
-        <Modal open={showNeedSetup} onClose={() => setShowNeedSetup(false)}>
-          <NeedSetupPrompt
-            onClose={() => setShowNeedSetup(false)}
-            onChoose={() => { setShowNeedSetup(false); navigate(`/setup?returnTo=${encodeURIComponent(needSetupReturn)}`); }}
-          />
-        </Modal>
+        {modalsEl}
         {howToEl}
       </>
     );
@@ -187,50 +212,30 @@ export default function HomePage() {
 
         <div className="action-row">
           <Action
-            tone="gold" title="Play vs Bot"
+            tone="gold" title="Quick Match"
             icon={<Icon name="bot" size={26} />}
-            desc="Solo skirmish vs a random AI fighter."
+            desc="Solo skirmish against a random AI fighter."
             cta="Quick fight"
-            onClick={() => playIntent(() => navigate('/bot'), '/bot')}
+            onClick={onQuick}
           />
           <Action
-            tone="red" title="Host Tournament"
+            tone="red" title="Play 1 vs 1"
+            icon={<Icon name="swords" size={26} />}
+            desc="Duel a friend head-to-head."
+            cta="Start a duel"
+            onClick={on1v1}
+          />
+          <Action
+            tone="ink" title="Tournament"
             icon={<Icon name="trophy" size={26} />}
-            desc="Open a 4 / 8 / 16 player bracket. You set the rules."
-            cta="Open lobby"
-            onClick={() => playIntent(() => setShowHost(true), '/?intent=host')}
-          />
-          <Action
-            tone="ink" title="Join Tournament"
-            icon={<Icon name="enter" size={26} />}
-            desc="Enter a private room code or drop into a public bracket."
-            cta="Find a match"
-            onClick={() => playIntent(() => setShowJoin(true), '/?intent=join')}
+            desc="Host a 2–16 player bracket or join one already running."
+            cta="Host or join"
+            onClick={onTournament}
           />
         </div>
       </div>
 
-      <Modal open={showJoin} onClose={() => setShowJoin(false)} width={680}>
-        <JoinTournamentModal
-          onClose={() => setShowJoin(false)}
-          onJoin={(code) => { setShowJoin(false); doJoin(code); }}
-        />
-      </Modal>
-
-      <Modal open={showHost} onClose={() => setShowHost(false)}>
-        <HostTournamentForm
-          onClose={() => setShowHost(false)}
-          onHost={() => { setShowHost(false); doHost(); }}
-        />
-      </Modal>
-
-      <Modal open={showNeedSetup} onClose={() => setShowNeedSetup(false)}>
-        <NeedSetupPrompt
-          onClose={() => setShowNeedSetup(false)}
-          onChoose={() => { setShowNeedSetup(false); navigate(`/setup?returnTo=${encodeURIComponent(needSetupReturn)}`); }}
-        />
-      </Modal>
-
+      {modalsEl}
       {howToEl}
 
     </div>
@@ -254,21 +259,90 @@ function Action({ tone, title, icon, desc, cta, onClick }) {
   );
 }
 
-function JoinTournamentModal({ onClose, onJoin }) {
-  const [tab, setTab] = useState('private');
+// ── Play 1v1 ────────────────────────────────────────────────────────────────
+// Two clear, equal paths behind a Create / Join toggle. Create hosts a room and
+// hands back a code to share; Join enters a friend's code. Kept deliberately
+// minimal — a duel is meant to be the fastest way to fight another person.
+
+function Play1v1Modal({ onCreate, onJoin }) {
+  const [side, setSide] = useState('create');
+  const [code, setCode] = useState('');
+  const canJoin = code.length >= 3;
   return (
     <>
-      <h2>Join a Tournament</h2>
-      <p>Drop into a friend's bracket or a public lobby running right now.</p>
+      <h2 style={{ color: 'var(--red)' }}>Play 1v1</h2>
+      <p>Duel a friend head-to-head — one match, winner takes all.</p>
+
       <div className="tabs">
+        <button className={`tab ${side === 'create' ? 'active' : ''}`} onClick={() => setSide('create')}>Create</button>
+        <button className={`tab ${side === 'join' ? 'active' : ''}`} onClick={() => setSide('join')}>Join</button>
+      </div>
+
+      {side === 'create' ? (
+        <div className="duel-panel">
+          <div className="duel-hero"><Icon name="swords" size={30} /></div>
+          <div className="duel-panel-title">Create a duel</div>
+          <p className="duel-panel-desc">
+            You'll get a 6-character code. Share it with a friend — the fight
+            starts the moment they join.
+          </p>
+          <button className="btn btn-red duel-cta" onClick={onCreate}>
+            CREATE DUEL&nbsp;<Icon name="arrow" size={15} />
+          </button>
+        </div>
+      ) : (
+        <div className="duel-panel">
+          <div className="duel-hero"><Icon name="enter" size={30} /></div>
+          <div className="duel-panel-title">Join a duel</div>
+          <p className="duel-panel-desc">Enter the code your friend shared with you.</p>
+          <input
+            className="code-input"
+            placeholder="A 4 K 9 P 2"
+            value={code}
+            autoFocus
+            onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))}
+            onKeyDown={e => { if (e.key === 'Enter' && canJoin) onJoin(code); }}
+            maxLength={8}
+          />
+          <button
+            className="btn btn-red duel-cta"
+            onClick={() => canJoin && onJoin(code)}
+            disabled={!canJoin}
+            style={!canJoin ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+          >JOIN DUEL&nbsp;<Icon name="arrow" size={15} /></button>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Tournament (host + join combined) ────────────────────────────────────────
+
+function TournamentModal({ onHost, onJoin }) {
+  const [side, setSide] = useState('join');
+  return (
+    <>
+      <h2>Tournament</h2>
+      <p>Host a bracket for 2–16 fighters, or join one that's already running.</p>
+      <div className="tabs">
+        <button className={`tab ${side === 'join' ? 'active' : ''}`} onClick={() => setSide('join')}>Join</button>
+        <button className={`tab ${side === 'host' ? 'active' : ''}`} onClick={() => setSide('host')}>Host</button>
+      </div>
+      {side === 'join' ? <JoinPanel onJoin={onJoin} /> : <HostPanel onHost={onHost} />}
+    </>
+  );
+}
+
+function JoinPanel({ onJoin }) {
+  const [tab, setTab] = useState('private');
+  return (
+    <div>
+      <div className="tabs" style={{ marginTop: 0 }}>
         <button className={`tab ${tab === 'private' ? 'active' : ''}`} onClick={() => setTab('private')}>Private</button>
         <button className={`tab ${tab === 'public' ? 'active' : ''}`} onClick={() => setTab('public')}>Public</button>
       </div>
       {tab === 'private' ? <JoinPrivateTab onJoin={onJoin} /> : <JoinPublicTab onJoin={onJoin} />}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
-        <button className="btn btn-ghost btn-sm" onClick={onClose}>CLOSE</button>
-      </div>
-    </>
+    </div>
   );
 }
 
@@ -286,6 +360,7 @@ function JoinPrivateTab({ onJoin }) {
         value={code}
         autoFocus
         onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))}
+        onKeyDown={e => { if (e.key === 'Enter' && !disabled) onJoin(code); }}
         maxLength={8}
       />
       <button
@@ -330,7 +405,7 @@ function JoinPublicTab({ onJoin }) {
   );
 }
 
-function HostTournamentForm({ onClose, onHost }) {
+function HostPanel({ onHost }) {
   const [size, setSize] = useState(8);
   const [visibility, setVisibility] = useState('private');
   const [tournamentName, setTournamentName] = useState('Friday Night Smackdown');
@@ -338,10 +413,7 @@ function HostTournamentForm({ onClose, onHost }) {
   const trimmedName = tournamentName.trim();
   const canHost = trimmedName.length > 0;
   return (
-    <>
-      <h2 style={{ color: 'var(--red)' }}>Open The Cage</h2>
-      <p>Configure your bracket. You'll get a 6-character code to share with players.</p>
-
+    <div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
         <Field label="Tournament Name">
           <input
@@ -398,16 +470,13 @@ function HostTournamentForm({ onClose, onHost }) {
         </Field>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
-        <button className="btn btn-ghost" onClick={onClose} style={{ flex: 1 }}>CANCEL</button>
-        <button
-          className="btn btn-red"
-          onClick={() => canHost && onHost(trimmedName)}
-          disabled={!canHost}
-          style={{ flex: 1, opacity: canHost ? 1 : 0.45, cursor: canHost ? 'pointer' : 'not-allowed' }}
-        >OPEN LOBBY</button>
-      </div>
-    </>
+      <button
+        className="btn btn-red"
+        onClick={() => canHost && onHost(trimmedName)}
+        disabled={!canHost}
+        style={{ width: '100%', marginTop: 22, opacity: canHost ? 1 : 0.45, cursor: canHost ? 'pointer' : 'not-allowed' }}
+      >OPEN LOBBY</button>
+    </div>
   );
 }
 
@@ -419,4 +488,3 @@ function Field({ label, children }) {
     </div>
   );
 }
-

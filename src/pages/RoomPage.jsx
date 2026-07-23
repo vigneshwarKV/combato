@@ -9,6 +9,7 @@ import Icon from '../components/design/Icons.jsx';
 import { Modal, SlotSprite } from '../components/design/DesignKit.jsx';
 import NeedSetupPrompt from '../components/design/NeedSetupPrompt.jsx';
 import Arena from '../components/Arena.jsx';
+import DuelLobby, { DuelStarting, DuelResult } from '../components/DuelLobby.jsx';
 import BracketView from '../components/BracketView.jsx';
 import ChampionView from '../components/ChampionView.jsx';
 import MobileLobby from '../components/mobile/MobileLobby.jsx';
@@ -166,7 +167,7 @@ function LobbyView({
                   ? (error || 'Connecting…')
                   : isHost
                     ? 'Your lobby · Open for joiners'
-                    : `Joined as ${profile.handle} · Waiting for host`}
+                    : `Joined as ${profile.handle} · Waiting for ${hostHandle}`}
               </div>
               <h1 className="lobby-title">
                 {titleHead && <>{titleHead} </>}<span className="accent">{titleTail}</span>
@@ -273,6 +274,10 @@ export default function RoomPage() {
   const navigate = useNavigate();
   const isHost = location.state?.isHost === true;
   const tournamentName = location.state?.tournamentName;
+  // '1v1' duels get a lighter lobby + auto-skip the bracket preview. A joiner
+  // arriving via a shared link has no state, so fall back to the mode the host
+  // broadcasts in the lobby state (resolved below once lobbyState is available).
+  const stateMode = location.state?.mode;
   const isPortrait = useIsPortrait();
 
   // Snapshot the profile on first render so the lobby header is stable.
@@ -282,7 +287,7 @@ export default function RoomPage() {
   // strategy yet. Gate them with a setup prompt before connecting to the room.
   const needsSetup = !isProfileReady(profile);
 
-  const host   = useMatchHost(isHost && !needsSetup ? code : null, { tournamentName });
+  const host   = useMatchHost(isHost && !needsSetup ? code : null, { tournamentName, mode: stateMode });
   const client = useMatchClient(!isHost && !needsSetup ? code : null);
 
   const lobby           = isHost ? host : client;
@@ -294,6 +299,8 @@ export default function RoomPage() {
   const nextMatchStartsAt = lobbyState?.nextMatchStartsAt;
   const champion        = lobbyState?.champion ?? null;
   const myPeerId        = lobby.myPeerId;
+  const mode            = stateMode || lobbyState?.mode;
+  const is1v1           = mode === '1v1';
 
   // A late joiner who connected after the tournament started watches as a
   // spectator until it ends, then may opt into the roster.
@@ -333,6 +340,15 @@ export default function RoomPage() {
   useEffect(() => {
     if (!isHost && client.roomClosed) navigate('/');
   }, [client.roomClosed]); // eslint-disable-line
+
+  // 1v1 has a single match, so the 20s bracket-preview countdown is just dead
+  // time — the host fires the match the instant the bracket is built. The
+  // START DUEL click already unlocked audio, so the Arena mounts with sound.
+  useEffect(() => {
+    if (isHost && is1v1 && phase === 'bracket-preview' && bracket) {
+      host.startNextMatch();
+    }
+  }, [isHost, is1v1, phase, bracket]); // eslint-disable-line
 
   function handleFightEnd(result) {
     if (!isHost) return;
@@ -427,6 +443,13 @@ export default function RoomPage() {
     );
   }
 
+  // ── 1v1 duel: skip the bracket preview ────────────────────────────────────
+  // The host auto-fires the match (effect above); this is the brief splash both
+  // players see in between rather than the tournament tree.
+  if (is1v1 && phase === 'bracket-preview') {
+    return <>{<DuelStarting />}{spectatorBar}</>;
+  }
+
   // ── Bracket phase ─────────────────────────────────────────────────────────
   // Covers bracket-preview between matches, plus the whole tournament for a
   // spectator — late joiners watch the tree update live rather than the Arena.
@@ -451,6 +474,22 @@ export default function RoomPage() {
 
   // ── Champion phase ───────────────────────────────────────────────────────
   if (phase === 'champion') {
+    // 1v1 gets a from-your-POV Victory/Defeat screen with a rematch, instead of
+    // the neutral tournament champion reveal.
+    if (is1v1) {
+      return (
+        <>
+          <DuelResult
+            champion={champion}
+            myPeerId={myPeerId}
+            isHost={isHost}
+            onRematch={isHost ? host.closeTournament : undefined}
+            onLeave={isHost ? handleCloseRoom : () => navigate('/')}
+          />
+          {spectatorBar}
+        </>
+      );
+    }
     return (
       <>
         <ChampionView
@@ -479,7 +518,11 @@ export default function RoomPage() {
     onToggleReady: isHost ? undefined : (next) => { unlockAudio(); client.updateMyConfig({ ready: next }); },
   };
 
-  const lobbyEl = isPortrait ? <MobileLobby {...lobbyProps} /> : <LobbyView {...lobbyProps} />;
+  // 1v1 uses the same simplified duel lobby on desktop and mobile — it's already
+  // a compact face-off that reflows for narrow screens.
+  const lobbyEl = is1v1
+    ? <DuelLobby {...lobbyProps} />
+    : isPortrait ? <MobileLobby {...lobbyProps} /> : <LobbyView {...lobbyProps} />;
   return <>{lobbyEl}{spectatorBar}</>;
 }
 

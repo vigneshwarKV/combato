@@ -68,6 +68,7 @@ export default function MobileLobby({
   const myFighter = fighters.find(f => f.peerId === myPeerId);
   const iAmReady = !!myFighter?.ready;
   const allJoinersReady = fighters.filter(f => !f.isHost).every(f => f.ready);
+  const hostHandle = fighters.find(f => f.isHost)?.name || 'the host';
   const { head: titleHead, tail: titleTail } = splitTitle(lobbyState?.tournamentName);
 
   const [copied, setCopied] = useState(false);
@@ -134,7 +135,7 @@ export default function MobileLobby({
               ? (error || 'CONNECTING…')
               : isHost
                 ? 'Your lobby · Open'
-                : `Joined as ${profile?.handle} · Waiting for host`}
+                : `Joined as ${profile?.handle} · Waiting for ${hostHandle}`}
           </div>
           <h1 className="mob-title">
             {titleHead && <>{titleHead}<br/></>}<span className="accent">{titleTail}</span>
