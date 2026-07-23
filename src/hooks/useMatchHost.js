@@ -118,7 +118,7 @@ function cloneBracket(bracket) {
 // ── Hook ───────────────────────────────────────────────────────────────────────
 
 export function useMatchHost(matchCode, opts = {}) {
-  const { tournamentName } = opts;
+  const { tournamentName, mode } = opts;
   const peerRef         = useRef(null);
   const peersRef        = useRef(new Map());
   const pendingMovesRef = useRef(null);
@@ -126,9 +126,13 @@ export function useMatchHost(matchCode, opts = {}) {
   const myConfigRef     = useRef(null);
   const currentMatchRef = useRef(null);
 
-  const [lobbyState, setLobbyState] = useState({ fighters: [], phase: 'lobby', matchCode, tournamentName });
+  const [lobbyState, setLobbyState] = useState({ fighters: [], phase: 'lobby', matchCode, tournamentName, mode });
   const [myConfig, setMyConfig] = useState({
-    name: 'Host', character: null,
+    // Empty on purpose — RoomPage seeds this from the saved profile handle. A
+    // literal default like 'Host' would stick (the seeding only fills a blank
+    // name) and show up as the fighter's name everywhere: lobby, HUD, bracket,
+    // champion screen. Blank lets the real handle take over.
+    name: '', character: null,
     // Plain-English strategy playbook; activeStrategyIndex is switched live
     // during a fight and read fresh each batch in getMoves.
     strategies: [], activeStrategyIndex: 0,
@@ -182,6 +186,11 @@ export function useMatchHost(matchCode, opts = {}) {
             // Tournament already underway — admit as a spectator, not a fighter.
             // They watch the bracket / live matches and may join once it ends.
             if (prev.phase !== 'lobby') {
+              sendMessage(conn, 'JOIN_ACK', { lobbyState: prev, spectator: true });
+              return prev;
+            }
+            // A 1v1 duel seats exactly two — any later arrival watches instead.
+            if (prev.mode === '1v1' && prev.fighters.length >= 2) {
               sendMessage(conn, 'JOIN_ACK', { lobbyState: prev, spectator: true });
               return prev;
             }
@@ -271,7 +280,7 @@ export function useMatchHost(matchCode, opts = {}) {
         isHost: true,
         ready: true,
       };
-      const initial = { fighters: [hostFighter], phase: 'lobby', matchCode, tournamentName, autoStartAt: Date.now() + AUTO_START_MS };
+      const initial = { fighters: [hostFighter], phase: 'lobby', matchCode, tournamentName, mode, autoStartAt: Date.now() + AUTO_START_MS };
       setLobbyState(initial);
 
       peer.on('connection', handleConnection);

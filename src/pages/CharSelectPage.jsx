@@ -287,7 +287,7 @@ export default function CharSelectPage() {
         </div>
       </div>
 
-      {guideStep !== null && (() => {
+      {guideStep !== null && !preload.active && (() => {
         const guideSteps = [
           { ref: nameRef, title: 'Name your fighter', body: 'Type a display name to fight under.', can: nameReady, next: 'Next' },
           { ref: fighterRef, title: 'Pick your fighter', body: 'Choose the character you’ll play as.', can: fighterReady, next: 'Next' },
