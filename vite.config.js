@@ -11,6 +11,16 @@ function aiDevServer(env) {
     name: 'ai-dev-server',
     configureServer(server) {
       server.middlewares.use('/api/ai', (req, res) => {
+        // Mirror the production CORS headers so the app can be tested against a
+        // LAN dev server (VITE_API_BASE=http://<mac-ip>:5173) on a real device.
+        res.setHeader('Access-Control-Allow-Origin', '*')
+        res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+        if (req.method === 'OPTIONS') {
+          res.statusCode = 204
+          res.end()
+          return
+        }
         if (req.method !== 'POST') {
           res.statusCode = 405
           res.end(JSON.stringify({ error: 'Method not allowed' }))

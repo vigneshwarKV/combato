@@ -5,6 +5,10 @@ import './styles/animations.css'
 import './styles/wrestling.css'
 import App from './App.jsx'
 import { setMusicTrack } from './engine/soundEngine.js'
+import { initNative } from './native/index.js'
+
+// Capacitor native shell: lock landscape + hide status bar/splash. No-op on web.
+initNative()
 
 // Register the game theme (fetches the bytes; no playback yet). The looping
 // music only plays DURING a fight — the Arena starts it when a match begins and

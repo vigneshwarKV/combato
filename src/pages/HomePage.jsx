@@ -26,7 +26,8 @@ export default function HomePage() {
   const [showNeedSetup, setShowNeedSetup] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
   // First-ever play attempt shows the How-to-Play tour instead of the usual
-  // flow. Persisted so it only happens once per browser.
+  // flow. Once seen (via any play button or the top-bar button) it's never
+  // auto-shown again. Persisted so it only happens once per browser.
   const [seenHowTo, setSeenHowTo] = useState(() => {
     try { return localStorage.getItem('pk.seenHowTo') === '1'; } catch { return false; }
   });

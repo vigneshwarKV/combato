@@ -1177,6 +1177,44 @@ body.needs-landscape .landscape-lock { display: none; }
   body.needs-landscape .strategy-switcher { display: none; }
 }
 
+/* ─── Global landscape gate (web/PWA) ───────────────────────
+   App-wide "rotate your device" overlay rendered by <LandscapeGate>. Native
+   builds are OS-locked to landscape so this never shows there; on the web it
+   covers the whole app while a phone is held in portrait, on every route. Sits
+   above the arena's own in-fight landscape-lock (z-index 5000). The app stays
+   mounted behind it, so rotating mid-match never tears down the live fight. */
+.landscape-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 6000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  text-align: center;
+  background: linear-gradient(180deg, #050309 0%, #0a0612 100%);
+}
+.landscape-gate svg {
+  width: 72px; height: 72px;
+  color: var(--gold);
+  margin-bottom: 20px;
+  animation: rotateHint 2.4s ease-in-out infinite;
+}
+.landscape-gate .lg-title {
+  font-family: var(--f-display);
+  font-size: 28px;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  text-transform: uppercase;
+}
+.landscape-gate .lg-sub {
+  color: var(--ink-soft);
+  margin-top: 10px;
+  max-width: 30ch;
+  line-height: 1.5;
+}
+
 /* ─── Tags ──────────────────────────────────────────────────── */
 
 .tag {
@@ -2497,72 +2535,97 @@ body.needs-landscape .landscape-lock { display: none; }
 
 /* ─── How-to-Play tour ──────────────────────────────────────── */
 
+/* Full-bleed landscape tour: header band on top, stage fills the rest. */
 .htp-overlay {
   position: fixed;
   inset: 0;
   z-index: 2000;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 20px;
   box-sizing: border-box;
-  background: rgba(5, 3, 9, 0.86);
-  backdrop-filter: blur(4px);
+  background: #05030a;
+  overflow: hidden;
   animation: htpFade 0.2s ease-out;
 }
 @keyframes htpFade { from { opacity: 0; } to { opacity: 1; } }
 
-.htp-titlebar {
-  font-family: var(--f-display);
-  font-size: 18px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--gold);
-  display: inline-flex;
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.htp-header {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 5;
+  background: linear-gradient(180deg, #0c0817, #080512);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.6);
+  border-bottom: 1px solid rgba(255, 216, 74, 0.22);
+}
+/* Progress ticks — one per step, gold up to (and including) the current one. */
+.htp-ticks { display: flex; gap: 2px; padding: 0 2px; height: 3px; }
+.htp-tick { flex: 1; background: rgba(255, 255, 255, 0.13); transition: background 0.3s; }
+.htp-tick.on { background: var(--gold); }
+
+.htp-header-row {
+  height: clamp(38px, 11vh, 56px);
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 max(18px, env(safe-area-inset-left)) 0 max(18px, env(safe-area-inset-right));
 }
-.htp-titlebar .dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--gold); box-shadow: 0 0 8px var(--gold);
+.htp-header-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.htp-header-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--gold); box-shadow: 0 0 9px var(--gold);
 }
+.htp-header-title {
+  font-family: var(--f-display);
+  font-size: clamp(13px, 4vh, 20px);
+  line-height: 1;
+  letter-spacing: 0.26em;
+  color: var(--gold);
+  white-space: nowrap;
+}
+.htp-header-right { display: flex; align-items: center; gap: 10px; }
+
+.htp-skip {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: clamp(28px, 7.6vh, 38px);
+  padding: 0 13px;
+  border: 0; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #b9adcf;
+  font-family: var(--f-mono);
+  font-size: clamp(9px, 2.6vh, 12px);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.htp-skip:hover { background: rgba(255, 255, 255, 0.12); color: var(--gold); }
 
 .htp-close {
-  position: absolute;
-  top: 14px; right: 14px;
-  z-index: 10;
-  width: 38px; height: 38px;
+  width: clamp(28px, 7.6vh, 38px);
+  height: clamp(28px, 7.6vh, 38px);
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 50%;
-  border: 1px solid var(--line);
-  background: rgba(13, 9, 23, 0.8);
-  color: var(--ink-soft);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(13, 9, 23, 0.7);
+  color: #b9adcf;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
 .htp-close:hover { color: var(--gold); border-color: var(--gold); }
 
-/* Framed, aspect-locked popup — a fixed 1100:720 window so the tour looks the
-   same on every device / orientation (letterboxed inside the overlay). */
-.htp-frame {
+/* ── Stage ──────────────────────────────────────────────────────────────── */
+.htp-stage {
   position: relative;
-  aspect-ratio: 1100 / 720;
-  width: min(94vw, calc(88vh * 1100 / 720));
-  max-height: 88vh;
-  border-radius: 16px;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
-  background: #050309;
-  border: 2px solid var(--gold-dim);
-  box-shadow:
-    0 24px 70px rgba(0, 0, 0, 0.7),
-    0 0 0 1px rgba(0, 0, 0, 0.6),
-    inset 0 0 0 1px rgba(255, 216, 74, 0.12),
-    0 0 30px rgba(255, 216, 74, 0.12);
+  background: #05030a;
 }
 
-/* Fit layer: centre the design-space scene inside the frame (scaled to fit). */
+/* Fit layer: centre the design-space scene inside the stage (scaled to fit). */
 .htp-fit {
   position: absolute;
   left: 50%; top: 50%;
@@ -2574,7 +2637,24 @@ body.needs-landscape .landscape-lock { display: none; }
 .htp-camera {
   position: relative;
   transform-origin: 0 0;
-  transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.62s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Cinematic edge vignette (top dim + strong bottom fade behind the nav). */
+.htp-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  /* Gentle top dim + a soft bottom grounding — kept light at the very bottom so
+     the in-scene strategy switcher stays readable (in the mockup the switcher
+     was chrome above this layer; here it lives inside the scene, under it). */
+  background: linear-gradient(180deg,
+    rgba(5, 3, 10, 0.25) 0%,
+    rgba(5, 3, 10, 0) 20%,
+    rgba(5, 3, 10, 0) 58%,
+    rgba(5, 3, 10, 0.22) 86%,
+    rgba(5, 3, 10, 0.45) 100%);
 }
 
 .htp-hud { position: absolute; top: 16px; z-index: 20; }
@@ -2595,17 +2675,56 @@ body.needs-landscape .landscape-lock { display: none; }
   color: rgba(255, 255, 255, 0.5);
 }
 
+/* Fixed stage chrome, pinned bottom-centre and sized in real pixels (not scaled
+   by the camera fit) so it stays readable & tappable on mobile. Sits above the
+   nav band so the two never collide. */
 .htp-switcher {
   position: absolute;
-  left: 50%; bottom: 26px;
+  left: 50%; bottom: 3vh;
   transform: translateX(-50%);
-  z-index: 20;
+  z-index: 26;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 96vw;
 }
-/* Neutralise the switcher's own fixed positioning so it lives inside the scene. */
+/* Neutralise the switcher's own fixed positioning so it lives in the chrome. */
 .htp-switcher .strategy-switcher {
   position: static;
   left: auto; bottom: auto;
   transform: none;
+  max-width: none;
+  padding: 5px 8px;
+  border-radius: 9px;
+}
+/* Compact tutorial size — readable & tappable (it's no longer camera-scaled), but
+   not oversized. */
+.htp-switcher .strategy-switcher-btns { gap: 6px; }
+.htp-switcher .strategy-btn {
+  gap: 6px;
+  padding: 5px 11px;
+  font-size: 12px;
+  border-radius: 7px;
+  max-width: none;
+}
+.htp-switcher .strategy-btn-num {
+  width: 16px; height: 16px;
+  font-size: 10px;
+  border-radius: 4px;
+}
+/* Bigger "Press here" cue in the practice round (only inside the tour). */
+.htp-switcher .strategy-cue-text {
+  font-size: 15px;
+  padding: 5px 12px;
+  border-radius: 7px;
+}
+.htp-switcher .strategy-cue-arrow { font-size: 21px; }
+/* The tour note that rides above the switcher (caret points down at the bar). */
+.htp-switcher-note {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 10px;
 }
 
 .htp-loading {
@@ -2624,42 +2743,57 @@ body.needs-landscape .landscape-lock { display: none; }
 .htp-callout-a { top: 68%; left: 15%; }
 .htp-callout-b { top: 68%; right: 15%; }
 
-/* In-scene info callout (health bar / super meter / strategies). */
+/* In-scene info callout (health bar / super meter / strategies). The wrapper's
+   transform — translate(-50%, {0%|-50%|-100%}) — is set inline per arrow so the
+   card sits below / centred on / above its anchor. */
 .htp-note {
   position: absolute;
-  z-index: 25;
-  transform: translate(-50%, -50%);
+  z-index: 20;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  max-width: 88%;
+  gap: 0;
   pointer-events: none;
   /* Ease position in step with the camera zoom (see .htp-camera transition). */
-  transition: left 0.7s cubic-bezier(0.4, 0, 0.2, 1), top 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: left 0.62s cubic-bezier(0.4, 0, 0.2, 1), top 0.62s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .htp-note-text {
-  background: rgba(10, 6, 20, 0.92);
-  border: 1.5px solid var(--gold);
-  border-radius: 8px;
-  padding: 6px 14px;
-  color: var(--gold);
-  font-family: var(--f-display);
-  /* Screen-space, viewport-relative — readable on mobile, capped on desktop. */
-  font-size: clamp(15px, 3.4vw, 24px);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  max-width: min(560px, 62vw);
+  padding: 1.5vh 2.4vh 1.7vh;
+  border-radius: 12px;
+  /* Ink glass — a translucent near-black pane the arena blurs through (~18%
+     bleeds), so the callout reads as a layer of the HUD, not a sticker. The
+     white hairline + inner top highlight make it a physical pane catching light
+     on its top edge; the gold caret is the only accent (no coloured border, no
+     glow). Ink is a cool off-white tuned to the app's #f1ecff — pure white would
+     vibrate against the blurred backdrop. */
+  background: rgba(9, 7, 14, 0.82);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    0 16px 40px rgba(0, 0, 0, 0.55);
+  color: #f4f1fa;
+  /* Barlow Condensed 700 (already loaded — StatusBars.jsx injects it). Fluid
+     size in the live tour; ~27px on large screens, scaling down with height. */
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: clamp(16px, 5.6vh, 28px);
+  line-height: 1.12;
+  letter-spacing: 0.02em;
   text-align: center;
-  line-height: 1.1;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5), 0 0 14px rgba(255, 216, 74, 0.2);
+  text-wrap: pretty;
 }
 .htp-note-caret {
   width: 0; height: 0;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
 }
-.htp-note-caret.up { border-bottom: 9px solid var(--gold); }
-.htp-note-caret.down { border-top: 9px solid var(--gold); }
+/* Gold caret — the callout's only accent; a soft dark shadow (not a glow) lifts
+   it off the arena. */
+.htp-note-caret.up { border-bottom: 11px solid var(--gold); filter: drop-shadow(0 -1px 2px rgba(0, 0, 0, 0.4)); }
+.htp-note-caret.down { border-top: 11px solid var(--gold); filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4)); }
 
 /* Practice prompt — a banner near the top telling the player what to tap. */
 .htp-prompt {
@@ -2734,16 +2868,102 @@ body.needs-landscape .landscape-lock { display: none; }
 }
 .htp-cta-btn.primary:hover { color: #17110a; filter: brightness(1.06); }
 
+/* Step-by-step nav overlaid on the stage: Prev (left) · Next / Finish (right). */
+.htp-nav {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 36;
+  padding: 0 max(18px, env(safe-area-inset-left)) 3vh max(18px, env(safe-area-inset-right));
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  pointer-events: none;
+}
+.htp-nav-prev {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  width: clamp(46px, 13vh, 60px);
+  height: clamp(46px, 13vh, 60px);
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(10, 7, 19, 0.78);
+  backdrop-filter: blur(4px);
+  color: #f1ecff;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, opacity 0.15s;
+}
+.htp-nav-prev:hover:not(:disabled) { border-color: var(--gold); color: var(--gold); }
+.htp-nav-prev:disabled { opacity: 0.32; cursor: default; }
+.htp-nav-next {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 9px;
+  height: clamp(46px, 13vh, 60px);
+  padding: 0 2.8vh;
+  border: 0; border-radius: 16px;
+  background: linear-gradient(180deg, #ffe071, #e9b81f);
+  color: #17110a;
+  font-family: 'Anton', var(--f-display);
+  font-size: clamp(15px, 4.4vh, 21px);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(255, 216, 74, 0.28);
+  transition: filter 0.15s;
+}
+.htp-nav-next:hover { filter: brightness(1.06); }
+/* Blink once the current step's action has finished — a cue to advance. */
+@keyframes htpNextPulse {
+  0%, 100% { box-shadow: 0 6px 20px rgba(255, 216, 74, 0.28); transform: translateY(0); }
+  50%      { box-shadow: 0 10px 30px rgba(255, 216, 74, 0.68); transform: translateY(-2px); }
+}
+.htp-nav-next.pulse { animation: htpNextPulse 1.05s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .htp-nav-next.pulse { animation: none; box-shadow: 0 8px 26px rgba(255, 216, 74, 0.55); }
+}
+
+/* Landscape-only gate — rotate-your-phone overlay for portrait handsets. */
+.htp-rotate {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: #07050d;
+  text-align: center;
+  padding: 32px;
+}
+.htp-rotate svg { color: var(--gold); }
+.htp-rotate-title {
+  font-family: var(--f-display);
+  font-size: 26px;
+  letter-spacing: 0.14em;
+  color: var(--gold);
+}
+.htp-rotate-sub {
+  font-family: 'Barlow Condensed', var(--f-body);
+  font-weight: 600;
+  font-size: 16px;
+  color: #b9adcf;
+  max-width: 300px;
+}
+
 /* Moves card — the setup page's per-move DMG/SPM table shown as a floating
    panel (not a full-screen overlay); the arena stays visible behind it. */
 .htp-movescard {
   position: absolute;
-  top: 50%;
+  top: 44%;
   right: 3%;
   transform: translateY(-50%);
   z-index: 34;
   width: min(430px, 46%);
-  max-height: 94%;
+  /* Sit above the bottom nav so it never covers the Next button. */
+  max-height: calc(100% - 3vh - clamp(46px, 13vh, 60px) - 48px);
   overflow: hidden;               /* fit, don't scroll — compacted below */
   display: flex;
   flex-direction: column;

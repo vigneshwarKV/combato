@@ -1,0 +1,15 @@
+{
+  "name": "Prompt Kombat",
+  "short_name": "Prompt Kombat",
+  "description": "Write the strategy. Let the AI fight. A prompt-driven fighting game.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#050309",
+  "theme_color": "#050309",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
