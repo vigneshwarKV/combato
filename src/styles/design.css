@@ -210,7 +210,7 @@ body.pk-design {
   flex-wrap: wrap;
 }
 .topbar-brand {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center;
   font-family: var(--f-display);
   font-size: 22px;
   letter-spacing: 0.04em;
@@ -219,12 +219,6 @@ body.pk-design {
   cursor: pointer;
   text-decoration: none;
 }
-.topbar-brand .dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--red);
-  box-shadow: 0 0 8px var(--red);
-  animation: pulse 1.6s ease-in-out infinite;
-}
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.7); }
@@ -232,22 +226,16 @@ body.pk-design {
 .topbar-brand .kk { color: var(--gold); }
 .topbar-spacer { flex: 1; }
 .topbar-user {
-  display: flex; align-items: center; gap: 10px;
-  padding: 6px 14px 6px 6px;
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 12px;
   border: 1px solid var(--line);
   cursor: pointer;
   background: rgba(34, 22, 69, 0.4);
-  transition: border-color 0.15s;
+  color: var(--ink-soft);
+  font: inherit;
+  transition: border-color 0.15s, color 0.15s;
 }
-.topbar-user:hover { border-color: var(--cyan); }
-.topbar-user .avatar {
-  width: 32px; height: 32px;
-  background: linear-gradient(135deg, var(--plasma), var(--cyan));
-  display: flex; align-items: center; justify-content: center;
-  font-family: var(--f-display);
-  font-size: 14px;
-  color: #fff;
-}
+.topbar-user:hover { border-color: var(--cyan); color: var(--cyan); }
 .topbar-user .name {
   font-family: var(--f-display);
   font-size: 16px;
@@ -261,6 +249,82 @@ body.pk-design {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+
+/* How to Play — quiet text link, not a bordered button */
+.topbar-link {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 2px;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font-family: var(--f-display);
+  font-size: 15px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.topbar-link:hover { color: var(--gold); }
+
+.topbar-div {
+  width: 1px; height: 24px;
+  background: var(--line);
+  flex: 0 0 auto;
+}
+
+/* Profile chip caret + dropdown menu */
+.topbar-user.is-open { border-color: var(--cyan); }
+.topbar-user .caret {
+  color: var(--ink-mute);
+  transition: transform 0.18s;
+}
+.topbar-user.is-open .caret { transform: rotate(180deg); }
+
+.topbar-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 7px);
+  right: 24px;
+  width: 212px;
+  border: 1px solid var(--line);
+  background: #0d0918;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.66);
+}
+.topbar-menu-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+}
+.topbar-menu-head .name {
+  font-family: var(--f-display);
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+.topbar-menu-head .wins {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  text-transform: uppercase;
+}
+.topbar-menu-list { padding: 6px; }
+.topbar-menu-item {
+  display: flex; align-items: center; gap: 11px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font-family: var(--f-display);
+  font-size: 15px;
+  letter-spacing: 0.1em;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.topbar-menu-item:hover { background: rgba(74, 215, 255, 0.08); color: var(--cyan); }
+.topbar-menu-item svg { flex: 0 0 auto; }
 
 .icon-btn {
   width: 36px; height: 36px;
@@ -1540,11 +1604,16 @@ body.needs-landscape .landscape-lock { display: none; }
   .setup-body { padding: 20px 18px 24px; }
 }
 
-@media (max-width: 760px) {
+/* Compact "mobile" home layout. Triggered by narrow width (portrait phones,
+   which reuse these .action/.wordmark classes via MobileHome) OR by a short
+   landscape viewport — the latter is how larger landscape phones (iPhone XR/11
+   896px, 14/15 Pro 852px, Pro Max 932px) qualify, since their width is > 760px
+   but their landscape height is < 500px. Without the height clause those
+   devices fell through to the full desktop layout. */
+@media (max-width: 760px), (max-height: 500px) and (orientation: landscape) {
   .topbar { padding: 10px 14px; gap: 8px; }
   .topbar-brand { font-size: 16px; }
-  .topbar-user { padding: 4px 10px 4px 4px; }
-  .topbar-user .avatar { width: 26px; height: 26px; font-size: 12px; }
+  .topbar-user { padding: 6px 10px; }
   .topbar-user .name { font-size: 13px; }
   .topbar-user .lvl { font-size: 9px; }
   .home-hero { padding: 14px 14px 14px; gap: 6px; }
@@ -1604,6 +1673,36 @@ body.needs-landscape .landscape-lock { display: none; }
   .modal { padding: 16px 20px; max-height: calc(100vh - 24px); }
   .modal h2 { font-size: 18px; margin-bottom: 4px; letter-spacing: 0.04em; }
   .modal p { font-size: 11px; margin-bottom: 10px; line-height: 1.4; }
+
+  /* Home: play the real fight animation as a background layer behind the
+     action buttons. The compact block above hides .home-arena; here we re-show
+     it, pin it as a bottom-anchored full-hero backdrop, and push the button row
+     to the bottom (margin-top:auto) so the fighters stand behind the CTAs.
+     Lowered opacity + the buttons' own translucent panels keep the CTAs legible;
+     jet-pack ults still arc up over the wordmark (no overflow clip on the box). */
+  .home-hero { position: relative; }
+  .home-arena {
+    display: block;
+    position: absolute;
+    /* Lift the whole arena off the hero's bottom edge so the ground line (and
+       thus the fighters' feet) sits higher up — above the button row instead of
+       behind it. Increase this to raise them further toward the top. */
+    left: 0; right: 0; bottom: 96px;
+    height: 100%;
+    margin: 0;
+    z-index: 0;
+    opacity: 0.5;
+    pointer-events: none;
+    /* Shrink the fighters for the phone backdrop. The stage is already
+       width-fit at its 0.75 cap (HomeArena.jsx); this scales the whole arena
+       down from the ground line so feet stay planted behind the buttons.
+       Tune this single value to taste (1 = full size). */
+    transform: scale(0.68);
+    transform-origin: 50% 100%;
+  }
+  .home-hero .wordmark,
+  .home-hero .wordmark-sub { position: relative; z-index: 2; }
+  .action-row { margin-top: auto !important; position: relative; z-index: 2; }
 }
 
 @media (max-width: 480px) {
@@ -2021,7 +2120,6 @@ body.needs-landscape .landscape-lock { display: none; }
   .tour-topbar { padding: 6px 16px; gap: 10px; }
   .tour-topbar .topbar-brand { font-size: 14px; }
   .tour-topbar .breadcrumb { font-size: 10px; gap: 6px; }
-  .tour-topbar .topbar-user .avatar { width: 24px; height: 24px; font-size: 11px; }
   .tour-topbar .topbar-user .name { font-size: 12px; }
 
   .lobby-wrap { padding: 10px 18px 14px; gap: 10px; }
@@ -2543,7 +2641,11 @@ body.needs-landscape .landscape-lock { display: none; }
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  background: #05030a;
+  /* Match home's .bg-arena so it shows through the translucent header / edges. */
+  background:
+    radial-gradient(ellipse 70% 50% at 50% -10%, rgba(255, 216, 74, 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 40% at 50% 105%, rgba(255, 58, 79, 0.05) 0%, transparent 70%),
+    linear-gradient(180deg, #0a0610 0%, #07050d 60%, #050309 100%);
   overflow: hidden;
   animation: htpFade 0.2s ease-out;
 }
@@ -2554,9 +2656,10 @@ body.needs-landscape .landscape-lock { display: none; }
   flex: 0 0 auto;
   position: relative;
   z-index: 5;
-  background: linear-gradient(180deg, #0c0817, #080512);
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.6);
-  border-bottom: 1px solid rgba(255, 216, 74, 0.22);
+  /* Reuse home's .topbar treatment: translucent blurred panel, neutral border. */
+  background: rgba(7, 5, 13, 0.7);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
 }
 /* Progress ticks — one per step, gold up to (and including) the current one. */
 .htp-ticks { display: flex; gap: 2px; padding: 0 2px; height: 3px; }
@@ -2573,48 +2676,25 @@ body.needs-landscape .landscape-lock { display: none; }
 }
 .htp-header-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .htp-header-dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--gold); box-shadow: 0 0 9px var(--gold);
+  /* Match home's .topbar-brand .dot — red + pulsing (@keyframes pulse). */
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 8px var(--red);
+  animation: pulse 1.6s ease-in-out infinite;
 }
 .htp-header-title {
+  /* Ink with a gold accent word, matching home's .topbar-brand / .kk. */
   font-family: var(--f-display);
-  font-size: clamp(13px, 4vh, 20px);
+  font-size: clamp(15px, 4.4vh, 22px);
   line-height: 1;
-  letter-spacing: 0.26em;
-  color: var(--gold);
+  letter-spacing: 0.04em;
+  color: var(--ink);
   white-space: nowrap;
 }
+.htp-header-title .kk { color: var(--gold); }
 .htp-header-right { display: flex; align-items: center; gap: 10px; }
-
-.htp-skip {
-  display: inline-flex; align-items: center; gap: 7px;
-  height: clamp(28px, 7.6vh, 38px);
-  padding: 0 13px;
-  border: 0; border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #b9adcf;
-  font-family: var(--f-mono);
-  font-size: clamp(9px, 2.6vh, 12px);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
-}
-.htp-skip:hover { background: rgba(255, 255, 255, 0.12); color: var(--gold); }
-
-.htp-close {
-  width: clamp(28px, 7.6vh, 38px);
-  height: clamp(28px, 7.6vh, 38px);
-  display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(13, 9, 23, 0.7);
-  color: #b9adcf;
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
-}
-.htp-close:hover { color: var(--gold); border-color: var(--gold); }
+/* Skip + close reuse the shared .btn.btn-ghost.btn-sm and .icon-btn classes
+   (see HowToPlay.jsx) — no bespoke rules needed. */
 
 /* ── Stage ──────────────────────────────────────────────────────────────── */
 .htp-stage {
@@ -2761,25 +2841,21 @@ body.needs-landscape .landscape-lock { display: none; }
   max-width: min(560px, 62vw);
   padding: 1.5vh 2.4vh 1.7vh;
   border-radius: 12px;
-  /* Ink glass — a translucent near-black pane the arena blurs through (~18%
-     bleeds), so the callout reads as a layer of the HUD, not a sticker. The
-     white hairline + inner top highlight make it a physical pane catching light
-     on its top edge; the gold caret is the only accent (no coloured border, no
-     glow). Ink is a cool off-white tuned to the app's #f1ecff — pure white would
-     vibrate against the blurred backdrop. */
-  background: rgba(9, 7, 14, 0.82);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
+  /* Warm-shifted dark gradient (not neutral grey) so the panel sits with the
+     arena's browns & golds instead of fighting them. No border — only an inset
+     top highlight for a lit edge; the gold caret below is the only accent. */
+  background: linear-gradient(180deg, #1e1922, #15111b);
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
     0 16px 40px rgba(0, 0, 0, 0.55);
-  color: #f4f1fa;
+  /* Warm bone, not white — drops the glare while keeping ~13:1 contrast, the
+     most comfortable for reading 19 steps in a row. */
+  color: #f0e8db;
   /* Barlow Condensed 700 (already loaded — StatusBars.jsx injects it). Fluid
      size in the live tour; ~27px on large screens, scaling down with height. */
   font-family: 'Barlow Condensed', sans-serif;
   font-weight: 700;
-  font-size: clamp(16px, 5.6vh, 28px);
+  font-size: clamp(16px, 5.6vh, 27px);
   line-height: 1.12;
   letter-spacing: 0.02em;
   text-align: center;
@@ -2886,42 +2962,58 @@ body.needs-landscape .landscape-lock { display: none; }
   width: clamp(46px, 13vh, 60px);
   height: clamp(46px, 13vh, 60px);
   display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(10, 7, 19, 0.78);
-  backdrop-filter: blur(4px);
-  color: #f1ecff;
+  /* .icon-btn geometry — square, neutral border, cyan hover. */
+  border: 1px solid var(--line);
+  background: rgba(7, 5, 13, 0.7);
+  backdrop-filter: blur(8px);
+  color: var(--ink-soft);
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s, opacity 0.15s;
 }
-.htp-nav-prev:hover:not(:disabled) { border-color: var(--gold); color: var(--gold); }
+.htp-nav-prev:hover:not(:disabled) { border-color: var(--cyan); color: var(--cyan); }
 .htp-nav-prev:disabled { opacity: 0.32; cursor: default; }
 .htp-nav-next {
   pointer-events: auto;
   flex: 0 0 auto;
-  display: inline-flex; align-items: center; gap: 9px;
+  display: inline-flex; align-items: center; gap: 10px;
   height: clamp(46px, 13vh, 60px);
-  padding: 0 2.8vh;
-  border: 0; border-radius: 16px;
-  background: linear-gradient(180deg, #ffe071, #e9b81f);
-  color: #17110a;
-  font-family: 'Anton', var(--f-display);
+  padding: 0 3.2vh;
+  /* Home's primary CTA (.btn): gold fill, slanted clip-path, gold glow. */
+  border: 1.5px solid var(--gold);
+  background: var(--gold);
+  color: #0a0612;
+  font-family: var(--f-display);
   font-size: clamp(15px, 4.4vh, 21px);
-  letter-spacing: 0.09em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(255, 216, 74, 0.28);
-  transition: filter 0.15s;
+  box-shadow: 0 0 10px var(--gold), 0 0 24px rgba(0, 0, 0, 0.25);
+  clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+  transition: all 0.18s ease;
 }
-.htp-nav-next:hover { filter: brightness(1.06); }
-/* Blink once the current step's action has finished — a cue to advance. */
+.htp-nav-next:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 0 16px var(--gold), 0 0 32px rgba(255, 216, 74, 0.35);
+}
+.htp-nav-next:active { transform: translateY(1px) scale(0.985); }
+/* Once the step's action has finished, nudge Next forward (→) so the cue to
+   advance is obvious — a directional nudge reads clearer than a blink and
+   reinforces "next". Resting values match .htp-nav-next so frame 1 doesn't jump.
+   The arrow icon slides a touch further than the button for extra emphasis. */
 @keyframes htpNextPulse {
-  0%, 100% { box-shadow: 0 6px 20px rgba(255, 216, 74, 0.28); transform: translateY(0); }
-  50%      { box-shadow: 0 10px 30px rgba(255, 216, 74, 0.68); transform: translateY(-2px); }
+  0%, 100% { box-shadow: 0 0 10px var(--gold), 0 0 24px rgba(0, 0, 0, 0.25); transform: translateX(0); }
+  45%      { box-shadow: 0 0 22px var(--gold), 0 0 40px rgba(255, 216, 74, 0.5); transform: translateX(6px); }
+}
+@keyframes htpNextArrow {
+  0%, 100% { transform: translateX(0); }
+  45%      { transform: translateX(3px); }
 }
 .htp-nav-next.pulse { animation: htpNextPulse 1.05s ease-in-out infinite; }
+.htp-nav-next.pulse svg { animation: htpNextArrow 1.05s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .htp-nav-next.pulse { animation: none; box-shadow: 0 8px 26px rgba(255, 216, 74, 0.55); }
+  .htp-nav-next.pulse,
+  .htp-nav-next.pulse svg { animation: none; }
+  .htp-nav-next.pulse { box-shadow: 0 0 16px var(--gold), 0 0 32px rgba(255, 216, 74, 0.35); }
 }
 
 /* Landscape-only gate — rotate-your-phone overlay for portrait handsets. */

@@ -291,7 +291,8 @@ export default function HowToPlay({ onClose, onSetup }) {
   const aliveRef = useRef(true);
   useEffect(() => {
     aliveRef.current = true;
-    startMusic();
+    // The walkthrough tour is silent — background music only kicks in for the
+    // interactive sample round (see startPractice). Preload clips so it's ready.
     preloadCombatClips();
     return () => { aliveRef.current = false; stopMusic(); };
   }, []);
@@ -467,6 +468,7 @@ export default function HowToPlay({ onClose, onSetup }) {
   }, [phase, practiceIdx, stageReady]);
 
   function startPractice() {
+    startMusic();   // background theme starts only for the sample round
     fightRef.current = { hpA: 100, hpB: 100, meterA: 0, meterB: 0 };
     setSc({ ...INITIAL_SCENE });
     setEnded(false);
@@ -510,11 +512,27 @@ export default function HowToPlay({ onClose, onSetup }) {
 
   // Measure the note card so its projected anchor can be clamped fully inside
   // the stage — a high-zoom step must never push it off-screen / under the header.
+  // Observe (don't measure once): a single mount-time read happens before the
+  // display font loads, so it's laid out in the fallback and mis-measured — or
+  // never re-fires and stays at the default. A ResizeObserver also re-measures
+  // when the step text length or the viewport (rotation) changes.
   const [noteSize, setNoteSize] = useState({ w: 320, h: 64 });
+  const noteElRef = useRef(null);
+  const noteRoRef = useRef(null);
   const noteRef = useCallback((el) => {
+    if (noteElRef.current === el) return;
+    noteRoRef.current?.disconnect();
+    noteRoRef.current = null;
+    noteElRef.current = el;
     if (!el) return;
-    const w = el.offsetWidth, h = el.offsetHeight;
-    setNoteSize(s => (s.w === w && s.h === h) ? s : { w, h });
+    const read = () => {
+      const w = el.offsetWidth, h = el.offsetHeight;
+      if (!w || !h) return;
+      setNoteSize(s => (s.w === w && s.h === h) ? s : { w, h });
+    };
+    noteRoRef.current = new ResizeObserver(read);
+    noteRoRef.current.observe(el);
+    read();
   }, []);
 
   // Practice always uses the full view; otherwise the timeline-driven camera
@@ -567,14 +585,14 @@ export default function HowToPlay({ onClose, onSetup }) {
         <div className="htp-header-row">
           <div className="htp-header-left">
             <span className="htp-header-dot" />
-            <span className="htp-header-title">HOW TO PLAY</span>
+            <span className="htp-header-title">HOW TO <span className="kk">PLAY</span></span>
           </div>
           <div className="htp-header-right">
-            <button className="htp-skip" onClick={onClose}>
+            <button className="btn btn-ghost btn-sm" onClick={onClose}>
               Skip tutorial
               <Icon name="arrow" size={13} />
             </button>
-            <button className="htp-close" onClick={onClose} aria-label="Close">
+            <button className="icon-btn" onClick={onClose} aria-label="Close">
               <Icon name="close" size={15} />
             </button>
           </div>
