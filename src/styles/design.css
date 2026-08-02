@@ -1670,7 +1670,7 @@ body.needs-landscape .landscape-lock { display: none; }
    chrome so host/join forms fit without scrolling on iPhone XR-class screens. */
 @media (max-height: 500px) and (orientation: landscape) {
   .modal-backdrop { padding: 12px; }
-  .modal { padding: 16px 20px; max-height: calc(100vh - 24px); }
+  .modal { padding: 12px 20px; max-height: calc(100vh - 24px); }
   .modal h2 { font-size: 18px; margin-bottom: 4px; letter-spacing: 0.04em; }
   .modal p { font-size: 11px; margin-bottom: 10px; line-height: 1.4; }
 
@@ -1703,6 +1703,44 @@ body.needs-landscape .landscape-lock { display: none; }
   .home-hero .wordmark,
   .home-hero .wordmark-sub { position: relative; z-index: 2; }
   .action-row { margin-top: auto !important; position: relative; z-index: 2; }
+
+  /* Home action modals (1v1 duel / tournament) — squeeze the chrome so the
+     forms fit an iPhone-SE-class landscape height (~375px) without scrolling. */
+  .modal .tabs { margin: 10px 0 12px; }
+  .modal .tab { padding: 7px 12px; font-size: 14px; }
+  .modal .code-input { font-size: 20px; padding: 10px 12px; letter-spacing: 0.18em; }
+  /* Trim the oversized CTAs (CREATE/JOIN DUEL, OPEN LOBBY, ENTER THE RING) —
+     the base .btn is 22px/14px-28px, too tall for this height. */
+  .modal .btn { font-size: 15px; padding: 9px 18px; letter-spacing: 0.1em; gap: 8px; }
+
+  /* 1v1 duel panel. Prefixed with .modal to out-specify the base .duel-panel
+     rules that are defined LATER in this file — a media query adds no
+     specificity, so without the prefix the later base rule wins the cascade. */
+  .modal .duel-panel { min-height: 0; gap: 9px; padding: 2px 4px; }
+  .modal .duel-hero { width: 50px; height: 50px; margin-top: 2px; }
+  .modal .duel-hero svg { width: 24px; height: 24px; }
+  .modal .duel-panel-title { font-size: 18px; }
+  .modal .duel-panel-desc { font-size: 11px; line-height: 1.45; margin: -4px 0 0; }
+  .modal .duel-cta { margin-top: 2px; }
+
+  /* Tournament host form — 2 columns on short landscape screens (width is
+     plentiful, height is scarce). Tournament Name spans the full width; the
+     Max-Players and Visibility fields share the second row, reclaiming a whole
+     field of vertical space so OPEN LOBBY stays on-screen. !important beats the
+     inline display:flex / gap on the .host-fields wrapper. */
+  .host-fields {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 18px !important;
+    align-items: start;
+  }
+  .host-fields > :first-child { grid-column: 1 / -1; }
+  .host-vis-note { font-size: 10px !important; margin-top: 4px !important; line-height: 1.35 !important; }
+  .host-submit { margin-top: 10px !important; }
+
+  /* Tournament join list */
+  .tour-public-list { max-height: 150px !important; }
+  .modal .input { padding: 8px 12px; }
 }
 
 @media (max-width: 480px) {

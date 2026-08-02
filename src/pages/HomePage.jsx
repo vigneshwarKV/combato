@@ -419,7 +419,7 @@ function JoinPrivateTab({ onJoin }) {
 
 function JoinPublicTab({ onJoin }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
+    <div className="tour-public-list" style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
       {PUBLIC_TOURNAMENTS.map(t => (
         <div key={t.id} style={{
           display: 'grid', gridTemplateColumns: '12px 1fr auto auto', gap: 12, alignItems: 'center',
@@ -458,7 +458,7 @@ function HostPanel({ onHost }) {
   const canHost = trimmedName.length > 0;
   return (
     <div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div className="host-fields" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
         <Field label="Tournament Name">
           <input
             type="text"
@@ -506,7 +506,7 @@ function HostPanel({ onHost }) {
               style={{ borderLeft: '1px solid var(--line)', flex: 1 }}
               onClick={() => setVisibility('public')}>PUBLIC</button>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 6, lineHeight: 1.5 }}>
+          <div className="host-vis-note" style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 6, lineHeight: 1.5 }}>
             {visibility === 'private'
               ? 'Only players with the room code can join.'
               : 'Listed on the public tournament board. Anyone can join.'}
@@ -515,7 +515,7 @@ function HostPanel({ onHost }) {
       </div>
 
       <button
-        className="btn btn-red"
+        className="btn btn-red host-submit"
         onClick={() => canHost && onHost(trimmedName)}
         disabled={!canHost}
         style={{ width: '100%', marginTop: 22, opacity: canHost ? 1 : 0.45, cursor: canHost ? 'pointer' : 'not-allowed' }}
