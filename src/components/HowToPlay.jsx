@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ArenaBackground from './ArenaBackground.jsx';
 import ArenaStage from './ArenaStage.jsx';
 import StatusBars from './StatusBars.jsx';
@@ -29,6 +29,11 @@ import { planCombatSounds, playCombatPlan, preloadCombatClips, playWinnerSound }
 const DESIGN_W = 1100;
 const DESIGN_H = 720;
 
+// When the bottom strategy switcher is on screen (practice + strategy steps),
+// lift the fighters AND the arena together by this much so the switcher never
+// covers them — shifting both keeps the fighters standing on the ground.
+const SWITCHER_LIFT = 84;
+
 // Named camera framings, in design coordinates: {cx, cy, z} = focus point + zoom.
 const CAMERAS = {
   full:      { cx: 550, cy: 360, z: 1.0 },
@@ -56,49 +61,45 @@ const DEMO_STRATEGIES = [
   { name: 'Adapt',  text: 'Read their pattern and counter each move.' },
 ];
 
+// Auto-play a list of moves back-to-back within ONE step: each move plays, then
+// a short idle resets the pose before the next. Returns a tour `timeline` so a
+// single step demonstrates every valid move (one Next tap, not one per move).
+function buildMoveTimeline(moves, { start = 400, hold = 1050, gap = 1550 } = {}) {
+  const tl = [];
+  moves.forEach((m, i) => {
+    const t0 = start + i * gap;
+    tl.push({ at: t0, patch: { animA: m } });
+    tl.push({ at: t0 + hold, patch: { animA: 'idle' } });
+  });
+  return tl;
+}
+
 // Build the ordered, looping tour.
 //   enter    — scene fields applied on entering the step (animA/animB replay)
 //   timeline — [{ at: ms, patch }] scheduled after enter
 //   note     — in-scene callout { text, x, y, arrow } (design coords)
 //   duration — ms before auto-advancing to the next step
 function buildSteps({ superKey }) {
-  // A quick move demo — plays the action once; the in-fight ActionLabel names it.
-  // soloA hides the opponent so the full lunge/slide reads clearly.
-  // The "valid moves" caption stays pinned in the same spot across every move
-  // demo (same camera + note position), so it holds while each move plays.
-  const movesNote = { text: 'These are the valid moves in a fight', x: 460, y: 350, arrow: 'none' };
-  const move = (action) => ({
-    camera: 'fighterA',
-    soloA: true,
-    enter: { animA: 'idle', animB: 'idle', hpA: 100, hpB: 100, meterA: 0 },
-    timeline: [{ at: 300, patch: { animA: action } }],
-    note: movesNote,
-    duration: 2000,
-  });
-
   const steps = [
     // Establishing shot — the real arena, both fighters idle.
     {
       camera: 'duel',
       enter: { animA: 'idle', animB: 'idle', hpA: 100, hpB: 100, meterA: 0, meterB: 0 },
-      note: { text: 'This is a 1-on-1 fight — Built strategy to win', x: 550, y: 225, arrow: 'none' },
+      note: { text: 'This is a 1-on-1 fight — build a strategy to win', x: 550, y: 225, arrow: 'none' },
       duration: 2800,
     },
-    // Zoom onto your fighter, pause, then run through the moves (opponent hidden).
+    // Your moves — ONE step auto-plays every valid move back to back
+    // (hit → jump → shoot → slide → block high → block low). The in-fight
+    // ActionLabel names each as it plays; the opponent is hidden (soloA) so the
+    // full lunge / slide reads clearly, and the caption holds throughout.
     {
       camera: 'fighterA',
       soloA: true,
       enter: { animA: 'idle', animB: 'idle', hpA: 100, hpB: 100, meterA: 0 },
       note: { text: 'These are the valid moves in a fight', x: 460, y: 350, arrow: 'none' },
-      duration: 2400,
+      timeline: buildMoveTimeline(['hit', 'jump', 'shoot', 'slide', 'defend_high', 'defend_low']),
+      duration: 8200,
     },
-    // Each move: zoom in and play it — the in-fight ActionLabel names it.
-    move('hit'),
-    move('shoot'),
-    move('slide'),
-    move('jump'),
-    move('defend_high'),
-    move('defend_low'),
   ];
 
   steps.push(
@@ -111,38 +112,34 @@ function buildSteps({ superKey }) {
       note: { text: 'Both fighters act at the same time', x: 550, y: 235, arrow: 'none' },
       duration: 3600,
     },
-    // Back to idle, then a clean hit lands and their HP drops.
+    // Health — sequenced within one step: no text first, the shoot lands and
+    // their HP drops (full view), THEN zoom into the health bar, THEN the note.
     {
       camera: 'full',
+      delayNote: true,
       enter: { animA: 'idle', animB: 'idle', hpA: 100, hpB: 100, meterA: 0 },
       timeline: [
-        { at: 900, patch: { animA: 'shoot' } },
-        { at: 1900, patch: { animB: 'hurt', hpB: 74, meterA: 22 } },
+        { at: 600,  patch: { animA: 'shoot' } },        // you shoot
+        { at: 1300, patch: { animB: 'hurt' } },          // opponent takes the hit (HP still full)
+        { at: 1900, patch: { cam: 'healthB' } },         // zoom into the full health bar
+        { at: 2700, patch: { showNote: true } },         // show the text
+        { at: 3100, patch: { hpB: 58, meterA: 22 } },    // THEN the bar visibly drops — the effect
       ],
-      duration: 3600,
+      note: { text: 'Each hit reduces your opponent’s health bar', x: 845, y: 100, arrow: 'up' },
+      duration: 5400,
     },
-    // Health bar callout — zoom the bar that just dropped.
-    {
-      camera: 'healthB',
-      enter: { animA: 'idle', animB: 'idle', hpB: 100 },
-      timeline: [{ at: 700, patch: { animB: 'hurt', hpB: 58 } }],
-      note: { text: 'Each hit reduces your opponent’s health bar', x: 845, y: 126, arrow: 'up' },
-      duration: 3800,
-    },
-    // Super meter — first: how it fills.
+    // Super meter — fills, then the note swaps automatically to what a full
+    // meter unlocks (no extra Next tap needed).
     {
       camera: 'meterA',
       enter: { meterA: 0 },
-      timeline: [{ at: 500, patch: { meterA: 55 } }, { at: 1700, patch: { meterA: 100 } }],
-      note: { text: 'Each hit or block builds your super meter', x: 255, y: 166, arrow: 'up' },
-      duration: 3800,
-    },
-    // Super meter — then: what a full meter unlocks.
-    {
-      camera: 'meterA',
-      enter: { meterA: 100 },
-      note: { text: 'Fill it to unleash your super', x: 255, y: 166, arrow: 'up' },
-      duration: 2600,
+      timeline: [
+        { at: 500,  patch: { meterA: 55 } },
+        { at: 1700, patch: { meterA: 100 } },
+        { at: 2700, patch: { noteText: 'Fill it to unleash your super' } },
+      ],
+      note: { text: 'Each hit or block builds your super meter', x: 255, y: 88, arrow: 'up' },
+      duration: 4600,
     },
   );
 
@@ -158,13 +155,19 @@ function buildSteps({ superKey }) {
     duration: 4000,
   });
 
-  // Stay on the KO scene (omit animB so the opponent keeps its death pose) —
-  // text-only beats: the blocked-super caution, then fighters differ, then setup.
+  // Shielded super — SHOW the cost, don't just say it: reset the scene, the
+  // opponent raises a shield, you fire your super, it's blocked, and YOUR hp drops.
+  const superAnim = superKey && superKey !== 'none' ? superKey : 'shoot';
   steps.push({
-    camera: 'superView',
-    enter: { animA: 'idle' },
-    note: { text: 'If your super is blocked by a shield, your HP drops', x: 470, y: 300, arrow: 'none' },
-    duration: 3600,
+    camera: 'full',
+    enter: { animA: 'idle', animB: 'idle', hpA: 100, hpB: 100, meterA: 100 },
+    timeline: [
+      { at: 500,  patch: { animB: 'defend_high' } },       // opponent raises a shield
+      { at: 1000, patch: { animA: superAnim, meterA: 0 } }, // you fire your super
+      { at: 2000, patch: { animA: 'hurt', hpA: 60 } },      // blocked → YOUR hp drops
+    ],
+    note: { text: 'If your super move is shielded, your HP drops', x: 550, y: 235, arrow: 'none' },
+    duration: 4200,
   });
   steps.push({
     camera: 'superView',
@@ -183,7 +186,7 @@ function buildSteps({ superKey }) {
   steps.push(
     // Strategy bar — how many you get.
     {
-      camera: 'strategy',
+      camera: 'duel',
       showSwitcher: true,
       enter: { selIdx: 0, effIdx: 0, pending: false, prog: 0 },
       note: { text: 'You can set up to 3 strategies', x: 550, y: 590, arrow: 'down' },
@@ -191,7 +194,7 @@ function buildSteps({ superKey }) {
     },
     // Strategy bar — switching live.
     {
-      camera: 'strategy',
+      camera: 'duel',
       showSwitcher: true,
       enter: { selIdx: 0, effIdx: 0, pending: false, prog: 0 },
       note: { text: 'Switch strategies mid-fight', x: 550, y: 590, arrow: 'down' },
@@ -250,6 +253,8 @@ const INITIAL_SCENE = {
   animA: 'idle', animB: 'idle', keyA: 0, keyB: 0,
   hpA: 100, hpB: 100, meterA: 0, meterB: 0,
   selIdx: 0, effIdx: 0, pending: false, prog: 0, movesLeft: 0,
+  // Timeline-drivable within a step: active camera, note visibility, note text.
+  cam: null, showNote: true, noteText: null,
 };
 
 export default function HowToPlay({ onClose, onSetup }) {
@@ -274,6 +279,8 @@ export default function HowToPlay({ onClose, onSetup }) {
   const [hintIndex, setHintIndex] = useState(null);
   const [won, setWon] = useState(false);
   const [stageReady, setStageReady] = useState(false);
+  const [portrait, setPortrait] = useState(false);   // rotate-your-phone gate
+  const [actionDone, setActionDone] = useState(false); // step's action finished → blink Next
   const [sc, setSc] = useState(INITIAL_SCENE);
 
   const step = steps[stepIndex];
@@ -284,9 +291,19 @@ export default function HowToPlay({ onClose, onSetup }) {
   const aliveRef = useRef(true);
   useEffect(() => {
     aliveRef.current = true;
-    startMusic();
+    // The walkthrough tour is silent — background music only kicks in for the
+    // interactive sample round (see startPractice). Preload clips so it's ready.
     preloadCombatClips();
     return () => { aliveRef.current = false; stopMusic(); };
+  }, []);
+
+  // The tour is designed for landscape — gate portrait phones with a rotate hint.
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: portrait) and (max-width: 900px)');
+    const onChange = () => setPortrait(mq.matches);
+    mq.addEventListener('change', onChange);
+    onChange();
+    return () => mq.removeEventListener('change', onChange);
   }, []);
 
   function applyPatch(patch) {
@@ -352,26 +369,50 @@ export default function HowToPlay({ onClose, onSetup }) {
     if (inPractice) return;
     timersRef.current.forEach(clearTimeout);
     timersRef.current = [];
-    if (step.enter) applyPatch(step.enter);
+    // Reset the per-step camera, note visibility (hidden if the step delays it),
+    // and note-text override, then apply the step's enter scene.
+    applyPatch({ cam: step.camera, showNote: !step.delayNote, noteText: null, ...(step.enter || {}) });
+    // Next stays calm while the step's action plays, then blinks once it has
+    // finished — cueing the player that they can advance.
+    setActionDone(false);
     if (stageReady) {
-      (step.timeline || []).forEach(({ at, patch }) => {
+      const tl = step.timeline || [];
+      tl.forEach(({ at, patch }) => {
         timersRef.current.push(setTimeout(() => applyPatch(patch), at));
       });
+      const lastAt = tl.reduce((m, t) => Math.max(m, t.at), 0);
+      timersRef.current.push(setTimeout(() => setActionDone(true), lastAt + 300));
     }
     return () => { timersRef.current.forEach(clearTimeout); timersRef.current = []; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, stepIndex, stageReady]);
 
-  // Tour auto-advance — stops on the last step and shows the end CTA (no loop).
+  // ── Manual step navigation (Prev / Next) ───────────────────────────────────
+  // The tour no longer auto-plays: the player steps through it one action at a
+  // time. Each step's enter/timeline still replays on arrival (see the driver
+  // effect above), so a step's little animation plays whenever it's shown.
+  const atFirst = stepIndex === 0;
+  const atLast = stepIndex === steps.length - 1;
+  function goNext() {
+    if (ended) return;
+    if (atLast) setEnded(true);
+    else setStepIndex(i => i + 1);
+  }
+  function goPrev() {
+    if (ended) { setEnded(false); return; }   // back into the tour from the end CTA
+    if (!atFirst) setStepIndex(i => i - 1);
+  }
+  // Left / right arrow keys drive the tour; ignored during the practice round.
   useEffect(() => {
-    if (inPractice || !stageReady || !step.duration) return;
-    const t = setTimeout(() => {
-      if (stepIndex < steps.length - 1) setStepIndex(stepIndex + 1);
-      else setEnded(true);
-    }, step.duration);
-    return () => clearTimeout(t);
+    if (inPractice) return;
+    const onKey = (e) => {
+      if (e.key === 'ArrowRight') { e.preventDefault(); goNext(); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, stepIndex, stageReady]);
+  }, [phase, stepIndex, ended]);
 
   // ── Practice driver ──────────────────────────────────────────────────────
   const practiceTimersRef = useRef([]);
@@ -427,6 +468,7 @@ export default function HowToPlay({ onClose, onSetup }) {
   }, [phase, practiceIdx, stageReady]);
 
   function startPractice() {
+    startMusic();   // background theme starts only for the sample round
     fightRef.current = { hpA: 100, hpB: 100, meterA: 0, meterB: 0 };
     setSc({ ...INITIAL_SCENE });
     setEnded(false);
@@ -468,39 +510,103 @@ export default function HowToPlay({ onClose, onSetup }) {
   }, []);
   const fit = frameSize.w > 0 ? Math.min(frameSize.w / DESIGN_W, frameSize.h / DESIGN_H) : 1;
 
-  // Practice always uses the full view (both fighters, bars and switcher visible).
-  const cam = framedCamera(inPractice ? CAMERAS.full : (CAMERAS[step.camera] || CAMERAS.full));
+  // Measure the note card so its projected anchor can be clamped fully inside
+  // the stage — a high-zoom step must never push it off-screen / under the header.
+  // Observe (don't measure once): a single mount-time read happens before the
+  // display font loads, so it's laid out in the fallback and mis-measured — or
+  // never re-fires and stays at the default. A ResizeObserver also re-measures
+  // when the step text length or the viewport (rotation) changes.
+  const [noteSize, setNoteSize] = useState({ w: 320, h: 64 });
+  const noteElRef = useRef(null);
+  const noteRoRef = useRef(null);
+  const noteRef = useCallback((el) => {
+    if (noteElRef.current === el) return;
+    noteRoRef.current?.disconnect();
+    noteRoRef.current = null;
+    noteElRef.current = el;
+    if (!el) return;
+    const read = () => {
+      const w = el.offsetWidth, h = el.offsetHeight;
+      if (!w || !h) return;
+      setNoteSize(s => (s.w === w && s.h === h) ? s : { w, h });
+    };
+    noteRoRef.current = new ResizeObserver(read);
+    noteRoRef.current.observe(el);
+    read();
+  }, []);
+
+  // Practice always uses the full view; otherwise the timeline-driven camera
+  // (sc.cam) can zoom mid-step, falling back to the step's base camera.
+  const camName = inPractice ? 'full' : (sc.cam || step.camera);
+  const cam = framedCamera(CAMERAS[camName] || CAMERAS.full);
   const camTx = DESIGN_W / 2 - cam.z * cam.cx;
   const camTy = DESIGN_H / 2 - cam.z * cam.cy;
 
   const showMovesCard = !inPractice && !!step.showMovesCard;
-  const tourNote = !inPractice && !showMovesCard ? step.note : null;
-  const noteScreen = tourNote && frameSize.w > 0
-    ? {
-        x: frameSize.w / 2 + fit * cam.z * (tourNote.x - cam.cx),
-        y: frameSize.h / 2 + fit * cam.z * (tourNote.y - cam.cy),
-      }
-    : null;
+  // Switcher steps render their note inside the switcher chrome; delayed-note
+  // steps keep it hidden until the timeline reveals it (sc.showNote).
+  const tourNote = (!inPractice && !showMovesCard && !step.showSwitcher && sc.showNote) ? step.note : null;
+
+  // Project the note's scene anchor to a stage pixel, then keep the whole
+  // (measured) card inside the stage with a small margin — mirrors the design
+  // tour so the caret lands on the thing it points at. `shift` anchors the card
+  // above (down-arrow), below (up-arrow) or centred (no arrow) on the anchor.
+  let notePos = null;
+  if (tourNote && frameSize.w > 0) {
+    const k = fit * cam.z, M = 14;
+    const nw = noteSize.w, nh = noteSize.h;
+    let nx = frameSize.w / 2 + k * (tourNote.x - cam.cx);
+    let ny = frameSize.h / 2 + k * (tourNote.y - cam.cy);
+    nx = Math.min(Math.max(nx, nw / 2 + M), Math.max(nw / 2 + M, frameSize.w - nw / 2 - M));
+    const a = tourNote.arrow;
+    const lo = a === 'up' ? M : (a === 'down' ? nh + M : nh / 2 + M);
+    const hi = a === 'up' ? frameSize.h - nh - M : (a === 'down' ? frameSize.h - M : frameSize.h - nh / 2 - M);
+    ny = Math.min(Math.max(ny, lo), Math.max(lo, hi));
+    notePos = { x: nx, y: ny, shift: a === 'up' ? '0%' : (a === 'down' ? '-100%' : '-50%') };
+  }
 
   const showSwitcher = inPractice || step.showSwitcher;
+  // Lift the fighters + arena up while the switcher is docked at the bottom.
+  const sceneShift = showSwitcher ? -SWITCHER_LIFT : 0;
+  const sceneShiftStyle = {
+    transform: `translateY(${sceneShift}px)`,
+    transition: 'transform 0.42s cubic-bezier(0.4, 0, 0.2, 1)',
+  };
 
   return (
     <div className="htp-overlay" role="dialog" aria-label="How to play">
-      <button className="htp-close" onClick={onClose} aria-label="Close">
-        <Icon name="close" size={18} />
-      </button>
-
-      <div className="htp-titlebar">
-        <span className="dot" />{inPractice ? 'Try It Yourself' : 'How to Play'}
+      {/* Header — progress ticks + title, skip & close. */}
+      <div className="htp-header">
+        <div className="htp-ticks">
+          {steps.map((_, idx) => (
+            <span key={idx} className={'htp-tick' + ((!inPractice && (ended || idx <= stepIndex)) ? ' on' : '')} />
+          ))}
+        </div>
+        <div className="htp-header-row">
+          <div className="htp-header-left">
+            <span className="htp-header-dot" />
+            <span className="htp-header-title">HOW TO <span className="kk">PLAY</span></span>
+          </div>
+          <div className="htp-header-right">
+            <button className="btn btn-ghost btn-sm" onClick={onClose}>
+              Skip tutorial
+              <Icon name="arrow" size={13} />
+            </button>
+            <button className="icon-btn" onClick={onClose} aria-label="Close">
+              <Icon name="close" size={15} />
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div ref={frameRef} className="htp-frame">
+      {/* Stage — the live arena, panned/zoomed per step. */}
+      <div ref={frameRef} className="htp-stage">
         <div className="htp-fit" style={{ width: DESIGN_W, height: DESIGN_H, transform: `translate(-50%, -50%) scale(${fit})` }}>
           <div
             className="htp-camera"
             style={{ width: DESIGN_W, height: DESIGN_H, transform: `translate(${camTx}px, ${camTy}px) scale(${cam.z})` }}
           >
-            <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+            <div style={{ position: 'absolute', inset: 0, zIndex: 0, ...sceneShiftStyle }}>
               <ArenaBackground seed={`${heroId}-${foeId}`} fit="cover" position="center top" />
             </div>
 
@@ -515,7 +621,7 @@ export default function HowToPlay({ onClose, onSetup }) {
               <ActionLabel action={sc.animB} side="B" size={30} />
             </div>
 
-            <div style={{ position: 'absolute', inset: 0, zIndex: 10 }}>
+            <div style={{ position: 'absolute', inset: 0, zIndex: 10, ...sceneShiftStyle }}>
               <ArenaStage
                 characterAId={heroId}
                 characterBId={foeId}
@@ -528,25 +634,48 @@ export default function HowToPlay({ onClose, onSetup }) {
                 onReady={() => setStageReady(true)}
               />
             </div>
-
-            {showSwitcher && (
-              <div className="htp-switcher">
-                <StrategySwitcher
-                  strategies={DEMO_STRATEGIES}
-                  selectedIndex={sc.selIdx}
-                  effectiveIndex={sc.effIdx}
-                  pending={sc.pending}
-                  progress={sc.prog}
-                  hintIndex={inPractice ? hintIndex : undefined}
-                  onSelect={handleSelect}
-                  disabled={false}
-                />
-              </div>
-            )}
           </div>
         </div>
 
-        {noteScreen && <SceneNote note={tourNote} x={noteScreen.x} y={noteScreen.y} />}
+        {/* Cinematic edge vignette so the scene reads as framed, not letterboxed. */}
+        <div className="htp-vignette" />
+
+        {/* Strategy switcher — fixed stage chrome (NOT inside the scaled camera),
+            so it stays a readable, tappable size on mobile. On a tour switcher
+            step the note rides above it, caret pointing down at the bar. */}
+        {showSwitcher && (
+          <div className="htp-switcher">
+            {!inPractice && step.showSwitcher && step.note && (
+              <div className="htp-switcher-note">
+                <div className="htp-note-text">{step.note.text}</div>
+                <span className="htp-note-caret down" />
+              </div>
+            )}
+            <StrategySwitcher
+              strategies={DEMO_STRATEGIES}
+              selectedIndex={sc.selIdx}
+              effectiveIndex={sc.effIdx}
+              pending={sc.pending}
+              progress={sc.prog}
+              hintIndex={inPractice ? hintIndex : undefined}
+              onSelect={handleSelect}
+              disabled={false}
+            />
+          </div>
+        )}
+
+        {/* In-scene note — anchored on the thing it explains, caret pointing at it. */}
+        {notePos && (
+          <div
+            ref={noteRef}
+            className="htp-note"
+            style={{ left: notePos.x, top: notePos.y, transform: `translate(-50%, ${notePos.shift})` }}
+          >
+            {tourNote.arrow === 'up' && <span className="htp-note-caret up" />}
+            <div className="htp-note-text">{sc.noteText || tourNote.text}</div>
+            {tourNote.arrow === 'down' && <span className="htp-note-caret down" />}
+          </div>
+        )}
 
         {/* Moves card — the same per-move DMG / SPM table from the setup page,
             shown while explaining that each fighter's numbers differ. */}
@@ -556,6 +685,19 @@ export default function HowToPlay({ onClose, onSetup }) {
             <div className="htp-movescard-body">
               <MovesPanel char={charById(heroId)} moves={BASE_MOVES} />
             </div>
+          </div>
+        )}
+
+        {/* Bottom navigation — Prev (left) · Next / Finish (right). */}
+        {!inPractice && !ended && (
+          <div className="htp-nav">
+            <button className="htp-nav-prev" onClick={goPrev} disabled={atFirst} aria-label="Previous step">
+              <Icon name="back" size={20} />
+            </button>
+            <button className={'htp-nav-next' + (actionDone ? ' pulse' : '')} onClick={goNext} aria-label={atLast ? 'Finish' : 'Next step'}>
+              {atLast ? 'Finish' : 'Next'}
+              <Icon name="arrow" size={18} />
+            </button>
           </div>
         )}
 
@@ -583,18 +725,15 @@ export default function HowToPlay({ onClose, onSetup }) {
 
         {!stageReady && <div className="htp-loading">Loading arena…</div>}
       </div>
-    </div>
-  );
-}
 
-// A small labelled callout pinned at a frame-pixel position, with a caret
-// pointing at the element it describes.
-function SceneNote({ note, x, y }) {
-  return (
-    <div className="htp-note" style={{ left: x, top: y }}>
-      {note.arrow === 'up' && <span className="htp-note-caret up" />}
-      <span className="htp-note-text">{note.text}</span>
-      {note.arrow === 'down' && <span className="htp-note-caret down" />}
+      {/* Landscape-only tutorial: block portrait phones with a rotate prompt. */}
+      {portrait && (
+        <div className="htp-rotate">
+          <Icon name="rotate" size={52} />
+          <div className="htp-rotate-title">Rotate your phone</div>
+          <div className="htp-rotate-sub">This tutorial is designed for landscape.</div>
+        </div>
+      )}
     </div>
   );
 }

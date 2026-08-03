@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Prompt Kombat</string>
+    <string name="title_activity_main">Prompt Kombat</string>
+    <string name="package_name">com.promptkombat.game</string>
+    <string name="custom_url_scheme">com.promptkombat.game</string>
+</resources>

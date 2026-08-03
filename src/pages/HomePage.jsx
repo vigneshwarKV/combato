@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Icon from '../components/design/Icons.jsx';
 import { Modal } from '../components/design/DesignKit.jsx';
@@ -25,8 +25,13 @@ export default function HomePage() {
   const [showTournament, setShowTournament] = useState(() => initialIntent === 'tournament' && isProfileReady(loadProfile()));
   const [showNeedSetup, setShowNeedSetup] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
+  // Account dropdown folded into the profile chip (settings / profile live here
+  // now that the standalone gear button is gone).
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
   // First-ever play attempt shows the How-to-Play tour instead of the usual
-  // flow. Persisted so it only happens once per browser.
+  // flow. Once seen (via any play button or the top-bar button) it's never
+  // auto-shown again. Persisted so it only happens once per browser.
   const [seenHowTo, setSeenHowTo] = useState(() => {
     try { return localStorage.getItem('pk.seenHowTo') === '1'; } catch { return false; }
   });
@@ -58,6 +63,21 @@ export default function HomePage() {
     document.body.classList.add('pk-design');
     return () => document.body.classList.remove('pk-design');
   }, []);
+
+  // Close the account menu on an outside click or Escape.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDoc = (e) => {
+      if (!menuRef.current?.contains(e.target)) setMenuOpen(false);
+    };
+    const onEsc = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onEsc);
+    };
+  }, [menuOpen]);
 
   const ready = isProfileReady(profile);
 
@@ -93,8 +113,8 @@ export default function HomePage() {
     navigate(`/room/${code}`, { state: { isHost: false, mode: '1v1' } });
   }
 
-  // Opening the tour is a user gesture — unlock audio here so the theme can
-  // start when HowToPlay mounts (and stops when it closes).
+  // Opening the tour is a user gesture — unlock audio here so the sample round's
+  // music & SFX can play later (the walkthrough tour itself is silent).
   function markHowToSeen() {
     try { localStorage.setItem('pk.seenHowTo', '1'); } catch { /* ignore */ }
     setSeenHowTo(true);
@@ -180,22 +200,46 @@ export default function HomePage() {
 
       <div className="topbar">
         <div className="topbar-brand" onClick={() => navigate('/')}>
-          <span className="dot" />
           <span>PROMPT <span className="kk">K</span>OMBAT</span>
         </div>
         <div className="topbar-spacer" />
-        <button className="btn btn-ghost btn-sm" onClick={openHowTo}>
-          <Icon name="play" size={13} />&nbsp;HOW TO PLAY
+        <button className="topbar-link" onClick={openHowTo}>
+          <Icon name="manual" size={16} />
+          How to play
         </button>
-        <button className="icon-btn" onClick={() => navigate('/setup')} aria-label="Settings">
-          <Icon name="gear" />
-        </button>
-        <div className="topbar-user" onClick={() => navigate('/setup')}>
-          <div className="avatar">{(profile.handle || '?')[0]}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+
+        <span className="topbar-div" />
+
+        <div ref={menuRef}>
+          <button
+            className={`topbar-user${menuOpen ? ' is-open' : ''}`}
+            onClick={() => setMenuOpen(o => !o)}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+          >
+            <Icon name="user" size={16} />
             <div className="name">{profile.handle}</div>
-            <div className="lvl">{profile.wins}W</div>
-          </div>
+            <span className="caret"><Icon name="caret" size={14} /></span>
+          </button>
+
+          {menuOpen && (
+            <div className="topbar-menu" role="menu">
+              <div className="topbar-menu-list">
+                <button className="topbar-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); navigate('/setup'); }}>
+                  <Icon name="user" size={16} /> Profile
+                </button>
+                <button className="topbar-menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
+                  <Icon name="trophy" size={16} /> My record
+                </button>
+                <button className="topbar-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); navigate('/setup'); }}>
+                  <Icon name="gear" size={16} /> Settings
+                </button>
+                <button className="topbar-menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
+                  <Icon name="enter" size={16} /> Sign out
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -375,7 +419,7 @@ function JoinPrivateTab({ onJoin }) {
 
 function JoinPublicTab({ onJoin }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
+    <div className="tour-public-list" style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
       {PUBLIC_TOURNAMENTS.map(t => (
         <div key={t.id} style={{
           display: 'grid', gridTemplateColumns: '12px 1fr auto auto', gap: 12, alignItems: 'center',
@@ -414,7 +458,7 @@ function HostPanel({ onHost }) {
   const canHost = trimmedName.length > 0;
   return (
     <div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div className="host-fields" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
         <Field label="Tournament Name">
           <input
             type="text"
@@ -462,7 +506,7 @@ function HostPanel({ onHost }) {
               style={{ borderLeft: '1px solid var(--line)', flex: 1 }}
               onClick={() => setVisibility('public')}>PUBLIC</button>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 6, lineHeight: 1.5 }}>
+          <div className="host-vis-note" style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 6, lineHeight: 1.5 }}>
             {visibility === 'private'
               ? 'Only players with the room code can join.'
               : 'Listed on the public tournament board. Anyone can join.'}
@@ -471,7 +515,7 @@ function HostPanel({ onHost }) {
       </div>
 
       <button
-        className="btn btn-red"
+        className="btn btn-red host-submit"
         onClick={() => canHost && onHost(trimmedName)}
         disabled={!canHost}
         style={{ width: '100%', marginTop: 22, opacity: canHost ? 1 : 0.45, cursor: canHost ? 'pointer' : 'not-allowed' }}

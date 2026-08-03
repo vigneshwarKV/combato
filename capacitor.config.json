@@ -1,0 +1,26 @@
+{
+  "appId": "com.promptkombat.game",
+  "appName": "Prompt Kombat",
+  "webDir": "dist",
+  "backgroundColor": "#050309",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "backgroundColor": "#050309",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "overlaysWebView": false,
+      "style": "DARK",
+      "backgroundColor": "#050309"
+    }
+  },
+  "android": {
+    "backgroundColor": "#050309"
+  },
+  "ios": {
+    "backgroundColor": "#050309",
+    "contentInset": "never"
+  }
+}

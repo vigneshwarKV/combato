@@ -5,7 +5,14 @@ const MOCK_AI = false;
 
 // All LLM calls go through our managed serverless proxy. The model/provider is
 // decided server-side by env (see api/_handler.js) — the client never picks one.
-const AI_ENDPOINT = '/api/ai';
+//
+// On the web this is a same-origin relative call (API_BASE = ''). Native builds
+// (Capacitor) have no local server — the webview origin is capacitor://localhost
+// / https://localhost — so the bundle must point at the deployed backend. Set
+// VITE_API_BASE (e.g. https://prompt-kombat.example.com) at build time; the proxy
+// sends permissive CORS headers so the cross-origin call from the app is allowed.
+const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
+const AI_ENDPOINT = `${API_BASE}/api/ai`;
 
 // The single move token the model uses for any character's special. Internally
 // it maps to that character's primary ultimate (see resolveSuperMove).

@@ -7,9 +7,22 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cap:add:ios": "cap add ios && npm run cap:landscape",
+    "cap:add:android": "cap add android && npm run cap:landscape",
+    "cap:landscape": "node scripts/cap-landscape.mjs",
+    "cap:sync": "cap sync && npm run cap:landscape",
+    "native:build": "vite build && npm run cap:sync",
+    "native:ios": "npm run native:build && cap open ios",
+    "native:android": "npm run native:build && cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0",
+    "@capacitor/screen-orientation": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "@gsap/react": "^2.1.2",
     "@pixi/spine-pixi": "^2.1.1",
     "@rive-app/react-canvas": "^4.28.1",
@@ -21,6 +34,7 @@
     "react-router-dom": "^7.14.2"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.0",
     "@eslint/js": "^9.39.4",
     "@tailwindcss/vite": "^4.2.2",
     "@types/react": "^19.2.14",
