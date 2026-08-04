@@ -1691,7 +1691,7 @@ body.needs-landscape .landscape-lock { display: none; }
     height: 100%;
     margin: 0;
     z-index: 0;
-    opacity: 0.5;
+    opacity: 0.9;
     pointer-events: none;
     /* Shrink the fighters for the phone backdrop. The stage is already
        width-fit at its 0.75 cap (HomeArena.jsx); this scales the whole arena
