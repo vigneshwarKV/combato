@@ -359,3 +359,38 @@ export function MovesPanel({ char, moves }) {
     </div>
   );
 }
+
+// Compact MOVE / DAMAGE table used on the setup page (fighter detail + roster)
+// and the How-to-Play move-set card. Single damage column: attacks show damage
+// dealt, the super its total, jump a dash, and the guard its recoil (▾N — what
+// an attacker loses hitting the block). `fill` stretches rows to fill a tall
+// container (the setup detail modal). Styling lives under `.su-move-*`.
+function moveRows(char) {
+  const by = k => (char.moves || []).find(m => m.key === k) || {};
+  const guard = by('defend_high').throwbackDmg ?? by('defend_low').throwbackDmg ?? 0;
+  return [
+    { name: 'Hit',        dmg: by('hit').dmg ?? 0 },
+    { name: 'Shoot',      dmg: by('shoot').dmg ?? 0 },
+    { name: 'Slide',      dmg: by('slide').dmg ?? 0 },
+    { name: 'Super Move', dmg: char.ult?.dmg ?? 0, kind: 'super' },
+    { name: 'Jump',       dmg: '—' },
+    { name: 'Defend',     dmg: '▾' + guard, kind: 'guard' },
+  ];
+}
+
+export function MovesTable({ char, fill }) {
+  return (
+    <div className={`su-move-table ${fill ? 'su-move-table--fill' : ''}`}>
+      <div className="su-move-head">
+        <span>MOVE</span>
+        <span className="right">DAMAGE</span>
+      </div>
+      {moveRows(char).map(m => (
+        <div key={m.name} className={`su-move ${m.kind === 'super' ? 'is-super' : ''}`}>
+          <span className={`su-move-name ${m.kind || ''}`}>{m.name}</span>
+          <span className={`su-move-dmg ${m.kind === 'guard' ? 'is-guard' : ''}`}>{m.dmg}</span>
+        </div>
+      ))}
+    </div>
+  );
+}

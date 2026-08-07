@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Icon from '../components/design/Icons.jsx';
 import CharacterPreview from '../components/CharacterPreview.jsx';
-import { CharSprite } from '../components/design/DesignKit.jsx';
+import { CharSprite, MovesTable } from '../components/design/DesignKit.jsx';
 import AssetPreloadModal from '../components/AssetPreloadModal.jsx';
 import {
   CHARS,
@@ -37,21 +37,6 @@ function statBars(char) {
   ];
 }
 
-// Move rows for the detail / gallery panels: damage dealt per move, the super's
-// total damage, and the guard's recoil (▾N — what an attacker loses on the block).
-function moveRows(char) {
-  const by = k => (char.moves || []).find(m => m.key === k) || {};
-  const guard = by('defend_high').throwbackDmg ?? by('defend_low').throwbackDmg ?? 0;
-  return [
-    { name: 'Hit',        dmg: by('hit').dmg ?? 0 },
-    { name: 'Shoot',      dmg: by('shoot').dmg ?? 0 },
-    { name: 'Slide',      dmg: by('slide').dmg ?? 0 },
-    { name: 'Super Move', dmg: char.ult?.dmg ?? 0, kind: 'super' },
-    { name: 'Jump',       dmg: '—' },
-    { name: 'Defend',     dmg: '▾' + guard, kind: 'guard' },
-  ];
-}
-
 function guardChip(char) {
   const by = k => (char.moves || []).find(m => m.key === k) || {};
   return '▾' + (by('defend_high').throwbackDmg ?? by('defend_low').throwbackDmg ?? 0);
@@ -83,23 +68,6 @@ function StatBars({ char }) {
             <span className="su-bar-fill" style={{ width: `${b.value}%`, background: b.color, boxShadow: `0 0 6px ${b.color}66` }} />
           </span>
           <span className="su-bar-val">{b.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function MovesTable({ char, fill }) {
-  return (
-    <div className={`su-move-table ${fill ? 'su-move-table--fill' : ''}`}>
-      <div className="su-move-head">
-        <span>MOVE</span>
-        <span className="right">DAMAGE</span>
-      </div>
-      {moveRows(char).map(m => (
-        <div key={m.name} className={`su-move ${m.kind === 'super' ? 'is-super' : ''}`}>
-          <span className={`su-move-name ${m.kind || ''}`}>{m.name}</span>
-          <span className={`su-move-dmg ${m.kind === 'guard' ? 'is-guard' : ''}`}>{m.dmg}</span>
         </div>
       ))}
     </div>
@@ -355,7 +323,7 @@ export default function CharSelectPage() {
 
           <button className="su-roster-btn" onClick={() => setPicker('switch')}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="7" height="7" /><rect x="14" y="4" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
-            FIGHTER ROSTER
+            FIGHTER COLLECTION
           </button>
         </div>
 
@@ -464,67 +432,11 @@ export default function CharSelectPage() {
 
       {/* ── Roster gallery ──────────────────────────────────────── */}
       {picker === 'switch' && (
-        <div className="su-modal-backdrop" onClick={() => setPicker(null)}>
-          <div className="su-modal su-modal--gallery" onClick={e => e.stopPropagation()}>
-            <div className="su-modal-head">
-              <div className="su-modal-title">Choose your fighter</div>
-              <div className="topbar-spacer" />
-              <button className="su-modal-x" onClick={() => setPicker(null)} aria-label="Close">
-                <Icon name="close" size={17} />
-              </button>
-            </div>
-            <div className="su-gallery-body">
-              <div className="su-gallery-grid-wrap">
-                <div className="su-gallery-grid">
-                  {CHARS.map(c => {
-                    const on = c.id === draft.charId;
-                    return (
-                      <button
-                        key={c.id}
-                        className={`su-gtile ${on ? 'is-sel' : ''} ${c.locked ? 'is-locked' : ''}`}
-                        onClick={() => { if (!c.locked) setCharId(c.id); }}
-                      >
-                        <div className="su-gtile-stage">
-                          <FighterStage char={c} />
-                        </div>
-                        <div className="su-gtile-foot">
-                          <div className="su-gtile-name">{c.name}</div>
-                          <div className="su-gtile-bars">
-                            {statBars(c).map(b => (
-                              <div className="su-gbar" key={b.label}>
-                                <span className="su-gbar-label">{b.label}</span>
-                                <span className="su-gbar-track">
-                                  <span className="su-gbar-fill" style={{ width: `${b.value}%`, background: b.color }} />
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        {c.locked && (
-                          <span className="su-gtile-lock"><Icon name="lock" size={19} /></span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="su-gallery-side">
-                <div className="su-gallery-side-head">
-                  MOVES · <span className="su-super-word" style={{ color: 'var(--cyan)' }}>{fighter.name}</span>
-                </div>
-                <div className="su-gallery-side-body">
-                  <MovesTable char={fighter} />
-                </div>
-                <div className="su-gallery-side-foot">
-                  <button className="su-gallery-confirm" onClick={() => setPicker(null)}>
-                    FIGHT AS {fighter.name.toUpperCase()}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <RosterGallery
+          initialId={draft.charId}
+          onConfirm={id => { setCharId(id); setPicker(null); }}
+          onClose={() => setPicker(null)}
+        />
       )}
 
       {/* ── Unsaved-changes prompt on HOME ──────────────────────── */}
@@ -542,6 +454,78 @@ export default function CharSelectPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Roster gallery overlay. The chosen fighter is provisional — held in local
+// state and only committed to the draft via onConfirm ("FIGHT AS …"). Closing
+// (X / backdrop / Esc) unmounts this and discards the provisional pick, so a
+// stray tap on another fighter never sticks unless the player confirms it.
+function RosterGallery({ initialId, onConfirm, onClose }) {
+  const [pick, setPick] = useState(initialId);
+  const sel = charById(pick) || charById(initialId) || PLAYABLE[0];
+  return (
+    <div className="su-modal-backdrop" onClick={onClose}>
+      <div className="su-modal su-modal--gallery" onClick={e => e.stopPropagation()}>
+        <div className="su-modal-head">
+          <div className="su-modal-title">Choose your fighter</div>
+          <div className="topbar-spacer" />
+          <button className="su-modal-x" onClick={onClose} aria-label="Close">
+            <Icon name="close" size={17} />
+          </button>
+        </div>
+        <div className="su-gallery-body">
+          <div className="su-gallery-grid-wrap">
+            <div className="su-gallery-grid">
+              {CHARS.map(c => {
+                const on = c.id === sel.id;
+                return (
+                  <button
+                    key={c.id}
+                    className={`su-gtile ${on ? 'is-sel' : ''} ${c.locked ? 'is-locked' : ''}`}
+                    onClick={() => { if (!c.locked) setPick(c.id); }}
+                  >
+                    <div className="su-gtile-stage">
+                      <FighterStage char={c} />
+                    </div>
+                    <div className="su-gtile-foot">
+                      <div className="su-gtile-name">{c.name}</div>
+                      <div className="su-gtile-bars">
+                        {statBars(c).map(b => (
+                          <div className="su-gbar" key={b.label}>
+                            <span className="su-gbar-label">{b.label}</span>
+                            <span className="su-gbar-track">
+                              <span className="su-gbar-fill" style={{ width: `${b.value}%`, background: b.color }} />
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    {c.locked && (
+                      <span className="su-gtile-lock"><Icon name="lock" size={19} /></span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="su-gallery-side">
+            <div className="su-gallery-side-head">
+              MOVES · <span className="su-super-word" style={{ color: 'var(--cyan)' }}>{sel.name}</span>
+            </div>
+            <div className="su-gallery-side-body">
+              <MovesTable char={sel} />
+            </div>
+            <div className="su-gallery-side-foot">
+              <button className="su-gallery-confirm" onClick={() => onConfirm(sel.id)}>
+                FIGHT AS {sel.name.toUpperCase()}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
