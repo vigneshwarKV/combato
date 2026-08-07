@@ -143,7 +143,7 @@ export default function HomePage() {
   const howToEl = showHowTo && (
     <HowToPlay
       onClose={() => setShowHowTo(false)}
-      onSetup={() => { setShowHowTo(false); navigate('/setup?guide=1'); }}
+      onSetup={() => { setShowHowTo(false); navigate('/setup'); }}
     />
   );
 
