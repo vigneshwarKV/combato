@@ -3039,50 +3039,59 @@ body.needs-landscape .landscape-lock { display: none; }
   inset: 0;
   z-index: 35;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  text-align: center;
   padding: 24px;
-  background: rgba(5, 3, 9, 0.72);
+  background: rgba(5, 3, 9, 0.74);
   backdrop-filter: blur(3px);
   animation: htpFade 0.25s ease-out;
 }
+
+.htp-cta-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  width: min(520px, 100%);
+  padding: 34px 34px 32px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--gold);
+  background: linear-gradient(180deg, #0d0918, #090612);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+}
+
+.htp-cta-panel.no-sub { gap: 22px; }
+
 .htp-cta-title {
   font-family: var(--f-display);
-  font-size: clamp(24px, 5vw, 40px);
+  font-size: clamp(26px, 5vw, 44px);
+  line-height: 0.98;
   letter-spacing: 0.04em;
   color: var(--gold);
   text-transform: uppercase;
+  text-shadow: 0 0 26px rgba(255, 216, 74, 0.28);
 }
 .htp-cta-sub {
-  font-size: clamp(12px, 2.6vw, 15px);
-  color: var(--ink-soft);
-  margin-bottom: 10px;
-}
-.htp-cta-btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-.htp-cta-btn {
-  padding: 11px 22px;
-  border-radius: 8px;
-  border: 1px solid var(--line-2);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--ink);
   font-family: var(--f-mono);
-  font-size: clamp(12px, 2.6vw, 14px);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s, filter 0.15s;
+  font-size: clamp(10.5px, 2.2vw, 11.5px);
+  line-height: 1.6;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
 }
-.htp-cta-btn:hover { border-color: var(--gold); color: var(--gold); }
-.htp-cta-btn.primary {
-  background: var(--gold);
-  border-color: var(--gold);
-  color: #17110a;
-  font-weight: 700;
+
+/* Trophy sits above the title; the title/sub pair becomes one block. */
+.htp-cta-head { display: flex; flex-direction: column; align-items: center; gap: 9px; }
+.htp-cta-mark { color: var(--gold); line-height: 0; }
+
+.htp-cta-btns {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
-.htp-cta-btn.primary:hover { color: #17110a; filter: brightness(1.06); }
+/* Tutorial-stage sizing for .btn — the stage is short, 22px is too tall. */
+.htp-cta-btn.btn { font-size: clamp(15px, 3vw, 19px); padding: 13px 26px; }
 
 /* Step-by-step nav overlaid on the stage: Prev (left) · Next / Finish (right). */
 .htp-nav {
@@ -3216,12 +3225,10 @@ body.needs-landscape .landscape-lock { display: none; }
   text-align: center;
 }
 .htp-movescard-body { width: 100%; }
-/* Compact the reused MovesPanel so all rows fit without scrolling. */
-.htp-movescard .eyebrow { margin-bottom: 4px !important; }
-.htp-movescard .move-head { padding-bottom: 1px; }
-.htp-movescard .move { padding: 3px 8px !important; }
-.htp-movescard .move-name { font-size: 12px; }
-.htp-movescard .move-legend { display: none !important; }
+/* Compact the shared MovesTable so all rows fit the card without scrolling. */
+.htp-movescard .su-move-head { padding: 3px 10px; }
+.htp-movescard .su-move { padding: 3px 10px; }
+.htp-movescard .su-move-name { font-size: 12px; }
 
 /* Mobile "How to Play" chip in the portrait home topbar. */
 .mh-howto {

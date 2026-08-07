@@ -4,9 +4,9 @@ import ArenaStage from './ArenaStage.jsx';
 import StatusBars from './StatusBars.jsx';
 import ActionLabel from './ActionLabel.jsx';
 import { StrategySwitcher } from './Arena.jsx';
-import { MovesPanel } from './design/DesignKit.jsx';
+import { MovesTable } from './design/DesignKit.jsx';
 import Icon from './design/Icons.jsx';
-import { loadProfile, charById, BASE_MOVES } from '../data/designData.js';
+import { loadProfile, charById } from '../data/designData.js';
 import { resolveSuperMove } from '../engine/prompts.js';
 import { resolveActions } from '../engine/damageEngine.js';
 import { computeAttackTiming } from '../engine/animResolution.js';
@@ -85,7 +85,7 @@ function buildSteps({ superKey }) {
     {
       camera: 'duel',
       enter: { animA: 'idle', animB: 'idle', hpA: 100, hpB: 100, meterA: 0, meterB: 0 },
-      note: { text: 'This is a 1-on-1 fight — build a strategy to win', x: 550, y: 225, arrow: 'none' },
+      note: { text: 'This is a 1-on-1 duel — Build strategies to win', x: 550, y: 225, arrow: 'none' },
       duration: 2800,
     },
     // Your moves — ONE step auto-plays every valid move back to back
@@ -677,13 +677,13 @@ export default function HowToPlay({ onClose, onSetup }) {
           </div>
         )}
 
-        {/* Moves card — the same per-move DMG / SPM table from the setup page,
+        {/* Moves card — the same MOVE / DAMAGE table from the setup page,
             shown while explaining that each fighter's numbers differ. */}
         {showMovesCard && (
           <div className="htp-movescard pk-design">
             <div className="htp-movescard-title">{step.note?.text}</div>
             <div className="htp-movescard-body">
-              <MovesPanel char={charById(heroId)} moves={BASE_MOVES} />
+              <MovesTable char={charById(heroId)} />
             </div>
           </div>
         )}
@@ -704,10 +704,12 @@ export default function HowToPlay({ onClose, onSetup }) {
         {/* End-of-tour CTA */}
         {ended && !inPractice && (
           <div className="htp-cta">
-            <div className="htp-cta-title">That’s the basics!</div>
-            <div className="htp-cta-btns">
-              <button className="htp-cta-btn primary" onClick={startPractice}>Play a sample round</button>
-              {onSetup && <button className="htp-cta-btn" onClick={onSetup}>Go to Settings</button>}
+            <div className="htp-cta-panel no-sub">
+              <div className="htp-cta-title">That’s the basics!</div>
+              <div className="htp-cta-btns">
+                <button className="btn htp-cta-btn" onClick={startPractice}>Play a sample round</button>
+                {onSetup && <button className="btn btn-ghost htp-cta-btn" onClick={onSetup}>Go to Settings</button>}
+              </div>
             </div>
           </div>
         )}
@@ -715,10 +717,15 @@ export default function HowToPlay({ onClose, onSetup }) {
         {/* Practice win CTA */}
         {won && (
           <div className="htp-cta">
-            <div className="htp-cta-title">You win! 🏆</div>
-            <div className="htp-cta-sub">Now build your own fighter &amp; strategies.</div>
-            <div className="htp-cta-btns">
-              {onSetup && <button className="htp-cta-btn primary" onClick={onSetup}>Set up your fighter</button>}
+            <div className="htp-cta-panel">
+              <span className="htp-cta-mark"><Icon name="trophy" size={34} /></span>
+              <div className="htp-cta-head">
+                <div className="htp-cta-title">You win!</div>
+                <div className="htp-cta-sub">Now build your own fighter &amp; strategies.</div>
+              </div>
+              <div className="htp-cta-btns">
+                {onSetup && <button className="btn htp-cta-btn" onClick={onSetup}>Set up your fighter</button>}
+              </div>
             </div>
           </div>
         )}
