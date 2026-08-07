@@ -3,6 +3,7 @@ import Icon from './design/Icons.jsx';
 import { charById } from '../data/designData.js';
 import { CHARACTERS } from '../data/characters.js';
 import { SlotSprite } from './design/DesignKit.jsx';
+import { useShortLandscape } from '../hooks/useIsPortrait.js';
 
 // A stripped-down two-seat lobby for the "Play 1v1" flow. Mechanically a 1v1 is
 // just a 2-player tournament (single final → champion), but the tournament
@@ -11,7 +12,7 @@ import { SlotSprite } from './design/DesignKit.jsx';
 // action — nothing else. Wired to the same lobby state + handlers RoomPage
 // passes to LobbyView / MobileLobby.
 
-function FighterCard({ fighter, isMe }) {
+function FighterCard({ fighter, isMe, sprite }) {
   if (!fighter) {
     return (
       <div className="duel-fighter waiting">
@@ -28,7 +29,7 @@ function FighterCard({ fighter, isMe }) {
   return (
     <div className={`duel-fighter ${isMe ? 'me' : 'opp'}`}>
       <div className="duel-portrait">
-        <SlotSprite char={designChar} width={120} height={150} />
+        <SlotSprite char={designChar} width={sprite.w} height={sprite.h} />
       </div>
       <div className="duel-role">{isMe ? 'You' : 'Opponent'}</div>
       <div className="duel-name">{fighter.name || 'Unnamed'}</div>
@@ -48,6 +49,9 @@ export function DuelResult({ champion, myPeerId, isHost, onRematch, onLeave }) {
   const engineChar = champion?.character ? CHARACTERS[champion.character] : null;
   const charName = designChar?.name || engineChar?.name || '';
 
+  const shortLandscape = useShortLandscape();
+  const sprite = shortLandscape ? { w: 130, h: 145 } : { w: 200, h: 220 };
+
   const outcome = !champion ? 'draw' : won ? 'win' : 'lose';
   const title = !champion ? 'DRAW' : won ? 'VICTORY' : 'DEFEAT';
   const sub = !champion
@@ -55,7 +59,7 @@ export function DuelResult({ champion, myPeerId, isHost, onRematch, onLeave }) {
     : won ? 'You won the duel' : `${champion.name} takes the duel`;
 
   return (
-    <div className="bg-arena">
+    <div className="bg-arena duel-page">
       <div className="spotlight-left" />
       <div className="spotlight-right" />
       <div className="tour-page" style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -68,7 +72,7 @@ export function DuelResult({ champion, myPeerId, isHost, onRematch, onLeave }) {
             <div className="duel-result-fighter">
               <div className="duel-result-glow" />
               <div className="duel-result-portrait">
-                <SlotSprite char={designChar} width={200} height={220} />
+                <SlotSprite char={designChar} width={sprite.w} height={sprite.h} />
               </div>
               <div className="duel-result-name">{champion.name}</div>
               {charName && <div className="duel-result-char">{charName.toUpperCase()}</div>}
@@ -98,7 +102,7 @@ export function DuelResult({ champion, myPeerId, isHost, onRematch, onLeave }) {
 // mounts a beat later. Keeps the 1v1 flow from flashing the tournament bracket.
 export function DuelStarting() {
   return (
-    <div className="bg-arena">
+    <div className="bg-arena duel-page">
       <div className="spotlight-left" />
       <div className="spotlight-right" />
       <div className="tour-page" style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -126,6 +130,11 @@ export default function DuelLobby({
   const iAmReady = !!me?.ready || (isHost && !!me);
   const opponentReady = !!opponent && (opponent.isHost || opponent.ready === true);
   const canStart = isHost && !!opponent && opponentReady;
+
+  // Spine fighters render into a fixed-size Pixi canvas, so CSS can't shrink
+  // them with the rest of the card — pick the box here instead.
+  const shortLandscape = useShortLandscape();
+  const sprite = shortLandscape ? { w: 104, h: 130 } : { w: 120, h: 150 };
 
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
@@ -169,12 +178,12 @@ export default function DuelLobby({
       : 'START DUEL';
 
   return (
-    <div className="bg-arena">
+    <div className="bg-arena duel-page">
       <div className="spotlight-left" />
       <div className="spotlight-right" />
 
       <div className="tour-page">
-        <div className="lobby-wrap" style={{ justifyContent: 'center', maxWidth: 900 }}>
+        <div className="lobby-wrap duel-wrap">
 
           <div className="duel-head">
             <div className="eyebrow"><span className="dot" />{statusText}</div>
@@ -182,9 +191,9 @@ export default function DuelLobby({
           </div>
 
           <div className="duel-vs">
-            <FighterCard fighter={me} isMe />
+            <FighterCard fighter={me} isMe sprite={sprite} />
             <div className="duel-mid">VS</div>
-            <FighterCard fighter={opponent} />
+            <FighterCard fighter={opponent} sprite={sprite} />
           </div>
 
           <div className="duel-foot">

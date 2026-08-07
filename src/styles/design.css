@@ -3272,6 +3272,10 @@ body.needs-landscape .landscape-lock { display: none; }
 .duel-panel .code-input { width: 100%; margin: 0; }
 .duel-cta { width: 100%; justify-content: center; margin-top: 4px; }
 
+/* The duel lobby is a short, centred face-off rather than the tall tournament
+   roster, so it narrows the shared .lobby-wrap and centres it vertically. */
+.duel-wrap { justify-content: center; max-width: 900px; }
+
 .duel-head { text-align: center; }
 .duel-head .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; }
 .duel-head .eyebrow .dot {
@@ -3352,6 +3356,67 @@ body.needs-landscape .landscape-lock { display: none; }
   .duel-actions .btn { flex: 1; }
 }
 
+/* Landscape phones — the whole duel has to fit one screen, since START/READY
+   below the fold reads as a dead lobby (the page scrolls at the body level, so
+   nothing hints there's more down there). Everything drops a size tier, the
+   fighter cards flex-shrink around a fluid portrait, and the code box shares a
+   row with the actions. Scoped to .duel-page so it out-specifies the ≤680px
+   stacking rules above, which a 667px-wide landscape phone also matches. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .duel-page { height: 100vh; height: 100dvh; min-height: 0; }
+  .duel-page .tour-page { min-height: 0; }
+
+  .duel-page .duel-wrap {
+    gap: 8px;
+    min-height: 0;
+    overflow: hidden;
+    padding:
+      max(8px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
+      max(10px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+  }
+
+  .duel-page .duel-head { flex-shrink: 0; }
+  .duel-page .duel-head .eyebrow { font-size: 9px; letter-spacing: 0.16em; }
+  .duel-page .duel-head .lobby-title { font-size: 22px; margin-top: 1px; }
+
+  /* max-height keeps the cards compact tiles instead of stretching them over
+     every spare pixel of a 390px-tall screen; the wrap centres the slack. */
+  .duel-page .duel-vs {
+    flex: 1 1 auto; min-height: 0; max-height: 210px;
+    flex-direction: row; align-items: stretch; gap: 12px;
+  }
+  .duel-page .duel-fighter {
+    width: auto; max-width: 210px; min-height: 0;
+    justify-content: flex-end; gap: 2px;
+    padding: 8px 12px 10px;
+  }
+  /* Fluid portrait: it absorbs whatever height is left after the labels, so a
+     375px-tall screen shrinks the sprite instead of pushing the footer down. */
+  .duel-page .duel-portrait { flex: 1 1 auto; height: auto; min-height: 34px; margin-bottom: 2px; }
+  .duel-page .duel-portrait .char-preview-canvas,
+  .duel-page .duel-portrait .char-preview-canvas canvas {
+    max-width: 100%; max-height: 100%;
+  }
+  .duel-page .duel-role { font-size: 9px; letter-spacing: 0.18em; }
+  .duel-page .duel-name { font-size: 17px; }
+  .duel-page .duel-ready { font-size: 9px; gap: 5px; margin-top: 3px; }
+  .duel-page .duel-ready .dot-on,
+  .duel-page .duel-ready .pulse { width: 6px; height: 6px; }
+  .duel-page .duel-mid { align-self: center; font-size: 24px; }
+
+  .duel-page .duel-foot {
+    flex-direction: row; flex-wrap: nowrap; align-items: center;
+    gap: 14px; margin-top: 0; flex-shrink: 0;
+  }
+  .duel-page .duel-foot .code-box { width: auto; min-width: 0; padding: 5px 12px 7px; }
+  .duel-page .duel-foot .code-box .lbl { font-size: 8px; letter-spacing: 0.2em; }
+  .duel-page .duel-foot .code-box .code { font-size: 18px; letter-spacing: 0.14em; margin-top: 1px; gap: 8px; }
+  .duel-page .duel-foot .code-box .copy-btn { width: 22px; height: 22px; }
+  .duel-page .duel-actions { width: auto; flex-wrap: nowrap; gap: 8px; }
+  .duel-page .duel-actions .btn { flex: 0 0 auto; min-width: 0; font-size: 13px; padding: 9px 16px; gap: 6px; }
+  .duel-page .duel-actions .btn.btn-sm { font-size: 11px; padding: 7px 12px; }
+}
+
 /* ─── 1v1 duel result (replaces tournament champion screen) ────────── */
 
 .duel-result {
@@ -3409,4 +3474,34 @@ body.needs-landscape .landscape-lock { display: none; }
   .duel-result-glow { width: 220px; height: 220px; }
   .duel-result-actions { width: 100%; }
   .duel-result-actions .btn { flex: 1; }
+}
+
+/* Landscape phones — same one-screen rule as the lobby: REMATCH / LEAVE stay
+   visible without scrolling. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .duel-page .duel-result {
+    gap: 2px; padding: 8px 20px; justify-content: center;
+    max-height: 100vh; max-height: 100dvh;
+  }
+  .duel-page .duel-result-eyebrow { font-size: 9px; letter-spacing: 0.2em; }
+  /* dvh-scaled so a 320px-tall browser (landscape phone with Safari chrome up)
+     shrinks the portrait instead of clipping the title off the top. */
+  .duel-page .duel-result-title { font-size: clamp(26px, 9dvh, 34px); margin: 0; }
+  .duel-page .duel-result-sub { font-size: 11px; margin-bottom: 0; }
+  .duel-page .duel-result-fighter { margin-top: 0; }
+  .duel-page .duel-result-portrait {
+    height: clamp(96px, 38dvh, 145px); width: auto; aspect-ratio: 1;
+  }
+  .duel-page .duel-result-portrait .char-preview-canvas,
+  .duel-page .duel-result-portrait .char-preview-canvas canvas {
+    max-width: 100%; max-height: 100%;
+  }
+  .duel-page .duel-result-glow {
+    width: clamp(120px, 46dvh, 170px); height: clamp(120px, 46dvh, 170px);
+  }
+  .duel-page .duel-result-name { font-size: 20px; margin-top: 2px; }
+  .duel-page .duel-result-char { font-size: 9px; }
+  .duel-page .duel-result-actions { width: auto; margin-top: 10px; gap: 10px; flex-wrap: nowrap; }
+  .duel-page .duel-result-actions .btn { flex: 0 0 auto; min-width: 0; font-size: 13px; padding: 9px 16px; gap: 6px; }
+  .duel-page .duel-result-hint { font-size: 9px; margin-top: 6px; }
 }
