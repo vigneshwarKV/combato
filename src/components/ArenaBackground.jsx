@@ -23,6 +23,15 @@ function pickRandom() {
   return BACKGROUNDS[Math.floor(Math.random() * BACKGROUNDS.length)];
 }
 
+const backgroundUrl = (slug) => `/assets/backgrounds/PNG/${slug}.png`;
+
+// The URL a deterministic (non-random) mount will resolve to, so a caller can
+// warm exactly that one image instead of all seven. Used by the pre-fight
+// warm-up for the how-to-play tour's fixed seed.
+export function backgroundUrlForSeed(seed) {
+  return backgroundUrl(pickBySeed(seed));
+}
+
 /**
  * Renders a single full-scene battle background. Each background is one image
  * stored directly at /assets/backgrounds/PNG/<slug>.png.
@@ -54,7 +63,7 @@ export default function ArenaBackground({ seed = 'default', random = false, fit 
 
   const seededSlug = useMemo(() => pickBySeed(seed), [seed]);
   const slug = random ? randomSlug : seededSlug;
-  const src = `/assets/backgrounds/PNG/${slug}.png`;
+  const src = backgroundUrl(slug);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'visible' }}>
