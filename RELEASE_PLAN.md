@@ -1,12 +1,13 @@
 # Combato — Release Plan
 
-_Last updated: 2026-06-16_
+_Last updated: 2026-08-08_
 
 ## Current state
 
 - **Frontend only.** React 19 + Pixi.js renderer, PeerJS P2P multiplayer (room codes), serverless `/api/ai` proxy.
 - **No backend, no database, no auth, no metering.** The `/api/ai` endpoint is open — anyone can call it and burn your LLM budget.
 - The proxy already has a placeholder: `// FUTURE: credit check + decrement here` — this is where the credit system plugs in.
+- **Multiplayer is broken for most real-world networks** — no TURN relay. Diagnosed and verified; see P0 #7. Deferred on purpose, since the backend work may remove P2P entirely.
 
 The two features you named (login, watch-ad credits) both depend on infrastructure that doesn't exist yet: a backend with user accounts and a credits ledger. So the work below is sequenced around that.
 
@@ -43,6 +44,32 @@ Today `/api/ai` is unauthenticated and uncapped — a single bad actor can run u
 - Cookie/consent banner, GDPR/CCPA basics.
 - Age gate / content rating.
 
+### 7. Multiplayer connectivity — no TURN relay
+
+`PEER_CONFIG` in `src/engine/peerEngine.js` is STUN-only. STUN gets peers through
+cooperative routers but never symmetric NAT / CGNAT (mobile carriers, corporate
+wifi, VPNs) — those joiners hang on "Connecting…" forever. Passing `config` also
+replaces PeerJS's bundled TURN servers, which are dead anyway
+(`eu-0/us-0.turn.peerjs.com` no longer resolve); `stun:global.stun.twilio.com` is
+dead too (ICE error 701).
+
+Not a regression — the config is unchanged since `0d8cc27`. What changed is reach:
+alpha users on their own networks, and the native build on carrier networks.
+Verified by driving two browsers through the duel flow — baseline hung, adding a
+local coturn TURN server (nothing else changed) connected cleanly.
+
+**Deferred** — the backend may remove P2P entirely. Decide first: keep P2P and buy
+TURN (no free anonymous relay exists; `VITE_*` vars are build-time), or go
+server-authoritative and relay moves over WebSocket, which also closes the
+host-is-authoritative trust hole.
+
+Ship the connection watchdog either way — PeerJS ignores the `disconnected` ICE
+state and there's no timeout on `conn.on('open')`, so failures surface no error.
+
+**VPN breaks local testing.** Chrome picks the tunnel interface for ICE, so two
+tabs on one machine both advertise the tunnel address and packets exit via the VPN
+instead of hairpinning back. Confirmed working with the VPN off.
+
 ---
 
 ## P1 — Monetization & retention (ship shortly after launch)
@@ -68,7 +95,8 @@ Current multiplayer is room-code only. A "Quick Match" needs a lightweight lobby
 
 ### 11. Production hardening
 - Remove debug `console.log`s in `api/_handler.js`.
-- P2P disconnect/reconnect handling and graceful match recovery.
+- P2P disconnect/reconnect handling and graceful match recovery. See P0 #7 — a
+  joiner also hangs on `peer-unavailable` (bad code, host left) with no retry.
 - Error tracking (Sentry) + analytics funnel (signup → first match → purchase).
 - LLM cost dashboard.
 
@@ -99,3 +127,5 @@ Current multiplayer is room-code only. A "Quick Match" needs a lightweight lobby
 - **Platform:** web/PWA only, or also native app stores? (Changes auth, ads, and payment choices.)
 - **Monetization model:** ads-only, credits + IAP, or subscription?
 - **Backend choice:** managed (Supabase/Firebase) for speed, or custom Node API?
+- **Match transport:** keep PeerJS P2P (TURN mandatory — P0 #7), or move match
+  hosting to the backend? Decide before paying for a relay.

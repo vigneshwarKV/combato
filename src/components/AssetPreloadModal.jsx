@@ -32,7 +32,7 @@ export default function AssetPreloadModal({ done = 0, total = 0, status = 'loadi
         <p style={{ color: 'var(--ink-soft)', fontSize: 13, margin: '0 0 4px', lineHeight: 1.5 }}>
           {isError
             ? 'Check your connection and retry, or continue — anything missing will load during the fight.'
-            : 'Loading every fighter, sound and effect once so battles run without stutter.'}
+            : 'Loading every fighter, sound and effects'}
         </p>
 
         <div style={BAR_TRACK}>

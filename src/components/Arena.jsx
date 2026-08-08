@@ -189,8 +189,10 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
       // plus room for the fixed strategy switcher bar when it's visible, so the
       // fighters sit ABOVE it rather than being clipped by it. The switcher is
       // more compact on short/narrow (mobile) viewports, so reserve less there.
+      // Compact keeps a slightly taller reserve than the bar itself because the
+      // mobile bar is lifted ~14px off the bottom edge (see wrestling.css).
       const isCompact = window.innerWidth <= 820 || window.innerHeight <= 480;
-      const switcherClearance = showSwitcher ? (isCompact ? 48 : 64) : 0;
+      const switcherClearance = showSwitcher ? (isCompact ? 62 : 64) : 0;
       const padBottom = window.innerHeight * 0.04 + switcherClearance;
       setBottomPad(padBottom);
       const h = el.clientHeight - padBottom;
@@ -380,9 +382,12 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
 
       {/* Stage — the background is a single full-scene image that fills the
           arena (`cover`). It's anchored to the top so the sky/horizon stays in
-          frame; the clip happens at the bottom (where the ground continues). */}
+          frame; the clip happens at the bottom (where the ground continues).
+          On mobile landscape the arena is very short, so the scene is nudged
+          up a little to bring the horizon closer to the fighters' feet. */}
       <div ref={stageWrapperRef} className="flex-1 relative min-h-0 overflow-hidden">
-        <ArenaBackground seed={bgSeed} random={randomBackground} fit="cover" position="center top">
+        <ArenaBackground seed={bgSeed} random={randomBackground} fit="cover"
+                         position="center top" positionCompact="center -6vh">
 
           {/* Status bars */}
           <div style={{
