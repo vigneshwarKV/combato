@@ -1510,10 +1510,12 @@ body {
   white-space: nowrap;
 }
 
-/* Compact switcher on small / short (mobile-landscape) arenas. */
+/* Compact switcher on small / short (mobile-landscape) arenas. Lifted off the
+   bottom edge (plus the home-indicator inset) so the bar clears the gesture bar
+   and sits within easy thumb reach instead of hugging the screen edge. */
 @media (max-width: 820px), (max-height: 480px) {
   .strategy-switcher {
-    bottom: 2px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
     padding: 4px 6px;
     border-radius: 8px;
   }

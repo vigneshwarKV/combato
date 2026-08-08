@@ -25,6 +25,24 @@ function pickRandom() {
 
 const backgroundUrl = (slug) => `/assets/backgrounds/PNG/${slug}.png`;
 
+// Same breakpoint the compact arena chrome uses (see wrestling.css): short or
+// narrow viewports, i.e. phones in landscape.
+const COMPACT_MQ = '(max-width: 820px), (max-height: 480px)';
+
+function useCompactViewport() {
+  const [compact, setCompact] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(COMPACT_MQ).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(COMPACT_MQ);
+    const onChange = () => setCompact(mq.matches);
+    onChange();                       // catch a rotate that happened pre-mount
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return compact;
+}
+
 // The URL a deterministic (non-random) mount will resolve to, so a caller can
 // warm exactly that one image instead of all seven. Used by the pre-fight
 // warm-up for the how-to-play tour's fixed seed.
@@ -48,8 +66,13 @@ export function backgroundUrlForSeed(seed) {
  *   position: backgroundPosition — which part to keep in frame when 'cover'
  *        crops (e.g. 'center top' keeps the sky, clips the bottom). Defaults
  *        to 'center bottom'.
+ *   positionCompact: optional backgroundPosition used instead of `position` on
+ *        short/narrow (mobile-landscape) viewports, where the scene needs a
+ *        different crop than on desktop. Omit to use `position` everywhere.
+ *        Only meaningful when the element is viewport-sized — don't pass it
+ *        from a fixed-size design surface that's CSS-scaled.
  */
-export default function ArenaBackground({ seed = 'default', random = false, fit = 'cover', position = 'center bottom', children }) {
+export default function ArenaBackground({ seed = 'default', random = false, fit = 'cover', position = 'center bottom', positionCompact = null, children }) {
   // Random mode: roll once on mount, then re-roll whenever the fight (seed)
   // changes so each match gets a fresh background but it's stable mid-fight.
   const [randomSlug, setRandomSlug] = useState(() => pickRandom());
@@ -65,6 +88,9 @@ export default function ArenaBackground({ seed = 'default', random = false, fit 
   const slug = random ? randomSlug : seededSlug;
   const src = backgroundUrl(slug);
 
+  const compact = useCompactViewport();
+  const bgPosition = (compact && positionCompact) || position;
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'visible' }}>
       <div
@@ -73,7 +99,7 @@ export default function ArenaBackground({ seed = 'default', random = false, fit 
           inset: 0,
           backgroundImage: `url(${src})`,
           backgroundSize: fit,
-          backgroundPosition: position,
+          backgroundPosition: bgPosition,
           backgroundRepeat: 'no-repeat',
         }}
       />

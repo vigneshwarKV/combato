@@ -12,14 +12,16 @@ import { useShortLandscape } from '../hooks/useIsPortrait.js';
 // action — nothing else. Wired to the same lobby state + handlers RoomPage
 // passes to LobbyView / MobileLobby.
 
+// A seat is a fixed three-row panel — head (role + character), portrait, foot
+// (ring name + ready chip). Fixed rows mean the two cards line up regardless of
+// how long either ring name is.
 function FighterCard({ fighter, isMe, sprite }) {
+  // `me` is null for the first frame or two after a joiner connects, before the
+  // host's lobbyState lands.
   if (!fighter) {
     return (
-      <div className="duel-fighter waiting">
-        <div className="duel-portrait" />
-        <div className="duel-role">Opponent</div>
-        <div className="duel-name muted">Waiting…</div>
-        <div className="duel-ready pend"><span className="pulse" />NOT HERE YET</div>
+      <div className="duel-seat duel-seat-empty">
+        <div className="duel-waiting-label">TAKING YOUR SEAT</div>
       </div>
     );
   }
@@ -27,14 +29,48 @@ function FighterCard({ fighter, isMe, sprite }) {
   const ready = fighter.isHost || fighter.ready === true;
 
   return (
-    <div className={`duel-fighter ${isMe ? 'me' : 'opp'}`}>
+    <div className={`duel-seat ${isMe ? 'me' : 'opp'} ${ready ? 'is-ready' : ''}`}>
+      <div className="duel-seat-head">
+        <span className="duel-role">
+          {isMe
+            ? (fighter.isHost ? 'YOU · HOST' : 'YOU')
+            : (fighter.isHost ? 'OPPONENT · HOST' : 'OPPONENT')}
+        </span>
+        <span className="duel-char">{(designChar?.name || '').toUpperCase()}</span>
+      </div>
       <div className="duel-portrait">
         <SlotSprite char={designChar} width={sprite.w} height={sprite.h} />
       </div>
-      <div className="duel-role">{isMe ? 'You' : 'Opponent'}</div>
-      <div className="duel-name">{fighter.name || 'Unnamed'}</div>
-      <div className={`duel-ready ${ready ? 'on' : 'pend'}`}>
-        <span className={ready ? 'dot-on' : 'pulse'} />{ready ? 'READY' : 'NOT READY'}
+      <div className="duel-seat-foot">
+        <span className="duel-name">{fighter.name || 'Unnamed'}</span>
+        <span className={`duel-ready ${ready ? 'on' : 'pend'}`}>
+          <span className={ready ? 'dot-on' : 'pulse'} />{ready ? 'READY' : 'NOT READY'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// The empty second seat. The room code lives here rather than in the footer,
+// because the code is *how this seat gets filled* — and it should vanish the
+// moment the opponent arrives, which it does for free.
+function WaitingSeat({ matchCode, copied, shared, onCopy, onShare }) {
+  return (
+    <div className="duel-seat duel-seat-empty">
+      <div className="duel-waiting-label">WAITING FOR OPPONENT</div>
+      <div className="code-box duel-code">
+        <div className="lbl">Share this code</div>
+        <div className="code">
+          {matchCode}
+          <div className="code-actions">
+            <button className="copy-btn" onClick={onCopy} title={copied ? 'Copied!' : 'Copy code'}>
+              <Icon name={copied ? 'check' : 'copy'} size={14} />
+            </button>
+            <button className="copy-btn" onClick={onShare} title={shared ? 'Link copied!' : 'Share invite link'}>
+              <Icon name={shared ? 'check' : 'share'} size={14} />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -163,81 +199,62 @@ export default function DuelLobby({
     }
   }
 
+  // One line, and only when it says something the seats don't already say. The
+  // empty seat reads "WAITING FOR OPPONENT" and carries the code; the ready
+  // chips read READY / NOT READY.
   const statusText = !connected
     ? (error || 'Connecting…')
     : isHost
-      ? (opponent ? 'Opponent joined — start when ready' : 'Share the code to invite your opponent')
-      : opponent?.name
-        ? `Facing ${opponent.name} · tap ready`
-        : 'Joined the duel · tap ready';
-
-  const hostStartLabel = !opponent
-    ? 'WAITING FOR OPPONENT'
-    : !opponentReady
-      ? 'WAITING FOR READY'
-      : 'START DUEL';
+      ? (opponent && !opponentReady ? `Waiting for ${opponent.name || 'opponent'}` : '')
+      : iAmReady ? 'Waiting for host to start' : '';
 
   return (
-    <div className="bg-arena duel-page">
+    <div className="bg-arena duel-page duel-page-lobby">
       <div className="spotlight-left" />
       <div className="spotlight-right" />
 
-      <div className="tour-page">
-        <div className="lobby-wrap duel-wrap">
+      <div className="duel-room">
+        <header className="duel-bar">
+          <span className="dot" />
+          <span className="duel-bar-title">1V1 <span className="accent">DUEL</span></span>
+          {statusText && <span className="duel-bar-status">{statusText}</span>}
+          <span className="duel-bar-spacer" />
+          <button className="duel-bar-btn" onClick={onLeave}>
+            <Icon name={isHost ? 'close' : 'back'} size={12} />
+            {isHost ? 'CANCEL DUEL' : 'LEAVE'}
+          </button>
+        </header>
 
-          <div className="duel-head">
-            <div className="eyebrow"><span className="dot" />{statusText}</div>
-            <h1 className="lobby-title">1v1 <span className="accent">Duel</span></h1>
-          </div>
-
-          <div className="duel-vs">
-            <FighterCard fighter={me} isMe sprite={sprite} />
-            <div className="duel-mid">VS</div>
-            <FighterCard fighter={opponent} sprite={sprite} />
-          </div>
-
-          <div className="duel-foot">
-            <div className="code-box">
-              <div className="lbl">{isHost ? 'Share this code' : 'Room code'}</div>
-              <div className="code">
-                {matchCode}
-                <div className="code-actions">
-                  <button className="copy-btn" title={copied ? 'Copied!' : 'Copy code'} onClick={copyCode}>
-                    <Icon name={copied ? 'check' : 'copy'} size={14} />
-                  </button>
-                  <button className="copy-btn" title={shared ? 'Link copied!' : 'Share invite link'} onClick={shareLink}>
-                    <Icon name={shared ? 'check' : 'share'} size={14} />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="duel-actions">
-              {isHost ? (
-                <>
-                  <button className="btn btn-red" onClick={onStart} disabled={!canStart}
-                          style={!canStart ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}>
-                    <Icon name="play" size={14} />&nbsp;{hostStartLabel}
-                  </button>
-                  <button className="btn btn-sm btn-ghost" onClick={onLeave}>
-                    <Icon name="close" size={12} />&nbsp;CANCEL
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button className={iAmReady ? 'btn btn-cyan' : 'btn'} onClick={() => onToggleReady?.(!iAmReady)}>
-                    <Icon name={iAmReady ? 'close' : 'play'} size={14} />
-                    &nbsp;{iAmReady ? 'CANCEL READY' : "I'M READY"}
-                  </button>
-                  <button className="btn btn-sm btn-ghost" onClick={onLeave}>
-                    <Icon name="back" size={12} />&nbsp;LEAVE
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
+        <div className="duel-vs">
+          <FighterCard fighter={me} isMe sprite={sprite} />
+          <div className="duel-mid"><i /><span>VS</span><i /></div>
+          {opponent
+            ? <FighterCard fighter={opponent} sprite={sprite} />
+            : <WaitingSeat matchCode={matchCode} copied={copied} shared={shared}
+                           onCopy={copyCode} onShare={shareLink} />}
         </div>
+
+        <footer className="duel-foot">
+          {/* The code only reappears down here once the waiting seat that held it
+              has been replaced by the opponent. */}
+          {opponent && (
+            <span className="duel-room-code">ROOM <b>{matchCode}</b></span>
+          )}
+          <span className="duel-bar-spacer" />
+          {isHost ? (
+            // Label stays put — `disabled` already communicates the wait, and a
+            // CTA that renames itself three times reads as a bug.
+            <button className="btn" onClick={onStart} disabled={!canStart}>
+              <Icon name="play" size={14} />&nbsp;START DUEL
+            </button>
+          ) : (
+            <button className={iAmReady ? 'btn btn-ghost' : 'btn btn-cyan'}
+                    onClick={() => onToggleReady?.(!iAmReady)}>
+              <Icon name="check" size={14} />
+              &nbsp;{iAmReady ? 'CANCEL READY' : "I'M READY"}
+            </button>
+          )}
+        </footer>
       </div>
     </div>
   );
