@@ -1,4 +1,4 @@
-# Prompt-Kombat — Game Rules
+# Combato — Game Rules
 
 ## Health & Win Condition
 

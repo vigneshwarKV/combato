@@ -9,6 +9,7 @@ import { useFightRenderer } from '../hooks/useFightRenderer.js';
 import { CHARACTERS } from '../data/characters.js';
 import { startMusic, stopMusic, toggleMusic, isMusicPlaying, onMusicChange } from '../engine/soundEngine.js';
 import { FIGHT_TIME_LIMIT_MS } from '../engine/fightEngine.js';
+import { recordStageScale } from '../engine/glDebug.js';
 
 // Top-bar music on/off toggle. Reflects whether the theme is actually playing
 // (so a cold reload, where audio isn't unlocked, shows OFF). Clicking unlocks
@@ -193,8 +194,16 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
       const padBottom = window.innerHeight * 0.04 + switcherClearance;
       setBottomPad(padBottom);
       const h = el.clientHeight - padBottom;
-      if (w <= 0 || h <= 0) return;
+      if (w <= 0 || h <= 0) {
+        // Diagnostic: bailing here silently KEEPS the previous stageScale, so a
+        // transient zero-height layout leaves a stale scale behind.
+        recordStageScale({ w, h, clientH: el.clientHeight, innerH: window.innerHeight, padBottom, s: null, bailed: true });
+        return;
+      }
       const s = Math.min(w / DESIGN_W, h / DESIGN_H, 1);
+      // padBottom is derived from window.innerHeight but subtracted from the
+      // wrapper's clientHeight — log both so we can see them diverge.
+      recordStageScale({ w, h, clientH: el.clientHeight, innerH: window.innerHeight, padBottom, s, bailed: false });
       setStageScale(s);
       setCalloutSize(Math.max(14, Math.min(28, Math.round(w / 32))));
     };

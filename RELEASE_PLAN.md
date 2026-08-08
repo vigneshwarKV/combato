@@ -1,4 +1,4 @@
-# Prompt Kombat — Release Plan
+# Combato — Release Plan
 
 _Last updated: 2026-06-16_
 
@@ -75,7 +75,7 @@ Current multiplayer is room-code only. A "Quick Match" needs a lightweight lobby
 ### 12. Distribution
 - Finish PWA (a `sw.js` exists) — installable, offline shell, app icons, social share/OG cards.
 - **Native app (Capacitor) — scaffolded.** iOS + Android wrap the same web build.
-  App ID `com.promptkombat.game`. Build runbook in [`MOBILE_BUILD.md`](MOBILE_BUILD.md).
+  App ID `com.combato.game`. Build runbook in [`MOBILE_BUILD.md`](MOBILE_BUILD.md).
   - Landscape-locked everywhere: OS-level (Info.plist / AndroidManifest via
     `scripts/cap-landscape.mjs`) + runtime `ScreenOrientation.lock` + a web
     `<LandscapeGate>` portrait overlay.

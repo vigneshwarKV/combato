@@ -9,7 +9,7 @@ const MOCK_AI = false;
 // On the web this is a same-origin relative call (API_BASE = ''). Native builds
 // (Capacitor) have no local server — the webview origin is capacitor://localhost
 // / https://localhost — so the bundle must point at the deployed backend. Set
-// VITE_API_BASE (e.g. https://prompt-kombat.example.com) at build time; the proxy
+// VITE_API_BASE (e.g. https://combato.example.com) at build time; the proxy
 // sends permissive CORS headers so the cross-origin call from the app is allowed.
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
 const AI_ENDPOINT = `${API_BASE}/api/ai`;

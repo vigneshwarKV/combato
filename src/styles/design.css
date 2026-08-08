@@ -1,5 +1,5 @@
 /* ────────────────────────────────────────────────────────────────────────────
-   PROMPT KOMBAT — Redesign theme
+   COMBATO — Redesign theme
    Dark purple-black wrestling cage × cyan AI/HUD accents × gold championship
    ──────────────────────────────────────────────────────────────────────── */
 
@@ -110,7 +110,10 @@ body.pk-design {
   font-family: var(--f-display);
   font-size: clamp(44px, 7.4vw, 92px);
   line-height: 0.86;
-  letter-spacing: 0.005em;
+  /* Bebas needs less tracking as it grows, so the hero sits below the topbar's
+     0.05em. The near-zero value it used to carry was there to keep the longer
+     two-word lockup on one line. */
+  letter-spacing: 0.03em;
   white-space: nowrap;
   text-transform: uppercase;
   color: var(--ink);
@@ -213,7 +216,10 @@ body.pk-design {
   display: flex; align-items: center;
   font-family: var(--f-display);
   font-size: 22px;
-  letter-spacing: 0.04em;
+  /* COMBATO is one 7-letter run in Bebas, which sets very tight — it needs a
+     touch more air here than the old two-word lockup did. Past 0.06em the gold
+     O starts to detach from the word. */
+  letter-spacing: 0.05em;
   color: var(--ink);
   white-space: nowrap;
   cursor: pointer;
@@ -223,6 +229,9 @@ body.pk-design {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.7); }
 }
+/* `.kk` was named for the K it used to colour in "PROMPT KOMBAT"; it is now the
+   generic gold-accent segment — the O in COMBATO here, PLAY in the how-to-play
+   header (.htp-header-title). Shared, so don't rename it for the wordmark alone. */
 .topbar-brand .kk { color: var(--gold); }
 .topbar-spacer { flex: 1; }
 .topbar-user {
@@ -1047,6 +1056,79 @@ body.pk-design {
   outline: none;
 }
 .input:focus { border-color: var(--gold); }
+
+/* ─── Fighter-name prompt ────────────────────────────────────────── */
+/* The entry gate: shown once, before anything else, when no name is stored.
+   Reuses .modal-backdrop; only the card differs — square-cornered with a gold
+   top edge instead of the notched .modal. */
+
+/* Lighter scrim than a regular modal: this one sits over the home arena on the
+   very first screen, and the point is that the player sees the game behind it.
+   The card is opaque, so the name stays legible at any scrim weight. */
+.modal-backdrop.fname-backdrop {
+  background: rgba(5, 3, 9, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.fname-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 26px;
+  width: min(440px, 100%);
+  padding: 34px 34px 30px;
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--gold);
+  background: linear-gradient(180deg, #0d0918, #090612);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+}
+
+.fname-label {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  color: var(--ink-mute);
+}
+
+/* Field is a rule, not a box — the name is typed at nameplate size. */
+.fname-field { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+
+.fname-input {
+  width: 100%;
+  padding: 2px 0 8px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--gold);
+  font-family: var(--f-display);
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-shadow: 0 0 24px rgba(255, 216, 74, 0.28);
+}
+.fname-input::placeholder { color: #4b3f6b; text-shadow: none; }
+
+/* The rule carries the focus state, so the input has no border of its own. */
+.fname-rule {
+  height: 2px;
+  background: var(--gold);
+  box-shadow: 0 0 12px rgba(255, 216, 74, 0.45);
+  opacity: 0.55;
+  transition: opacity 0.18s, box-shadow 0.18s;
+}
+.fname-field:focus-within .fname-rule { opacity: 1; }
+
+/* width:100% on an inline-flex .btn still left-aligns its label — centre it. */
+.fname-submit.btn { width: 100%; justify-content: center; font-size: 20px; padding: 14px 26px; }
+
+/* Short landscape phones: the card is the only thing on screen, but 44px Bebas
+   plus 34px padding crowds a ~300px-tall viewport. Tighten, don't reflow. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .fname-card { gap: 16px; padding: 20px 26px 18px; }
+  .fname-input { font-size: 34px; }
+  .fname-submit.btn { font-size: 16px; padding: 10px 20px; }
+}
 
 /* ─── Landscape lock ────────────────────────────────────── */
 
@@ -3272,6 +3354,10 @@ body.needs-landscape .landscape-lock { display: none; }
 .duel-panel .code-input { width: 100%; margin: 0; }
 .duel-cta { width: 100%; justify-content: center; margin-top: 4px; }
 
+/* The duel lobby is a short, centred face-off rather than the tall tournament
+   roster, so it narrows the shared .lobby-wrap and centres it vertically. */
+.duel-wrap { justify-content: center; max-width: 900px; }
+
 .duel-head { text-align: center; }
 .duel-head .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; }
 .duel-head .eyebrow .dot {
@@ -3352,6 +3438,67 @@ body.needs-landscape .landscape-lock { display: none; }
   .duel-actions .btn { flex: 1; }
 }
 
+/* Landscape phones — the whole duel has to fit one screen, since START/READY
+   below the fold reads as a dead lobby (the page scrolls at the body level, so
+   nothing hints there's more down there). Everything drops a size tier, the
+   fighter cards flex-shrink around a fluid portrait, and the code box shares a
+   row with the actions. Scoped to .duel-page so it out-specifies the ≤680px
+   stacking rules above, which a 667px-wide landscape phone also matches. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .duel-page { height: 100vh; height: 100dvh; min-height: 0; }
+  .duel-page .tour-page { min-height: 0; }
+
+  .duel-page .duel-wrap {
+    gap: 8px;
+    min-height: 0;
+    overflow: hidden;
+    padding:
+      max(8px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
+      max(10px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+  }
+
+  .duel-page .duel-head { flex-shrink: 0; }
+  .duel-page .duel-head .eyebrow { font-size: 9px; letter-spacing: 0.16em; }
+  .duel-page .duel-head .lobby-title { font-size: 22px; margin-top: 1px; }
+
+  /* max-height keeps the cards compact tiles instead of stretching them over
+     every spare pixel of a 390px-tall screen; the wrap centres the slack. */
+  .duel-page .duel-vs {
+    flex: 1 1 auto; min-height: 0; max-height: 210px;
+    flex-direction: row; align-items: stretch; gap: 12px;
+  }
+  .duel-page .duel-fighter {
+    width: auto; max-width: 210px; min-height: 0;
+    justify-content: flex-end; gap: 2px;
+    padding: 8px 12px 10px;
+  }
+  /* Fluid portrait: it absorbs whatever height is left after the labels, so a
+     375px-tall screen shrinks the sprite instead of pushing the footer down. */
+  .duel-page .duel-portrait { flex: 1 1 auto; height: auto; min-height: 34px; margin-bottom: 2px; }
+  .duel-page .duel-portrait .char-preview-canvas,
+  .duel-page .duel-portrait .char-preview-canvas canvas {
+    max-width: 100%; max-height: 100%;
+  }
+  .duel-page .duel-role { font-size: 9px; letter-spacing: 0.18em; }
+  .duel-page .duel-name { font-size: 17px; }
+  .duel-page .duel-ready { font-size: 9px; gap: 5px; margin-top: 3px; }
+  .duel-page .duel-ready .dot-on,
+  .duel-page .duel-ready .pulse { width: 6px; height: 6px; }
+  .duel-page .duel-mid { align-self: center; font-size: 24px; }
+
+  .duel-page .duel-foot {
+    flex-direction: row; flex-wrap: nowrap; align-items: center;
+    gap: 14px; margin-top: 0; flex-shrink: 0;
+  }
+  .duel-page .duel-foot .code-box { width: auto; min-width: 0; padding: 5px 12px 7px; }
+  .duel-page .duel-foot .code-box .lbl { font-size: 8px; letter-spacing: 0.2em; }
+  .duel-page .duel-foot .code-box .code { font-size: 18px; letter-spacing: 0.14em; margin-top: 1px; gap: 8px; }
+  .duel-page .duel-foot .code-box .copy-btn { width: 22px; height: 22px; }
+  .duel-page .duel-actions { width: auto; flex-wrap: nowrap; gap: 8px; }
+  .duel-page .duel-actions .btn { flex: 0 0 auto; min-width: 0; font-size: 13px; padding: 9px 16px; gap: 6px; }
+  .duel-page .duel-actions .btn.btn-sm { font-size: 11px; padding: 7px 12px; }
+}
+
 /* ─── 1v1 duel result (replaces tournament champion screen) ────────── */
 
 .duel-result {
@@ -3409,4 +3556,34 @@ body.needs-landscape .landscape-lock { display: none; }
   .duel-result-glow { width: 220px; height: 220px; }
   .duel-result-actions { width: 100%; }
   .duel-result-actions .btn { flex: 1; }
+}
+
+/* Landscape phones — same one-screen rule as the lobby: REMATCH / LEAVE stay
+   visible without scrolling. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .duel-page .duel-result {
+    gap: 2px; padding: 8px 20px; justify-content: center;
+    max-height: 100vh; max-height: 100dvh;
+  }
+  .duel-page .duel-result-eyebrow { font-size: 9px; letter-spacing: 0.2em; }
+  /* dvh-scaled so a 320px-tall browser (landscape phone with Safari chrome up)
+     shrinks the portrait instead of clipping the title off the top. */
+  .duel-page .duel-result-title { font-size: clamp(26px, 9dvh, 34px); margin: 0; }
+  .duel-page .duel-result-sub { font-size: 11px; margin-bottom: 0; }
+  .duel-page .duel-result-fighter { margin-top: 0; }
+  .duel-page .duel-result-portrait {
+    height: clamp(96px, 38dvh, 145px); width: auto; aspect-ratio: 1;
+  }
+  .duel-page .duel-result-portrait .char-preview-canvas,
+  .duel-page .duel-result-portrait .char-preview-canvas canvas {
+    max-width: 100%; max-height: 100%;
+  }
+  .duel-page .duel-result-glow {
+    width: clamp(120px, 46dvh, 170px); height: clamp(120px, 46dvh, 170px);
+  }
+  .duel-page .duel-result-name { font-size: 20px; margin-top: 2px; }
+  .duel-page .duel-result-char { font-size: 9px; }
+  .duel-page .duel-result-actions { width: auto; margin-top: 10px; gap: 10px; flex-wrap: nowrap; }
+  .duel-page .duel-result-actions .btn { flex: 0 0 auto; min-width: 0; font-size: 13px; padding: 9px 16px; gap: 6px; }
+  .duel-page .duel-result-hint { font-size: 9px; margin-top: 6px; }
 }

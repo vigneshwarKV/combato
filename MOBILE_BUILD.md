@@ -1,6 +1,6 @@
-# Prompt Kombat — Native Mobile Build (iOS + Android)
+# Combato — Native Mobile Build (iOS + Android)
 
-Prompt Kombat ships to the App Store and Play Store as a **Capacitor** wrapper
+Combato ships to the App Store and Play Store as a **Capacitor** wrapper
 around the exact same web build. The web bundle (`dist/`) is loaded from inside a
 native WebView; only a thin native shell (orientation lock, status bar, splash)
 is added on top.
@@ -126,7 +126,7 @@ This generates every required icon/splash size for both platforms.
 
 ## Store submission checklist (see also `RELEASE_PLAN.md` P0)
 
-- App ID: **`com.promptkombat.game`** (set in `capacitor.config.json`).
+- App ID: **`com.combato.game`** (set in `capacitor.config.json`).
 - Privacy policy + Terms URLs (required by both stores — RELEASE_PLAN #6).
 - Apple: sign in with a paid Apple Developer account; Apple OAuth required if you
   add "Sign in with Google" (RELEASE_PLAN #3).

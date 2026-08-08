@@ -227,3 +227,25 @@ export function destroyFighterSprite(sprite) {
   }
   try { sprite.destroy?.({ children: true, texture: false, textureSource: false }); } catch { /* ignore */ }
 }
+
+/**
+ * Destroy a PIXI Application at most once, and never throw.
+ *
+ * ArenaStage and CharacterPreview both init their app asynchronously and have
+ * several abort paths — React cleanup, a cancelled mount, a failed load — that
+ * can each reach a destroy. Whichever runs second used to throw, because
+ * Application.destroy dereferences a renderer the first call already nulled.
+ * The throw landed in the init catch and logged a spurious "init failed".
+ */
+export function destroyApp(app, options = { children: true }) {
+  if (!app || app.__pkDestroyed) return;
+  try {
+    app.destroy(true, options);
+    app.__pkDestroyed = true;
+  } catch {
+    // Almost always "destroy before init() resolved" — the renderer isn't there
+    // yet. Deliberately leave the flag unset: the init continuation checks its
+    // cancelled flag and calls us again, and THAT call must actually run or the
+    // Application (and its WebGL context) leaks.
+  }
+}

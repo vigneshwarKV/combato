@@ -1,4 +1,4 @@
-# Prompt-Kombat — Game Overview
+# Combato — Game Overview
 
 ## What It Is
 
