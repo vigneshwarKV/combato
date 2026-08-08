@@ -5,10 +5,12 @@ import DevPage from './pages/DevPage.jsx';
 import BotMatchPage from './pages/BotMatchPage.jsx';
 import CharSelectPage from './pages/CharSelectPage.jsx';
 import { LandscapeGate } from './components/LandscapeGate.jsx';
+import GlDebugOverlay from './components/GlDebugOverlay.jsx';
 
 export default function App() {
   return (
     <LandscapeGate>
+      <GlDebugOverlay />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/setup" element={<CharSelectPage />} />

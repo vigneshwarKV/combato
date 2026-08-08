@@ -7,6 +7,7 @@ import { CHARACTERS, METER } from '../data/characters.js';
 import { resolveActions, validActionsForCharacter } from '../engine/damageEngine.js';
 import { computeAttackTiming } from '../engine/animResolution.js';
 import { planCombatSounds, playCombatPlan, preloadCombatClips } from '../engine/combatSounds.js';
+import StressHarness from '../components/StressHarness.jsx';
 
 const CHARACTER_LIST = Object.values(CHARACTERS);
 
@@ -142,7 +143,25 @@ function FighterPanel({ side, charId, onCharChange, onSelect, selectedAction }) 
   );
 }
 
+// `?stress=N` swaps DevPage for the mount/unmount repro harness (see
+// StressHarness.jsx). Split into two components so neither one calls hooks
+// conditionally.
 export default function DevPage() {
+  const q = new URLSearchParams(window.location.search);
+  const n = parseInt(q.get('stress'), 10);
+  if (Number.isFinite(n) && n > 0) {
+    return (
+      <StressHarness
+        cycles={n}
+        maxHold={parseInt(q.get('hold'), 10) || 700}
+        pool={q.get('pool') || 'spine'}
+      />
+    );
+  }
+  return <DevSandbox />;
+}
+
+function DevSandbox() {
   const [charAId, setCharAId] = useState('monkey');
   const [charBId, setCharBId] = useState('gunBoy');
 

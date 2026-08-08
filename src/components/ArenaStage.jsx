@@ -6,7 +6,17 @@ import {
   loadFrames,
   playAnimation,
   applyScale,
+  destroyFighterSprite,
+  destroyApp,
 } from '../engine/spritePlayer.js';
+import { trackApp, untrackApp, logEvent, registerFighterProbe, setArenaActive } from '../engine/glDebug.js';
+import { isPreloaded } from '../engine/assetPreloader.js';
+
+// How many times we'll rebuild the renderer after a browser-initiated context
+// loss before showing an error instead. Repeated losses mean the page is over
+// the WebGL context budget, and spinning up yet another context would just
+// evict someone else's.
+const MAX_CONTEXT_REBUILDS = 3;
 
 /**
  * One Pixi.js Application that hosts BOTH fighters in a single canvas.
@@ -46,6 +56,13 @@ export default function ArenaStage({
   const fighterBRef = useRef(null);
   const [loadError, setLoadError] = useState(null);
 
+  // Bumping rebuildKey re-runs the init effect, tearing down the dead renderer
+  // and building a fresh one. rebuildRef caps the retries so a context that
+  // keeps dying can't spin forever.
+  const [rebuildKey, setRebuildKey] = useState(0);
+  const rebuildRef = useRef(0);
+  const cleanupCanvasRef = useRef(null);
+
   const charA = CHARACTERS[characterAId];
   const charB = CHARACTERS[characterBId];
 
@@ -76,6 +93,7 @@ export default function ArenaStage({
 
     const app = new PIXI.Application();
     appRef.current = app;
+    trackApp(app, 'ArenaStage');
 
     (async () => {
       try {
@@ -86,14 +104,75 @@ export default function ArenaStage({
           antialias: true,
           preference: 'webgl',
         });
-        if (cancelled) { app.destroy(true); return; }
+        if (cancelled) { untrackApp(app); destroyApp(app); return; }
         containerRef.current?.appendChild(app.canvas);
+
+        // A context we did not ask to lose (browser eviction under the per-page
+        // cap, or mobile memory pressure). Pixi 8.13 only auto-restores losses
+        // it forced itself, so without this the canvas is dead for the rest of
+        // the match while every DOM layer keeps painting — fighters simply gone.
+        // Rebuilding the whole Application is cheap here: the textures are all
+        // still in spritePlayer's frameCache / PIXI.Assets, so only the GPU
+        // upload repeats.
+        let onVisible = null;
+        const rebuild = () => { rebuildRef.current += 1; setRebuildKey(k => k + 1); };
+
+        const onContextLost = (e) => {
+          e.preventDefault();          // required, or restore can never happen
+          if (cancelled) return;       // our own teardown — expected, ignore
+          logEvent('arena:contextLost', {
+            charA: charA.id, charB: charB.id,
+            rebuilds: rebuildRef.current, hidden: document.hidden,
+          });
+
+          // Backgrounding is the common cause on mobile: iOS drops WebGL
+          // contexts for tabs/apps that aren't visible. That is NOT the page
+          // being over its context budget, so it must not burn a retry — three
+          // app-switches mid-match would otherwise leave the player staring at
+          // a permanent "Renderer lost". Defer to the next visible frame and
+          // rebuild then, uncounted.
+          if (document.hidden) {
+            if (onVisible) return;
+            onVisible = () => {
+              if (document.hidden || cancelled) return;
+              document.removeEventListener('visibilitychange', onVisible);
+              onVisible = null;
+              setRebuildKey(k => k + 1);
+            };
+            document.addEventListener('visibilitychange', onVisible);
+            return;
+          }
+
+          if (rebuildRef.current >= MAX_CONTEXT_REBUILDS) {
+            console.warn('[ArenaStage] WebGL context lost repeatedly; giving up');
+            setLoadError('Renderer lost. Reload to continue.');
+            return;
+          }
+          rebuild();
+        };
+        app.canvas.addEventListener('webglcontextlost', onContextLost);
+        cleanupCanvasRef.current = () => {
+          app.canvas.removeEventListener('webglcontextlost', onContextLost);
+          if (onVisible) { document.removeEventListener('visibilitychange', onVisible); onVisible = null; }
+        };
 
         const [spriteA, spriteB] = await Promise.all([
           loadFighterSprite(charA),
           loadFighterSprite(charB),
         ]);
-        if (cancelled) return;
+        // The sprites now exist, and a Spine one has ALREADY registered itself
+        // on the global PIXI.Ticker.shared (autoUpdate defaults true; only
+        // destroy() removes it). Bailing out without destroying them strands
+        // them there, ticking for the rest of the session.
+        if (cancelled) {
+          logEvent('arena:cancelledMidLoad', {
+            charA: charA.id, charB: charB.id,
+            spineA: charA.renderMode === 'spine', spineB: charB.renderMode === 'spine',
+          });
+          destroyFighterSprite(spriteA);
+          destroyFighterSprite(spriteB);
+          return;
+        }
 
         // Build a shield overlay for each fighter — initially hidden, shown
         // while the fighter's action is 'defend'.
@@ -181,13 +260,22 @@ export default function ArenaStage({
 
     return () => {
       cancelled = true;
-      try { app.destroy(true, { children: true }); } catch { /* ignore */ }
+      if (cleanupCanvasRef.current) { cleanupCanvasRef.current(); cleanupCanvasRef.current = null; }
+      untrackApp(app);
+      // Destroy the fighter sprites explicitly rather than relying on
+      // app.destroy({children:true}) alone — a sprite that never got parented
+      // (slow load, early unmount) is not a stage child, so it would otherwise
+      // survive on the global ticker.
+      [fighterARef.current, fighterBRef.current].forEach(f => {
+        if (f?.sprite) { try { destroyFighterSprite(f.sprite); } catch { /* ignore */ } }
+      });
+      destroyApp(app);
       appRef.current = null;
       fighterARef.current = null;
       fighterBRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [characterAId, characterBId]);
+  }, [characterAId, characterBId, rebuildKey]);
 
   // Resize the PIXI canvas + recenter fighters when stageWidth/height change
   // after init (Arena.jsx feeds a ResizeObserver-driven width). Without this,
@@ -290,6 +378,33 @@ export default function ArenaStage({
       fb._pendingProjectiles = spawnProjectile(appRef.current, fb.sprite, fighterARef.current?.sprite, action, 'B', charB);
     }
   }, [animClassB, animKeyB]);
+
+  // Diagnostic probe (inert unless ?debug=gl). Sampled once a second, this is
+  // what separates "the sprite is hidden", "the sprite is drawn at zero size",
+  // "the sprite was never parented" and "the GPU context is dead" — four very
+  // different bugs that all look identical on screen.
+  useEffect(() => {
+    setArenaActive(true, { preloaded: isPreloaded(), charA: characterAId, charB: characterBId });
+    const read = (f) => (f?.sprite ? {
+      visible: f.sprite.visible,
+      scaleX: f.sprite.scale?.x,
+      x: Math.round(f.sprite.x), y: Math.round(f.sprite.y),
+      parented: !!f.sprite.parent,
+    } : null);
+    const un = registerFighterProbe(() => {
+      const app = appRef.current;
+      let contextLost = null;
+      try { contextLost = app?.renderer?.gl?.isContextLost?.() ?? null; } catch { /* ignore */ }
+      return {
+        A: read(fighterARef.current),
+        B: read(fighterBRef.current),
+        contextLost,
+        rendererW: app?.renderer?.width ?? null,
+        stageChildren: app?.stage?.children?.length ?? null,
+      };
+    });
+    return () => { un(); setArenaActive(false); };
+  }, [characterAId, characterBId]);
 
   if (!charA || !charB) {
     return <div style={{ width, height, display: 'grid', placeItems: 'center', color: '#f87171' }}>
