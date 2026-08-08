@@ -486,18 +486,26 @@ function showShield(fighter, mode = 'high') {
 // Reuses the per-fighter shield sprite as the carrier (feet-anchored so it lines
 // up with the ground) and hides the real character sprite underneath. Works for
 // PNG and Spine fighters alike. `cfg` is a resolved combinedDefendConfig().
+//
+// The hand-off is strictly ordered: the real sprite is hidden only once the
+// stand-in texture is actually in hand. Hiding it up-front (as this used to do)
+// meant a cold cache left an EMPTY patch of arena for the whole fetch — the
+// shield PNGs are ~1 MB each, so the first defend of a session visibly lost its
+// fighter for a beat. Worst case now is the character holding its own defend
+// pose for a frame or two before the shield art takes over.
 function showCombinedDefend(fighter, cfg, mode = 'high') {
   const shield = fighter.shield;
   const sprite = fighter.sprite;
   if (shield._shieldCleanup) { try { shield._shieldCleanup(); } catch { /* ignore */ } shield._shieldCleanup = null; }
   const url = mode === 'low' ? cfg.low : cfg.high;
   const dir = fighter.side === 'A' ? 1 : -1;
+  // Measured before the swap — sprite.height is only meaningful while visible.
   const spriteH = Math.abs(sprite.height) || 200;
   shield._combined = true;
   shield.anchor.set(0.5, 1);          // feet anchor, like the character sprite
-  sprite.visible = false;             // the PNG stands in for the whole fighter
-  PIXI.Assets.load(url).then(tex => {
-    if (!shield._combined) return;    // defend ended before the texture loaded
+
+  const apply = (tex) => {
+    if (!shield._combined) return;    // defend ended before the texture landed
     shield.texture = tex;
     // Height scaled relative to the character's on-screen height (per guard),
     // width gets an extra x-only stretch, then mirrored for the right-side
@@ -510,12 +518,24 @@ function showCombinedDefend(fighter, cfg, mode = 'high') {
     shield.scale.set(s * dir * (cfg.width[mode] ?? 1), s);
     shield.alpha = 1;
     shield.visible = true;
+    sprite.visible = false;           // the PNG stands in for the whole fighter
     if (shield.parent) shield.parent.setChildIndex(shield, shield.parent.children.length - 1);
-  }).catch((e) => {
-    // Shield art failed to load — don't leave the fighter as an invisible gap;
-    // show the real sprite in its defend pose instead of nothing.
+  };
+
+  // Warm cache → swap in this frame. Assets.load() would still resolve a cached
+  // texture a microtask later, but going through the synchronous cache keeps the
+  // swap on the same tick as the animation change no matter what. Guarded rather
+  // than trusted: a cache miss here just falls through to the async path.
+  let cached = null;
+  try {
+    if (PIXI.Assets.cache.has(url)) cached = PIXI.Assets.get(url) ?? null;
+  } catch { /* treat as a miss */ }
+  if (cached?.height) { apply(cached); return; }
+
+  PIXI.Assets.load(url).then(apply).catch((e) => {
+    // Shield art failed to load — the real sprite was never hidden, so the
+    // fighter is still on screen in its defend pose. Nothing to restore.
     console.warn('[ArenaStage] combined-defend art load failed:', e);
-    if (shield._combined && fighter.sprite) fighter.sprite.visible = true;
   });
 }
 

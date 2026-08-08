@@ -19,6 +19,7 @@ import * as PIXI from 'pixi.js';
 import { loadManifest, loadFrames, preloadSpineAssets } from './spritePlayer.js';
 import { prefetchClipBytes } from './soundEngine.js';
 import { COMBAT_SOUND_FILES } from './combatSounds.js';
+import { CHARACTERS } from '../data/characters.js';
 
 // Full-scene battle backgrounds (see ArenaBackground.jsx).
 const BACKGROUND_URLS = Array.from(
@@ -65,15 +66,20 @@ export function isPreloaded() { return preloadDone; }
 //   - one sound clip's bytes
 // total = tasks.length drives the progress bar. Fetching the PNG manifests up
 // front is what lets us count frame-folder tasks before loading them.
-async function buildTasks(characters) {
-  const tasks = [];
-  const imageUrls = new Set([...BACKGROUND_URLS, ...EFFECT_URLS]);
+//
+// `backgrounds`, `sounds` and `imagesFirst` are narrowed by the pre-fight warm-up
+// below, which wants the same character machinery but only one background, no
+// audio, and the small images fetched ahead of the bulky frame folders.
+// Effects are always included — the whole folder is ~140 KB.
+async function buildTasks(characters, { backgrounds = BACKGROUND_URLS, sounds = true, imagesFirst = false } = {}) {
+  const frameTasks = [];
+  const imageUrls = new Set([...backgrounds, ...EFFECT_URLS]);
 
   for (const c of characters) {
     if (!c) continue;
 
     if (c.renderMode === 'spine') {
-      tasks.push({ label: `${c.id} (spine)`, run: () => preloadSpineAssets(c) });
+      frameTasks.push({ label: `${c.id} (spine)`, run: () => preloadSpineAssets(c) });
     } else {
       const manifest = await loadManifest(c);
       // Only the folders an action actually maps to — skips non-animation
@@ -82,7 +88,7 @@ async function buildTasks(characters) {
       for (const folder of folders) {
         const files = manifest.animations?.[folder];
         if (!files) continue;
-        tasks.push({ label: `${c.id}/${folder}`, run: () => loadFrames(c, folder, files) });
+        frameTasks.push({ label: `${c.id}/${folder}`, run: () => loadFrames(c, folder, files) });
       }
     }
 
@@ -96,31 +102,22 @@ async function buildTasks(characters) {
     if (c.hitProjectile) imageUrls.add(c.hitProjectile);
   }
 
-  for (const url of imageUrls) {
-    tasks.push({ label: url, run: () => PIXI.Assets.load(url) });
-  }
+  const imageTasks = [...imageUrls].map(url => ({ label: url, run: () => PIXI.Assets.load(url) }));
 
   // Sound bytes (combat SFX + theme). Decode happens later on the first user
   // gesture — here we only need the bytes downloaded + cached.
-  const soundUrls = [...new Set([...Object.values(COMBAT_SOUND_FILES), MUSIC_URL])];
-  for (const url of soundUrls) {
-    tasks.push({ label: url, run: () => prefetchClipBytes(url) });
-  }
+  const soundTasks = sounds
+    ? [...new Set([...Object.values(COMBAT_SOUND_FILES), MUSIC_URL])]
+        .map(url => ({ label: url, run: () => prefetchClipBytes(url) }))
+    : [];
 
-  return tasks;
+  return imagesFirst
+    ? [...imageTasks, ...frameTasks, ...soundTasks]
+    : [...frameTasks, ...imageTasks, ...soundTasks];
 }
 
-// Preload every fight asset for `characters`, reporting progress as (done, total).
-//
-// Individual task failures (e.g. a missing shield_top.png) are swallowed and
-// still count toward progress, so one stray 404 can't wedge the bar — a missing
-// asset simply falls back to the old lazy load at fight time. Aborts cleanly via
-// `signal` (used by the "Continue anyway" / unmount paths).
-export async function preloadAll({ characters = [], onProgress, signal, concurrency = 8 } = {}) {
-  if (preloadDone) { onProgress?.(1, 1); return; }
-  if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
-
-  const tasks = await buildTasks(characters);
+// Run a task list with `concurrency` lanes, reporting (done, total).
+async function runTasks(tasks, { onProgress, signal, concurrency }) {
   const total = tasks.length || 1;
   let completed = 0;
   onProgress?.(0, total);
@@ -142,5 +139,68 @@ export async function preloadAll({ characters = [], onProgress, signal, concurre
 
   const lanes = Math.max(1, Math.min(concurrency, tasks.length));
   await Promise.all(Array.from({ length: lanes }, worker));
+}
+
+// Preload every fight asset for `characters`, reporting progress as (done, total).
+//
+// Individual task failures (e.g. a missing shield_top.png) are swallowed and
+// still count toward progress, so one stray 404 can't wedge the bar — a missing
+// asset simply falls back to the old lazy load at fight time. Aborts cleanly via
+// `signal` (used by the "Continue anyway" / unmount paths).
+export async function preloadAll({ characters = [], onProgress, signal, concurrency = 8 } = {}) {
+  if (preloadDone) { onProgress?.(1, 1); return; }
+  if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+
+  const tasks = await buildTasks(characters);
+  await runTasks(tasks, { onProgress, signal, concurrency });
   preloadDone = true;
+}
+
+// ── Pre-fight warm-up ───────────────────────────────────────────────────────
+//
+// The home page and the how-to-play tour both run the REAL arena components, and
+// both are reached long before the setup screen's preload gate — so their assets
+// used to stream in action by action, and the first defend / ultimate of a
+// session hitched. (The defend hitch was worse than a hitch: see
+// showCombinedDefend in ArenaStage.)
+//
+// This warms only the fixed cast those two screens use — ~22 MB, against ~90 MB
+// for the whole roster — so it can run unblocking rather than behind a loading
+// screen. It is not extra traffic either: the home arena loops random actions,
+// so anyone who lingers there pulls these same bytes anyway. We just fetch them
+// earlier, and in a better order. preloadAll() still owns the full download
+// before a real match, and this doesn't mark that as done.
+//
+// Cast (hardcoded in the screens themselves, not player-chosen):
+//   home arena      HomeArena.jsx    madScientist vs beast, no background
+//   how-to-play     HowToPlay.jsx    turtle vs beast, seeded background
+const PRE_FIGHT_CHARACTER_IDS = ['madScientist', 'beast', 'turtle'];
+
+let warmStarted = false;
+
+/**
+ * Warm what the pre-match screens draw. Fire-and-forget: resolves when done,
+ * never rejects, and is a no-op after the first call (or once preloadAll has
+ * already covered everything).
+ *
+ * @param backgrounds  arena background URLs to include — the caller resolves
+ *                     these, since the seed→image mapping lives in the view.
+ */
+export async function warmPreFightAssets({ backgrounds = [], concurrency = 4 } = {}) {
+  if (warmStarted || preloadDone) return;
+  warmStarted = true;
+  const characters = PRE_FIGHT_CHARACTER_IDS.map(id => CHARACTERS[id]).filter(Boolean);
+  try {
+    // imagesFirst puts the shields, effects and background (~6 MB, 20-odd files)
+    // ahead of the ~16 MB of frame folders. The shields are the urgent ones: a
+    // missing frame folder just replays the previous animation, but a missing
+    // shield used to blank the fighter out entirely.
+    const tasks = await buildTasks(characters, { backgrounds, sounds: false, imagesFirst: true });
+    // Lower concurrency than preloadAll: this shares the network with the home
+    // arena's own first paint, and finishing fast matters less than not
+    // starving it.
+    await runTasks(tasks, { concurrency });
+  } catch (err) {
+    console.warn('[assetPreloader] pre-fight warm-up failed', err);
+  }
 }
