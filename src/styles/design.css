@@ -3354,149 +3354,202 @@ body.needs-landscape .landscape-lock { display: none; }
 .duel-panel .code-input { width: 100%; margin: 0; }
 .duel-cta { width: 100%; justify-content: center; margin-top: 4px; }
 
-/* The duel lobby is a short, centred face-off rather than the tall tournament
-   roster, so it narrows the shared .lobby-wrap and centres it vertically. */
-.duel-wrap { justify-content: center; max-width: 900px; }
+/* ─── 1v1 duel lobby ───────────────────────────────────────────────
+   A fixed three-band column — topbar / seats / action strip — rather than a
+   centred stack, so it fits 390px of landscape height at every size without a
+   per-breakpoint rewrite. Self is --cyan (matching the character-select
+   selection state), opponent is --red, and --gold is reserved for match chrome
+   (VS, room code, START).
+   .bg-arena's min-height: 100vh would let the body scroll past a mobile 100dvh
+   viewport, so the lobby clamps it. Scoped to the lobby class, not .duel-page —
+   DuelResult still centres inside a 100vh .tour-page. */
+.duel-page-lobby { min-height: 0; height: 100vh; height: 100dvh; }
 
-.duel-head { text-align: center; }
-.duel-head .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; }
-.duel-head .eyebrow .dot {
-  width: 6px; height: 6px; background: var(--red);
-  box-shadow: 0 0 6px var(--red); animation: pulse 1.6s ease-in-out infinite;
+.duel-room {
+  position: relative; z-index: 2;
+  display: flex; flex-direction: column;
+  height: 100vh; height: 100dvh;
 }
-.duel-head .lobby-title { margin-top: 6px; }
 
+/* ── topbar ── */
+.duel-bar {
+  flex: 0 0 44px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(9, 6, 17, 0.72);
+  backdrop-filter: blur(8px);
+}
+.duel-bar .dot {
+  width: 7px; height: 7px; background: var(--red);
+  box-shadow: 0 0 7px var(--red); animation: pulse 1.6s ease-in-out infinite;
+}
+.duel-bar-title {
+  font-family: var(--f-display); font-size: 15px;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink);
+}
+.duel-bar-title .accent { color: var(--gold); }
+.duel-bar-status {
+  font-family: var(--f-mono); font-size: 10px; color: var(--ink-mute);
+  /* min-width so a long ring name ellipsises instead of shoving CANCEL DUEL off */
+  min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.duel-bar-spacer { flex: 1; }
+.duel-bar-btn {
+  display: flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 11px;
+  background: transparent; border: 1px solid var(--line); color: var(--ink-soft);
+  font-family: var(--f-display); font-size: 11.5px; letter-spacing: 0.16em;
+  cursor: pointer; transition: border-color 0.15s, color 0.15s;
+}
+.duel-bar-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+
+/* ── seats ── */
 .duel-vs {
-  display: flex; align-items: center; justify-content: center; gap: 20px;
+  flex: 1; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: 12px 14px;
 }
-.duel-fighter {
+.duel-seat {
   position: relative;
-  flex: 1 1 0; max-width: 320px; min-width: 0;
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 24px 18px 20px;
+  flex: 1 1 0; min-width: 0; max-width: 300px;
+  /* capped so a tall desktop window doesn't stretch the cards into columns */
+  height: 100%; max-height: 400px;
+  display: flex; flex-direction: column; overflow: hidden;
   border: 1px solid var(--line);
-  background: linear-gradient(180deg, rgba(34, 22, 69, 0.5), rgba(13, 9, 23, 0.85));
+  background: linear-gradient(180deg, #160e28, #0b0716);
   clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
 }
-.duel-fighter.me {
-  border-color: var(--gold-dim);
-  background: linear-gradient(180deg, rgba(255, 216, 74, 0.08), rgba(13, 9, 23, 0.85));
+.duel-seat::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px; z-index: 2; background: var(--line-2);
 }
-.duel-fighter.opp { border-color: var(--red-dim); }
-.duel-fighter.waiting { border-style: dashed; opacity: 0.75; }
+.duel-seat.me { border-color: var(--cyan-dim); box-shadow: 0 0 0 1px rgba(74,215,255,0.18), 0 10px 30px rgba(0,0,0,0.5); }
+.duel-seat.me::before { background: var(--cyan); }
+.duel-seat.opp.is-ready { border-color: var(--red-dim); box-shadow: 0 0 0 1px rgba(255,58,79,0.18), 0 10px 30px rgba(0,0,0,0.5); }
+.duel-seat.opp.is-ready::before { background: var(--red); }
+
+.duel-seat-head, .duel-seat-foot {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.duel-seat-head { padding: 7px 10px 6px; border-bottom: 1px solid var(--line); }
+.duel-seat-foot { padding: 8px 10px 9px; border-top: 1px solid var(--line); }
+.duel-seat.me    .duel-seat-head, .duel-seat.me .duel-seat-foot { border-color: rgba(74,215,255,0.18); }
+.duel-seat.me    .duel-seat-foot { background: rgba(74,215,255,0.06); }
+.duel-seat.opp.is-ready .duel-seat-head, .duel-seat.opp.is-ready .duel-seat-foot { border-color: rgba(255,58,79,0.18); }
+.duel-seat.opp.is-ready .duel-seat-foot { background: rgba(255,58,79,0.06); }
+
+.duel-role {
+  font-family: var(--f-display); font-size: 11px; letter-spacing: 0.26em;
+  color: var(--ink-mute);
+}
+.duel-seat.me  .duel-role { color: var(--cyan); }
+.duel-seat.opp .duel-role { color: var(--red); }
+.duel-char { font-family: var(--f-mono); font-size: 9.5px; letter-spacing: 0.08em; color: var(--ink-mute); }
+
 .duel-portrait {
-  position: relative;
-  height: 160px; width: 100%;
+  flex: 1; min-height: 0; position: relative;
   display: flex; align-items: flex-end; justify-content: center;
-  overflow: hidden;
-  margin-bottom: 6px;
+  background: radial-gradient(ellipse 55% 20% at 50% 97%, rgba(74,215,255,0.20), transparent 70%);
 }
+.duel-seat.opp .duel-portrait { background: radial-gradient(ellipse 55% 20% at 50% 97%, rgba(255,58,79,0.18), transparent 70%); }
 /* PNG fighters render an absolutely-positioned <img class="char-sprite"> sized
    as a % of its positioned ancestor — pin it to the portrait box (not the whole
-   card) so it can't spill over the name/ready labels below. Spine fighters
-   render a fixed-size canvas wrapper that the flex box already centers/anchors. */
+   seat) so it can't spill over the name/ready row below. Spine fighters render a
+   fixed-size canvas wrapper that the flex box already centers/anchors. */
 .duel-portrait .char-sprite { height: 90%; max-width: 94%; }
-.duel-role {
-  font-family: var(--f-display); font-size: 11px;
-  letter-spacing: 0.24em; text-transform: uppercase; color: var(--ink-mute);
-}
-.duel-fighter.me .duel-role { color: var(--gold); }
+
 .duel-name {
-  font-family: var(--f-display); font-size: 26px; line-height: 1;
-  letter-spacing: 0.03em; color: var(--ink); text-transform: uppercase; text-align: center;
+  font-family: var(--f-display); font-size: 22px; line-height: 1;
+  letter-spacing: 0.05em; color: var(--ink); text-transform: uppercase;
+  /* min-width so the name ellipsises inside the foot row rather than crowding
+     out the ready chip, which is nowrap */
+  min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.duel-name.muted { color: var(--ink-dim); }
 .duel-ready {
-  display: inline-flex; align-items: center; gap: 7px; margin-top: 8px;
-  font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.1em; color: var(--ink-mute);
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--f-display); font-size: 12px; letter-spacing: 0.18em;
+  color: var(--ink-mute); white-space: nowrap;
 }
 .duel-ready.on { color: var(--green); }
-.duel-ready .dot-on { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
-.duel-ready .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-dim); animation: pulse 1.6s ease-in-out infinite; }
+.duel-ready .dot-on, .duel-ready .pulse { width: 7px; height: 7px; border-radius: 0; }
+.duel-ready .dot-on { background: var(--green); box-shadow: 0 0 7px var(--green); }
+.duel-ready .pulse  { background: var(--ink-mute); box-shadow: 0 0 7px var(--ink-mute); animation: pulse 1.3s ease-in-out infinite; }
+
+/* ── VS divider ── */
 .duel-mid {
-  flex: 0 0 auto;
-  font-family: var(--f-display); font-size: 40px; letter-spacing: 0.06em;
-  color: var(--gold); text-shadow: 0 0 20px rgba(255, 216, 74, 0.35);
+  flex: 0 0 62px; height: 100%; max-height: 400px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px;
+  font-family: var(--f-display); font-size: 26px; letter-spacing: 0.06em;
+  color: var(--gold); text-shadow: 0 0 14px rgba(255, 216, 74, 0.45);
 }
+.duel-mid i { width: 1px; flex: 1; background: linear-gradient(180deg, transparent, var(--line-2)); }
+.duel-mid i:last-child { background: linear-gradient(0deg, transparent, var(--line-2)); }
 
+/* ── empty seat + code ── */
+.duel-seat-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 11px;
+  padding: 14px;
+  border: 1px dashed var(--line-2);
+  background: repeating-linear-gradient(135deg, rgba(59,38,112,0.10) 0 8px, transparent 8px 16px);
+  clip-path: none;
+}
+.duel-seat-empty::before { display: none; }
+.duel-waiting-label {
+  font-family: var(--f-display); font-size: 13px; letter-spacing: 0.26em;
+  color: var(--ink-mute); animation: pulse 1.8s ease-in-out infinite;
+}
+.duel-code { width: 100%; max-width: 230px; min-width: 0; padding: 9px 11px 10px; }
+.duel-code .code { font-size: 29px; letter-spacing: 0.24em; }
+
+/* ── footer ── */
 .duel-foot {
-  display: flex; align-items: center; justify-content: center;
-  gap: 20px; flex-wrap: wrap; margin-top: 8px;
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px 11px;
+  border-top: 1px solid var(--line);
+  background: rgba(9, 6, 17, 0.6);
 }
-.duel-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center; }
-.duel-actions .btn { min-width: 180px; justify-content: center; }
-.duel-actions .btn.btn-sm { min-width: 0; }
+.duel-room-code {
+  display: flex; align-items: center; gap: 9px;
+  font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.16em; color: var(--ink-mute);
+}
+.duel-room-code b {
+  font-family: var(--f-display); font-weight: 400; font-size: 19px;
+  letter-spacing: 0.22em; color: var(--gold);
+}
+.duel-foot .btn { font-size: 16px; padding: 0 20px; height: 38px; }
 
-@media (max-width: 680px) {
-  .duel-vs { flex-direction: column; gap: 12px; }
-  .duel-fighter { width: 100%; max-width: 340px; }
-  .duel-portrait { height: 120px; }
-  .duel-mid { font-size: 26px; }
-  .duel-head .lobby-title { font-size: 40px; }
-  .duel-foot { flex-direction: column; gap: 14px; }
-  .duel-actions { width: 100%; }
-  .duel-actions .btn { flex: 1; }
+/* Portrait phones are the one case the three-band column can't hold: two 300px
+   seats side by side don't fit, so they stack. */
+@media (max-width: 560px) {
+  .duel-vs { flex-direction: column; gap: 10px; }
+  /* flex:0 0 auto so the seats size to their three rows; the base flex:1 1 0
+     would stretch them down the column and leave dead space under the foot. */
+  .duel-seat { flex: 0 0 auto; width: 100%; max-width: 340px; height: auto; }
+  /* flex-basis, not height — .duel-portrait is flex:1 in a now auto-height
+     column, and the absolutely-positioned PNG sprite needs a definite box to
+     take its 90% of. */
+  .duel-portrait { flex: 0 0 120px; height: 120px; }
+  .duel-mid { flex: 0 0 auto; height: auto; font-size: 22px; flex-direction: row; width: 100%; }
+  .duel-mid i { height: 1px; width: auto; background: linear-gradient(90deg, transparent, var(--line-2)); }
 }
 
-/* Landscape phones — the whole duel has to fit one screen, since START/READY
-   below the fold reads as a dead lobby (the page scrolls at the body level, so
-   nothing hints there's more down there). Everything drops a size tier, the
-   fighter cards flex-shrink around a fluid portrait, and the code box shares a
-   row with the actions. Scoped to .duel-page so it out-specifies the ≤680px
-   stacking rules above, which a 667px-wide landscape phone also matches. */
+/* Landscape phones — the bands already fit; only the notch cut-outs need it. */
+@media (orientation: landscape) {
+  .duel-bar  { padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+  .duel-foot { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); padding-bottom: max(11px, env(safe-area-inset-bottom)); }
+}
+
+/* DuelResult / DuelStarting still centre inside a .tour-page, which needs its
+   100vh floor lifted on a landscape phone or REMATCH / LEAVE fall below the
+   fold. The lobby no longer uses .tour-page. */
 @media (max-height: 500px) and (orientation: landscape) {
   .duel-page { height: 100vh; height: 100dvh; min-height: 0; }
   .duel-page .tour-page { min-height: 0; }
-
-  .duel-page .duel-wrap {
-    gap: 8px;
-    min-height: 0;
-    overflow: hidden;
-    padding:
-      max(8px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
-      max(10px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
-  }
-
-  .duel-page .duel-head { flex-shrink: 0; }
-  .duel-page .duel-head .eyebrow { font-size: 9px; letter-spacing: 0.16em; }
-  .duel-page .duel-head .lobby-title { font-size: 22px; margin-top: 1px; }
-
-  /* max-height keeps the cards compact tiles instead of stretching them over
-     every spare pixel of a 390px-tall screen; the wrap centres the slack. */
-  .duel-page .duel-vs {
-    flex: 1 1 auto; min-height: 0; max-height: 210px;
-    flex-direction: row; align-items: stretch; gap: 12px;
-  }
-  .duel-page .duel-fighter {
-    width: auto; max-width: 210px; min-height: 0;
-    justify-content: flex-end; gap: 2px;
-    padding: 8px 12px 10px;
-  }
-  /* Fluid portrait: it absorbs whatever height is left after the labels, so a
-     375px-tall screen shrinks the sprite instead of pushing the footer down. */
-  .duel-page .duel-portrait { flex: 1 1 auto; height: auto; min-height: 34px; margin-bottom: 2px; }
-  .duel-page .duel-portrait .char-preview-canvas,
-  .duel-page .duel-portrait .char-preview-canvas canvas {
-    max-width: 100%; max-height: 100%;
-  }
-  .duel-page .duel-role { font-size: 9px; letter-spacing: 0.18em; }
-  .duel-page .duel-name { font-size: 17px; }
-  .duel-page .duel-ready { font-size: 9px; gap: 5px; margin-top: 3px; }
-  .duel-page .duel-ready .dot-on,
-  .duel-page .duel-ready .pulse { width: 6px; height: 6px; }
-  .duel-page .duel-mid { align-self: center; font-size: 24px; }
-
-  .duel-page .duel-foot {
-    flex-direction: row; flex-wrap: nowrap; align-items: center;
-    gap: 14px; margin-top: 0; flex-shrink: 0;
-  }
-  .duel-page .duel-foot .code-box { width: auto; min-width: 0; padding: 5px 12px 7px; }
-  .duel-page .duel-foot .code-box .lbl { font-size: 8px; letter-spacing: 0.2em; }
-  .duel-page .duel-foot .code-box .code { font-size: 18px; letter-spacing: 0.14em; margin-top: 1px; gap: 8px; }
-  .duel-page .duel-foot .code-box .copy-btn { width: 22px; height: 22px; }
-  .duel-page .duel-actions { width: auto; flex-wrap: nowrap; gap: 8px; }
-  .duel-page .duel-actions .btn { flex: 0 0 auto; min-width: 0; font-size: 13px; padding: 9px 16px; gap: 6px; }
-  .duel-page .duel-actions .btn.btn-sm { font-size: 11px; padding: 7px 12px; }
 }
 
 /* ─── 1v1 duel result (replaces tournament champion screen) ────────── */
