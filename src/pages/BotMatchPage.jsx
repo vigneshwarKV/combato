@@ -6,7 +6,7 @@ import CharacterPreview from '../components/CharacterPreview.jsx';
 import Arena from '../components/Arena.jsx';
 import {
   loadProfile, isProfileReady, UNLOCKED_IDS,
-  usableStrategies, makeStrategy, strategyLabel, MAX_STRATEGIES,
+  usableStrategies, makeStrategy, defaultStrategies, strategyLabel, MAX_STRATEGIES,
 } from '../data/designData.js';
 import { unlockAudio } from '../engine/soundEngine.js';
 
@@ -186,7 +186,7 @@ function StrategyListEditor({ strategies, onUpdate, onAdd, onRemove }) {
 function SetupScreen({ onFight }) {
   const [name, setName] = useState('');
   const [character, setCharacter] = useState('');
-  const [strategies, setStrategies] = useState([makeStrategy(0)]);
+  const [strategies, setStrategies] = useState(defaultStrategies);
   const [nameError, setNameError] = useState('');
   const [charError, setCharError] = useState('');
 

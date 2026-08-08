@@ -135,7 +135,7 @@ function LobbyView({
     if (navigator.share) {
       // Message goes in `title`, NOT `text` — some share targets append `text`
       // onto the URL, which corrupts the /room/:code path. `url` stays clean.
-      navigator.share({ title: 'Join my Prompt Kombat lobby', url })
+      navigator.share({ title: 'Join my Combato lobby', url })
         .then(flash)
         .catch(() => {});
     } else {
@@ -264,8 +264,8 @@ function LobbyView({
 
 export default function RoomPage() {
   // A shared link can pick up trailing invite text when a share target merges the
-  // URL with the message (".../room/7XEZAQ Join my Prompt Kombat lobby" → the
-  // ":code" param becomes "7XEZAQ Join my Prompt Kombat lobby"). Room codes are
+  // URL with the message (".../room/7XEZAQ Join my Combato lobby" → the
+  // ":code" param becomes "7XEZAQ Join my Combato lobby"). Room codes are
   // always [A-Z0-9], so keep only the first alphanumeric run — this fixes the
   // routing AND keeps the re-shared inviteLink clean (matchCode derives from it).
   const { code: rawCode } = useParams();

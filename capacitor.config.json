@@ -1,6 +1,6 @@
 {
-  "appId": "com.promptkombat.game",
-  "appName": "Prompt Kombat",
+  "appId": "com.combato.game",
+  "appName": "Combato",
   "webDir": "dist",
   "backgroundColor": "#050309",
   "plugins": {

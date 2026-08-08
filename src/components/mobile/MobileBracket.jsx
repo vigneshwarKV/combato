@@ -120,7 +120,7 @@ export default function MobileBracket({ bracket, nextMatchStartsAt, isHost, onSt
       <div className="mob-topbar">
         <div className="mob-brand">
           <span className="dot" />
-          <span>PROMPT <span className="kk">K</span>OMBAT</span>
+          <span>COMBAT<span className="kk">O</span></span>
         </div>
         <div className="mob-actions">
           <span className="tag green" style={{ fontSize: 8, padding: '2px 6px' }}>

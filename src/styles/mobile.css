@@ -1,5 +1,5 @@
 /* ────────────────────────────────────────────────────────────────────────────
-   PROMPT KOMBAT — Mobile portrait styles
+   COMBATO — Mobile portrait styles
    Designed for ~402×874 iOS frames; landscape is only required for the arena.
    Two blocks below:
      1. .mh-*  — home portrait (cinematic variant)
@@ -110,7 +110,7 @@
   font-family: var(--f-display);
   font-size: 64px;
   line-height: 0.82;
-  letter-spacing: 0.005em;
+  letter-spacing: 0.03em;
   margin: 4px 0 0;
   color: var(--ink);
   text-transform: uppercase;
@@ -570,7 +570,8 @@
   font-family: var(--f-display);
   font-size: 72px;
   line-height: 0.82;
-  letter-spacing: 0;
+  /* Matches the desktop hero — see .wordmark in design.css. */
+  letter-spacing: 0.03em;
   margin: 6px 0 0;
   color: var(--ink);
   text-transform: uppercase;
@@ -1285,7 +1286,7 @@
    the real fight animation. The slot is intentionally short (just enough
    for the standing idle sprite); the WebGL stage is taller and overhangs
    upward through the wordmark area via overflow:visible + z-index, so
-   jet-pack ult arcs read on top of "PROMPT KOMBAT" instead of clipping.
+   jet-pack ult arcs read on top of "COMBATO" instead of clipping.
    Same trick as the desktop slot (height: 320, stage: 600 → 280px overhang). */
 .mh-page .home-arena {
   display: block;
@@ -1298,7 +1299,7 @@
    roughly even vertical space, then bias the arena slightly downward so
    the ground sits below the visual centre (but not glued to the buttons).
    overflow:visible so jet-pack ult arcs can fly above HomeArena's box and
-   over the PROMPT KOMBAT wordmark, matching the desktop home behaviour. */
+   over the COMBATO wordmark, matching the desktop home behaviour. */
 .mh-page .mh-body {
   justify-content: space-evenly;
   gap: 0;

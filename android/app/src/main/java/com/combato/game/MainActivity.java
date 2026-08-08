@@ -1,4 +1,4 @@
-package com.promptkombat.game;
+package com.combato.game;
 
 import com.getcapacitor.BridgeActivity;
 

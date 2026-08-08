@@ -107,7 +107,7 @@ export default function MobileLobby({
     if (navigator.share) {
       // Message in `title`, not `text` — some share targets append `text` onto
       // the URL and corrupt the /room/:code path. Keep `url` clean.
-      navigator.share({ title: 'Join my Prompt Kombat lobby', url })
+      navigator.share({ title: 'Join my Combato lobby', url })
         .then(flash)
         .catch(() => {});
     } else {

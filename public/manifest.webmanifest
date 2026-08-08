@@ -1,6 +1,6 @@
 {
-  "name": "Prompt Kombat",
-  "short_name": "Prompt Kombat",
+  "name": "Combato",
+  "short_name": "Combato",
   "description": "Write the strategy. Let the AI fight. A prompt-driven fighting game.",
   "start_url": "/",
   "scope": "/",

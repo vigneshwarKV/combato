@@ -84,9 +84,25 @@ export function randomSimpleStrategy() { return pickRandom(SAMPLE_SIMPLE_STRATEG
 // arena switch buttons when the player leaves a slot unnamed).
 const DEFAULT_STRATEGY_NAMES = ['Attack', 'Defend', 'Adapt'];
 
+// Starter text for each slot, so all three plans are playable out of the box. A
+// named-but-empty plan is not a plan: usableStrategies() filters it out, so it
+// never reaches the fight and never shows up on the arena switcher. Each line
+// leans into its slot's name and stays in the same plain-English voice as the
+// SAMPLE_SIMPLE_STRATEGIES above.
+const DEFAULT_STRATEGY_TEXTS = [
+  'Come out swinging — chain hits and slides, stay in their face, and spend super_move the moment the meter fills.',
+  'Hold the line — guard high and low to read their pattern, punish a whiffed swing with a slide, and only swing while they recover.',
+  'Read them and answer — block what they commit to, shoot when they hang back, and save super_move for when their hp is low.',
+];
+
 /** Build a fresh strategy slot for the given index (0-based). */
-export function makeStrategy(index = 0, text = '') {
+export function makeStrategy(index = 0, text = DEFAULT_STRATEGY_TEXTS[index] ?? '') {
   return { name: DEFAULT_STRATEGY_NAMES[index] || `Strategy ${index + 1}`, text };
+}
+
+/** The plan slots every profile carries: Attack / Defend / Adapt, all filled. */
+export function defaultStrategies() {
+  return Array.from({ length: MAX_STRATEGIES }, (_, i) => makeStrategy(i));
 }
 
 /** Display label for a strategy slot, falling back to "Strategy N" when unnamed. */
@@ -188,23 +204,43 @@ function defaultProfile() {
     rank: 'C',
     wins: 0,
     charId: null,
-    // Up to MAX_STRATEGIES named plain-English strategies. The player switches
-    // between them live during a fight; each slot is { name, text }.
-    strategies: [makeStrategy(0)],
+    // All three named plain-English plans up front (Attack / Defend / Adapt) —
+    // a lone empty slot read as "one plan is all you get" and players never
+    // found the add button. The player switches between them live during a
+    // fight; each slot is { name, text }. They can delete down to one and add
+    // back up to MAX_STRATEGIES from setup, so this is a starting point only.
+    strategies: defaultStrategies(),
     activeStrategyIndex: 0,
   };
 }
 
 // Fold a legacy profile (single strategySimple/strategyAdvanced + strategyMode)
 // into the new `strategies` array so returning players don't lose their prompt.
+//
+// A saved playbook is taken as-is (capped at MAX_STRATEGIES): the player owns how
+// many plans they keep — deleting a plan in setup has to survive a reload, so this
+// deliberately does NOT pad short playbooks back up to three.
 function migrateStrategies(profile) {
-  if (Array.isArray(profile.strategies) && profile.strategies.length > 0) {
-    profile.strategies = profile.strategies
-      .slice(0, MAX_STRATEGIES)
-      .map((s, i) => makeStrategy(i, typeof s?.text === 'string' ? s.text : ''));
+  const legacyText = profile.strategySimple || profile.strategyAdvanced || '';
+  const legacy = typeof legacyText === 'string' ? legacyText.trim() : '';
+  // `strategies` arrives exactly as it was stored (loadProfile passes it through
+  // raw rather than letting defaultProfile()'s slots stand in), so an absent or
+  // empty array really does mean a pre-`strategies` profile — the one case where
+  // the prompt has to be recovered from strategySimple.
+  const saved = (Array.isArray(profile.strategies) ? profile.strategies : [])
+    .slice(0, MAX_STRATEGIES)
+    .map((s, i) => ({
+      name: typeof s?.name === 'string' && s.name.trim() ? s.name : makeStrategy(i).name,
+      text: typeof s?.text === 'string' ? s.text : '',
+    }));
+  // Nothing usable stored — either a pre-`strategies` profile or a playbook whose
+  // slots are all blank (which usableStrategies() would reject wholesale). Start
+  // from the three defaults so the player is never left without a plan.
+  if (!saved.some(s => s.text.trim())) {
+    const fresh = defaultStrategies();
+    profile.strategies = legacy ? [{ ...fresh[0], text: legacy }, ...fresh.slice(1)] : fresh;
   } else {
-    const legacy = profile.strategySimple || profile.strategyAdvanced || '';
-    profile.strategies = [makeStrategy(0, typeof legacy === 'string' ? legacy : '')];
+    profile.strategies = saved;
   }
   if (typeof profile.activeStrategyIndex !== 'number'
       || profile.activeStrategyIndex < 0
@@ -221,7 +257,11 @@ export function loadProfile() {
   try {
     const raw = localStorage.getItem(PROFILE_KEY);
     if (!raw) return defaultProfile();
-    const profile = migrateStrategies({ ...defaultProfile(), ...JSON.parse(raw) });
+    const stored = JSON.parse(raw);
+    // `strategies` is handed over as-stored (undefined included) instead of
+    // defaultProfile()'s three slots — migrateStrategies has to be able to tell
+    // "nothing was saved" from "three defaults were saved".
+    const profile = migrateStrategies({ ...defaultProfile(), ...stored, strategies: stored.strategies });
     // A profile saved on another machine may reference a character id that no
     // longer exists in the roster, or one that's since been locked. Drop it so
     // the UI prompts a fresh pick instead of rendering a missing/locked fighter.

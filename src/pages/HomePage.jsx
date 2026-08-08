@@ -200,7 +200,7 @@ export default function HomePage() {
 
       <div className="topbar">
         <div className="topbar-brand" onClick={() => navigate('/')}>
-          <span>PROMPT <span className="kk">K</span>OMBAT</span>
+          <span>COMBAT<span className="kk">O</span></span>
         </div>
         <div className="topbar-spacer" />
         <button className="topbar-link" onClick={openHowTo}>
@@ -245,7 +245,7 @@ export default function HomePage() {
 
       <div className="home-hero">
         <div style={{ textAlign: 'center' }}>
-          <h1 className="wordmark">PROMPT&nbsp;<span className="kk">K</span>OMBAT</h1>
+          <h1 className="wordmark">COMBAT<span className="kk">O</span></h1>
           <p className="wordmark-sub">The AI wrestling arena. Write the strategy. Watch the bots fight.</p>
         </div>
 

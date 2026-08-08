@@ -61,8 +61,9 @@ export default function MobileHome({ onQuick, on1v1, onTournament, onSettings, o
       <MHTopbar onSettings={onSettings} onHowTo={onHowTo} />
       <div className="mh-body">
         <div className="mh-hero-b">
+          {/* One word now, so no <br/> — the lockup is a single 7-letter run. */}
           <h1 className="mh-wordmark-b">
-            PROMPT<br/><span className="kk">KOMBAT</span>
+            COMBAT<span className="kk">O</span>
           </h1>
           <p className="mh-wordmark-sub">
             The AI wrestling arena. Write the strategy. Watch the bots fight.

@@ -7,7 +7,7 @@ import AssetPreloadModal from '../components/AssetPreloadModal.jsx';
 import {
   CHARS,
   loadProfile, saveProfile, charById,
-  randomSimpleStrategy, makeStrategy, strategyLabel,
+  randomSimpleStrategy, makeStrategy, defaultStrategies, strategyLabel,
   MAX_STRATEGIES,
 } from '../data/designData.js';
 import { CHARACTERS } from '../data/characters.js';
@@ -84,35 +84,21 @@ export default function CharSelectPage() {
   const returnTo = rawReturn && rawReturn.startsWith('/') ? rawReturn : '/';
   const [savedFlash, setSavedFlash] = useState(false);
 
-  // Ensure the first strategy slot is never blank: prefill it with a random
-  // suggestion so the editor always shows an example. Only touches the in-memory
-  // draft — it is persisted exclusively when the player clicks Save.
-  function withStrategyPrefill(profile) {
-    const strategies = Array.isArray(profile.strategies) && profile.strategies.length > 0
-      ? profile.strategies
-      : [makeStrategy(0)];
-    const first = strategies[0];
-    if (!first.text || !first.text.trim()) {
-      return {
-        ...profile,
-        strategies: [{ ...first, text: randomSimpleStrategy() }, ...strategies.slice(1)],
-      };
-    }
-    return { ...profile, strategies };
-  }
-
+  // No strategy prefill here any more: loadProfile() guarantees three filled
+  // plans (Attack / Defend / Adapt), and a default that matches its slot's name
+  // beats the random sample that used to be dropped into PLAN 1 — the "example"
+  // button below is still there for players who want a random one.
   const [draft, setDraft] = useState(() => {
     const p = loadProfile();
-    const base = { ...p, charId: p.charId || PLAYABLE[0]?.id || null };
-    return withStrategyPrefill(base);
+    return { ...p, charId: p.charId || PLAYABLE[0]?.id || null };
   });
 
   // null | 'detail' (expanded fighter) | 'switch' (roster gallery)
   const [picker, setPicker] = useState(null);
   const touchX = useRef(null);
 
-  // Baseline of the initial (post-prefill) loadout, captured once — so `dirty`
-  // reflects only the player's own edits, not the random first-strategy prefill.
+  // Baseline of the loadout as it was loaded, captured once — so `dirty` reflects
+  // only the player's own edits.
   const [initialSnapshot] = useState(() => loadoutSnapshot(draft));
   const [leavePrompt, setLeavePrompt] = useState(false);
 
@@ -181,7 +167,7 @@ export default function CharSelectPage() {
 
   const draftStrategies = Array.isArray(draft.strategies) && draft.strategies.length > 0
     ? draft.strategies
-    : [makeStrategy(0)];
+    : defaultStrategies();
   const activeIdx = Math.min(draft.activeStrategyIndex ?? 0, draftStrategies.length - 1);
   const activePlan = draftStrategies[activeIdx] || makeStrategy(0);
   const dirty = loadoutSnapshot(draft) !== initialSnapshot;
@@ -203,7 +189,7 @@ export default function CharSelectPage() {
   }
   function updateStrategy(index, patch) {
     setDraft(d => {
-      const list = (Array.isArray(d.strategies) && d.strategies.length > 0 ? d.strategies : [makeStrategy(0)]).slice();
+      const list = (Array.isArray(d.strategies) && d.strategies.length > 0 ? d.strategies : defaultStrategies()).slice();
       list[index] = { ...list[index], ...patch };
       return { ...d, strategies: list };
     });
@@ -212,10 +198,14 @@ export default function CharSelectPage() {
     setDraft(d => {
       const list = (Array.isArray(d.strategies) ? d.strategies : []).slice();
       if (list.length >= MAX_STRATEGIES) return d;
+      // makeStrategy() carries the slot's default text, so an added plan lands
+      // ready to fight rather than as another empty tab.
       list.push(makeStrategy(list.length));
       return { ...d, strategies: list, activeStrategyIndex: list.length - 1 };
     });
   }
+  // Deleting a plan drops the slot for good — migrateStrategies() never pads a
+  // short playbook back up, and cleanedProfile() persists whatever is left.
   function removeStrategy(index) {
     setDraft(d => {
       const list = (Array.isArray(d.strategies) ? d.strategies : []).slice();
@@ -232,11 +222,13 @@ export default function CharSelectPage() {
     updateStrategy(index, { text: sample });
   }
 
-  // Build the persisted profile from the draft: drop empty strategy slots and
-  // clamp the active index. handle is collected elsewhere now — pass through.
+  // Build the persisted profile from the draft. Whatever plans are on screen are
+  // what gets stored — no pruning: dropping a plan is the ✕ button's job, and a
+  // silent prune of the untouched ones sent a player who edited only PLAN 1 back
+  // to a single tab. usableStrategies() is the safety net at fight time.
+  // handle is collected elsewhere now — pass through.
   function cleanedProfile() {
-    const kept = draftStrategies.filter(s => (s.text || '').trim().length > 0);
-    const strategies = kept.length > 0 ? kept : [draftStrategies[0]];
+    const strategies = draftStrategies;
     const activeStrategyIndex = Math.min(draft.activeStrategyIndex ?? 0, strategies.length - 1);
     return { ...draft, handle: (draft.handle || '').trim(), strategies, activeStrategyIndex };
   }
@@ -277,7 +269,7 @@ export default function CharSelectPage() {
 
       <div className="topbar su-topbar">
         <div className="topbar-brand" onClick={goHome}>
-          <span>PROMPT <span className="kk">K</span>OMBAT</span>
+          <span>COMBAT<span className="kk">O</span></span>
         </div>
         <div className="topbar-spacer" />
         <button className="btn btn-ghost btn-sm" onClick={goHome}>
@@ -335,6 +327,7 @@ export default function CharSelectPage() {
             {draftStrategies.map((p, i) => (
               <div key={i} className={`su-tab ${i === activeIdx ? 'is-active' : ''}`}>
                 <button className="su-tab-btn" onClick={() => setActiveStrategy(i)}>PLAN {i + 1}</button>
+                {/* The last remaining plan can't be deleted — a playbook needs one. */}
                 {draftStrategies.length > 1 && (
                   <button className="su-tab-x" onClick={() => removeStrategy(i)} aria-label="Delete this plan">
                     <Icon name="close" size={12} />

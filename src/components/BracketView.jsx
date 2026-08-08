@@ -281,7 +281,7 @@ export default function BracketView({ bracket, nextMatchStartsAt, isHost, onStar
               : <>Tournament in progress · Round {stats.currentRoundIdx + 1} of {totalRounds}</>}
           </div>
           <h1 className="bp-title">
-            Prompt Kombat <span className="accent">Bracket</span>
+            Combato <span className="accent">Bracket</span>
           </h1>
           <div className="bp-sub">
             <span><b>{n}</b> fighters</span>

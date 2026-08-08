@@ -20,7 +20,7 @@ export function LandscapeGate({ children }) {
         <div className="landscape-gate" role="alertdialog" aria-label="Rotate your device">
           <Icon name="rotate" size={72} />
           <div className="lg-title">Rotate your device</div>
-          <p className="lg-sub">Prompt Kombat plays in landscape. Turn your phone sideways to continue.</p>
+          <p className="lg-sub">Combato plays in landscape. Turn your phone sideways to continue.</p>
         </div>
       )}
     </>

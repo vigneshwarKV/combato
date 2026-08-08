@@ -156,7 +156,7 @@ export default function DuelLobby({
     if (navigator.share) {
       // Message goes in `title`, NOT `text` — some share targets append `text`
       // onto the URL, which corrupts the /room/:code path.
-      navigator.share({ title: 'Fight me in a Prompt Kombat 1v1', url }).then(flash).catch(() => {});
+      navigator.share({ title: 'Fight me in a Combato 1v1', url }).then(flash).catch(() => {});
     } else {
       navigator.clipboard?.writeText(url);
       flash();
