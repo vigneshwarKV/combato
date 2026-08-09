@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import * as PIXI from 'pixi.js'
+import { applyPixiPatches } from './engine/pixiPatches.js'
 import './index.css'
 import './styles/animations.css'
 import './styles/wrestling.css'
@@ -9,6 +10,10 @@ import App from './App.jsx'
 import { setMusicTrack } from './engine/soundEngine.js'
 import { initNative } from './native/index.js'
 import { initGlDebug } from './engine/glDebug.js'
+
+// Backported pixi.js 8.14 fix for module-global batch-pool corruption. MUST run
+// before any PIXI.Application is constructed. See ARENA_RENDER_DEBUG.md §0.1.
+applyPixiPatches()
 
 // Capacitor native shell: lock landscape + hide status bar/splash. No-op on web.
 initNative()

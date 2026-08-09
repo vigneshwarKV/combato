@@ -1,9 +1,13 @@
 # Arena rendering glitch — investigation notes
 
-**Date:** 2026-08-08, updated 2026-08-09 · **Branch:** master · **Status:** **root
-cause found and fixed — see §0.** The §4 fixes below are still correct, but they
-addressed a *different* failure mode (context eviction) than the one that
-actually produced the reports.
+**Date:** 2026-08-08, updated 2026-08-09 · **Branch:** master · **Status:** **two
+root causes found and fixed — see §0 and §0.1.** Both are Pixi v8 global-state
+bugs triggered by destroying one `Application` while others are alive. Fix #1 is
+a one-line argument change; fix #2 is backported in `src/engine/pixiPatches.js`
+because the pixi release that fixes it upstream breaks `@pixi/spine-pixi`
+(§0.2). **Not yet browser-validated — work the §0.3 checklist.** The §4
+fixes below are still correct, but they addressed a *different* failure mode
+(context eviction) than the one that actually produced the reports.
 
 Read this first if the "fighters disappear mid-fight" reports come back. It
 records what was measured, what was fixed, **what was ruled out**, and how to
@@ -85,6 +89,225 @@ detaching the canvas, scoping teardown to that renderer. Single call site —
 Reproduced against real Pixi functions (no browser): a live `Batcher` whose
 batch is destroyed by `release()` throws the exact production message on its
 next `break()`. Confirmed `{removeView:true}` does not trigger the release path.
+
+**This fixed the `break()`/`clear()` crash and the `Insufficient buffer size`
+flood, but not the whole failure** — see §0.1.
+
+---
+
+## 0.1 ROOT CAUSE (second, independent) — Pixi 8.13 double-returns batches
+
+After §0 shipped, the arena still died, but with a **strictly smaller** error
+set: the `break()` → `clear()` crash and the `glDrawElements` flood were gone,
+leaving only two errors inside `draw()`:
+
+```
+Cannot read properties of null (reading 'instanceCount')
+Cannot read properties of null (reading 'topology')
+```
+
+The production chunk hash matched a local build, so the minified offsets decode
+directly. `index-*.js:2162:14466` is `GlGeometrySystem.draw`:
+
+```js
+draw(e, t, n, r) {
+  let { gl: i } = this._renderer,
+      a = this._activeGeometry,     // ← null
+      o = eg[e || a.topology];      // col 14466
+  if (r ??= a.instanceCount, …)     // col 14485
+```
+
+So a draw call was issued with **no geometry bound**.
+
+### The bug
+
+`Batcher.begin()` returns batches to the shared pool using `batchIndex`.
+`Batcher.destroy()` uses `batches.length` — and `batches` only ever grows
+(`_finishBatch` does `this.batches[this.batchIndex++] = batch`). Every slot past
+`batchIndex` was **already returned by the last `begin()`**, so `destroy()`
+returns it a second time:
+
+```js
+// 8.13.0 — Batcher.mjs
+destroy() {
+  for (let i = 0; i < this.batches.length; i++) returnBatchToPool(this.batches[i]);
+```
+
+A `Batch` sitting in the pool twice is handed to **two** batchers. The second
+rewrites it through `_finishBatch`, including `batch.action`, which flips
+`'startBatch'` → `'renderBatch'`. `BatcherPipe.execute` only calls
+`_adaptor.start()` — the thing that does `geometry.bind()` — for `'startBatch'`:
+
+```js
+execute(batch) {
+  if (batch.action === 'startBatch') { … this._adaptor.start(this, geometry, shader); }
+  this._adaptor.execute(this, batch);   // → geometry.draw() with _activeGeometry === null
+}
+```
+
+Same trigger as §0: `BatcherPipe.destroy()` → `Batcher.destroy()` runs on **every
+Application teardown**, poisoning the module-global pool for every Application
+still alive.
+
+### Fix — backported, because the version that fixes it breaks Spine
+
+Pixi's changelog lists **"Batch pool double-return prevention" in v8.15.0**, and
+8.15+ loops `i < this.batchIndex`. **We cannot take that version** — see §0.2.
+The fix is backported in `src/engine/pixiPatches.js` (`applyPixiPatches()`,
+called at the top of `main.jsx` **before any Application is constructed**):
+truncate `batches.length` to `batchIndex`, making 8.14's loop identical to
+8.15's. It no-ops on any version that already iterates `batchIndex`.
+
+### Verified
+
+`batches.length` is 3 while `batchIndex` is 1 → the 8.13 `destroy()` re-pools 3
+(2 duplicates); 8.19 re-pools exactly 1. Confirmed by reading both versions'
+`Batcher.mjs` side by side.
+
+---
+
+## 0.2 The pixi.js upgrade — 8.13.0 → **8.14.0**, and why it stops there
+
+The intent was 8.19.0, to pick up §0.1's fix at source. **8.19.0 was installed,
+built, and reverted**: it breaks `@pixi/spine-pixi`. Settled on **8.14.0**, the
+newest spine-compatible release, pinned **exactly** (`"pixi.js": "8.14.0"`, no
+`^`), with §0.1 backported.
+
+### 🚫 The blocker — pixi ≥ 8.15.0 cannot load a Spine character
+
+```
+[ArenaStage] init failed: TypeError:
+  Cannot read properties of undefined (reading 'autoGarbageCollect')
+    at loadSpine (spritePlayer.js:42)
+```
+
+8.15.0's unified GCSystem added this to `ViewContainer`'s constructor —
+**without defaulting `options`**:
+
+```js
+// pixi.js/lib/scene/view/ViewContainer.mjs:24  (8.15.0 → 8.19.0)
+constructor(options) {
+  …
+  this.autoGarbageCollect = options.autoGarbageCollect ?? true;   // options is undefined
+```
+
+`@pixi/spine-pixi@2.1.1` — the **latest published release** — has
+`class Spine extends ViewContainer` whose constructor calls a **bare `super()`**.
+So `Spine.from()` throws on every pixi ≥ 8.15.0.
+
+| pixi | reads `options.autoGarbageCollect` | Spine |
+|---|---|---|
+| 8.13.0, **8.14.0** | no | ✅ works |
+| 8.15.0 – 8.19.0 | yes, undefaulted | ❌ throws |
+
+The cruel part: **8.15.0 is both the release that fixes §0.1 and the release
+that breaks Spine.** There is no version pair that has both, so §0.1 stays
+backported.
+
+**To revisit:** watch for a `@pixi/spine-pixi` release that passes options to
+`super()` (or a pixi release that defaults `options`). Then delete
+`src/engine/pixiPatches.js`, drop its `main.jsx` call, and move to 8.15+.
+Re-run the §0.2 audit below before doing so — it was written against 8.19.0 and
+still holds.
+
+### Why 8.14.0 is safe — audit performed
+
+8.14.0 has **no breaking changes at all** (per its release notes) and adds
+"draw call skipped when `instanceCount < 1`", which touches the §0.1 crash path.
+The audit below was run against 8.19.0, so it covers 8.14 a fortiori.
+
+Every breaking change in 8.14–8.19 was checked against actual usage. The
+codebase imports pixi as `import * as PIXI` in 6 files, and the **entire** API
+surface it touches is:
+
+`Application` · `Assets(.load/.get/.cache)` · `Ticker.shared` · `AnimatedSprite`
+· `Sprite` · `Graphics` · `Texture(.EMPTY)` · `UPDATE_PRIORITY.LOW`
+
+| Breaking change | Version | Applies? |
+|---|---|---|
+| `Container.updateTransform({scaleX:0})` literal zero | 8.19 | no — unused |
+| `ParticleContainer` inherits ancestor blend modes | 8.19 | no — unused |
+| `FillPattern` gains `textureSpace`, defaults `'global'` | 8.19 | no — fills are solid colour only (`fill({color, alpha})`) |
+| Text width reporting for word-wrapped text | 8.18 | no — no `Text` |
+| `BlurFilter` new halving scheme | 8.17 | no — no filters |
+| Text `align:'justify'`, HTMLText `breakWords` | 8.17 | no |
+| SplitText / BitmapText / HTMLText changes | 8.16 | no |
+| `Container.cullArea` now local-space | 8.16 | no — unused |
+| `TextureGCSystem`/`RenderableGCSystem` deprecated → unified `GCSystem` | 8.15 | no — never referenced, and no GC options passed to `app.init()` |
+
+**`@pixi/spine-pixi@2.1.1`** (already the latest release) peers `^8.4.0`. It is
+the real risk surface — it imports **32 symbols** from pixi including internals
+(`Batcher`, `compileHighShaderGlProgram`, `generateTextureBatchBit`,
+`getBatchSamplersUniformGroup`, `collectAllRenderables`, `ViewContainer`) and
+**subclasses `Batcher`**. Checked:
+
+- all 32 symbols still exported by 8.19 ✓
+- `Batcher`'s constructor is byte-identical between 8.13 and 8.19 ✓
+- 8.19's `Batcher.destroy()` calls `this.geometry.destroy(true)`; spine's
+  subclass does define its own `geometry` (and `shader`) ✓
+- 8.19's `Batcher.destroy(options)` destroys the shader only when
+  `options.shader` is set, and `BatcherPipe.destroy()` calls it with **no
+  arguments** — so spine's *module-level singleton* shader is not destroyed.
+  Worth re-checking on any future upgrade: if that ever changes, tearing down
+  one Application would destroy the shared spine shader and reintroduce exactly
+  the §0/§0.1 class of cross-Application bug ✓
+
+### Fixes gained — and forfeited
+
+Gained at 8.14.0:
+
+| Version | Fix | Relevance |
+|---|---|---|
+| 8.14.0 | draw skipped when `instanceCount < 1` | the §0.1 `draw()` crash path |
+| 8.14.0 | `childrenRenderablesToUpdate` index validation during render | render-loop correctness |
+| 8.14.0 | accessibility div recycling from object pools | pool hygiene |
+
+**Forfeited** until the Spine blocker clears — all of these are relevant to the
+crashes in §0/§0.1, which is what makes the blocker annoying rather than
+academic:
+
+| Version | Fix |
+|---|---|
+| 8.15.0 | batch pool double-return (= §0.1; backported instead) |
+| 8.16.0 | VAO cache preservation in `GlGeometrySystem` |
+| 8.17.0 | BindGroup crash when a resource is destroyed in a batched group |
+| 8.17.0 | `Renderer.destroy()` `removeAllListeners()` behaviour |
+| 8.15.0 | unified `GCSystem`, explicit `unload()` — GPU memory on mobile/iOS |
+
+### `{ removeView: true }` is still required
+
+`AbstractRenderer.destroy`'s `releaseGlobalResources` behaviour is **unchanged**
+in 8.19 (still `AbstractRenderer.mjs:250`). §0's fix is not made redundant by
+the upgrade — keep it.
+
+### Not validated
+
+Build passes; lint problem count is identical to baseline (359 pre-existing,
+none in touched files); the bundle was confirmed to contain 8.14.0, the
+backport, and §0's `removeView`. **No browser run was performed** beyond the
+8.19.0 attempt that surfaced the Spine blocker. Chunk names changed with the
+version bump, so old stack-trace chunk hashes no longer apply. See §0.3.
+
+---
+
+## 0.3 Post-upgrade validation checklist
+
+Run with `?debug=gl` and the console open:
+
+1. **Settings ⇄ Quick Fight, ~10 round trips** — the original trigger. Console
+   must stay free of `topology` / `instanceCount` / `clear` nulls and
+   `glDrawElements` errors.
+2. **A full bot match**, both spine and PNG fighters, through to KO.
+3. **Roster grid** — spine previews animate; PNG tiles still use `<img>`
+   (no new WebGL contexts; §4.1).
+4. **Character carousel on `/setup`** — step quickly through all fighters,
+   watch for §8's duplicate-sprite report.
+5. **Projectiles / shields / slot tints** — these drive `app.ticker` and
+   `Spine` slot mutation, the least standard part of the integration.
+6. **`/dev?debug=gl&stress=100&hold=60`** — ticker listeners must return to
+   baseline after every unmount (§7).
+7. **iOS Capacitor build** — tightest context budget, and where the reports
+   originated.
 
 ---
 
@@ -356,6 +579,8 @@ and check whether the tile has more than one `<canvas>` in it.
 | `src/components/StressHarness.jsx` | `/dev?stress=N` mount/unmount harness. |
 | `src/components/CharacterPreview.jsx` | Renderer split (§4.1). |
 | `src/components/ArenaStage.jsx` | Context-loss recovery + sprite cleanup (§4.2, §4.3). |
-| `src/engine/spritePlayer.js` | **`destroyApp` — the root-cause fix (§0)** + idempotent teardown (§4.4). |
+| `src/engine/spritePlayer.js` | **`destroyApp` — root-cause fix #1 (§0)** + idempotent teardown (§4.4). |
+| `src/engine/pixiPatches.js` | **Root-cause fix #2 (§0.1)** — backported pixi 8.15 `Batcher.destroy` bound. |
+| `package.json` | **`pixi.js` pinned exactly at `8.14.0`** — max version compatible with Spine (§0.2). |
 | `src/components/Arena.jsx` | `recordStageScale` instrumentation only. |
 | `src/main.jsx` | `initGlDebug`, `?strict=1`. |
