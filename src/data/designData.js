@@ -111,10 +111,16 @@ export function strategyLabel(strategy, index = 0) {
   return name || `Strategy ${index + 1}`;
 }
 
-/** Only strategies with real text count as usable (mirrors isProfileReady). */
+/**
+ * Only strategies with text count as usable (mirrors isProfileReady). Any
+ * non-empty text qualifies: a minimum length here silently dropped short plans
+ * from the arena switcher and the fight prompt, with nothing in setup saying
+ * so. Emptiness is now caught where it's written instead — setup won't save a
+ * blank plan (see CharSelectPage.emptyPlanIdx).
+ */
 export function usableStrategies(strategies) {
   return (Array.isArray(strategies) ? strategies : [])
-    .filter(s => typeof s?.text === 'string' && s.text.trim().length > 8);
+    .filter(s => typeof s?.text === 'string' && s.text.trim().length > 0);
 }
 
 // Simple deterministic per-character design stats (1–5 scale) derived from the
