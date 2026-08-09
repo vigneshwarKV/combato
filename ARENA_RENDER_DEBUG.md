@@ -1,11 +1,90 @@
 # Arena rendering glitch — investigation notes
 
-**Date:** 2026-08-08 · **Branch:** master · **Status:** failure modes removed, root
-cause of the original screenshots not conclusively proven.
+**Date:** 2026-08-08, updated 2026-08-09 · **Branch:** master · **Status:** **root
+cause found and fixed — see §0.** The §4 fixes below are still correct, but they
+addressed a *different* failure mode (context eviction) than the one that
+actually produced the reports.
 
 Read this first if the "fighters disappear mid-fight" reports come back. It
 records what was measured, what was fixed, **what was ruled out**, and how to
 re-run every measurement.
+
+---
+
+## 0. ROOT CAUSE — `destroyApp` passed Pixi v7's argument to a v8 API
+
+**One character of API drift.** `spritePlayer.js`'s `destroyApp` called:
+
+```js
+app.destroy(true, options);        // v7 semantics: "removeView"
+```
+
+In **Pixi v7** the first argument was `removeView: boolean`. In **Pixi v8** it is
+`RendererDestroyOptions`, and `AbstractRenderer.destroy` reads a literal `true`
+as **`releaseGlobalResources`**:
+
+```js
+// node_modules/pixi.js/lib/rendering/renderers/shared/system/AbstractRenderer.mjs:250
+if (options === true || (typeof options === 'object' && options.releaseGlobalResources)) {
+  GlobalResourceRegistry.release();
+}
+```
+
+`GlobalResourceRegistry.release()` clears state that is **module-global, not
+per-renderer**: the `Batch` pool in `rendering/batcher/shared/Batcher.mjs`, plus
+`BigPool`, `TexturePool`, `CanvasPool` and the canvas texture cache. So
+destroying *any one* Application on the page wiped shared GPU bookkeeping out
+from under **every other Application still alive**.
+
+### Why it corrupts a renderer that was never touched
+
+`batchPool` is a plain module-level array, and `batchPool.length` never shrinks —
+every `Batch` a batcher has ever used stays reachable from that array, including
+the ones a live batcher is *currently* holding in `this.batches[]`.
+`release()` iterates the whole array and calls `destroy()` on all of them,
+nulling `textures`, `bindGroup` and `batcher`. Then, on the surviving renderer:
+
+1. `Batcher.begin()` hands its now-destroyed batches back to the pool.
+2. `Batcher.break()` pulls one out and does `batch.textures.clear()` →
+   **`Cannot read properties of null (reading 'clear')`**.
+3. Instructions still reference nulled batches → `draw()` reads
+   **`null.topology` / `null.instanceCount`**.
+4. Index/attribute buffers desync → **`glDrawElements: Insufficient buffer size`**,
+   flooding until "too many errors".
+
+That is the reported console output, in order. It also explains the two details
+that never fit the context-eviction theory: **two different GL context IDs
+erroring at once** (the corruption is in shared state, not one context), and
+fighters rendering as **torn garbage** rather than merely freezing.
+
+### Trigger
+
+Navigating between surfaces that each own an Application — Settings ⇄ Quick
+Fight, roster ⇄ arena. Every navigation destroys one app and poisons the rest.
+Rare on localhost only because it needs a second renderer alive at the moment of
+teardown; production's warm asset cache changes the mount timing that makes the
+overlap likely.
+
+### Fix
+
+```js
+app.destroy({ removeView: true }, options);
+```
+
+An options *object* fails the `releaseGlobalResources` test while still
+detaching the canvas, scoping teardown to that renderer. Single call site —
+`destroyApp` in `src/engine/spritePlayer.js` — used by both `ArenaStage` and
+`CharacterPreview`.
+
+> **Never pass a bare `true` as the first argument of `Application.destroy`.**
+> Pixi's own JSDoc still documents it as "Removes the canvas element" and does
+> not mention the global release, so this reads as correct at every call site.
+
+### Verified
+
+Reproduced against real Pixi functions (no browser): a live `Batcher` whose
+batch is destroyed by `release()` throws the exact production message on its
+next `break()`. Confirmed `{removeView:true}` does not trigger the release path.
 
 ---
 
@@ -136,9 +215,10 @@ renderer, and the throw surfaced as a misleading `[ArenaStage] init failed`.
 
 ## 6. Still open
 
-- **The exact symptom was never reproduced.** A forced context loss *freezes* the
-  canvas on its last frame; the screenshots show fighters *absent*. The gap
-  between "frozen" and "gone" is unexplained.
+- ~~**The exact symptom was never reproduced.**~~ **Closed by §0.** The gap
+  between "frozen" (forced context loss) and "gone / torn" (the screenshots) was
+  the tell that this was never a context-loss bug: it was shared batcher state
+  being destroyed under a live renderer.
 - **Nothing was tested on iOS**, which is where the reports came from and where
   the context cap is tightest. Worth a Capacitor build with the overlay on.
 - **The preloader still never runs on the tournament or bot path.**
@@ -276,6 +356,6 @@ and check whether the tile has more than one `<canvas>` in it.
 | `src/components/StressHarness.jsx` | `/dev?stress=N` mount/unmount harness. |
 | `src/components/CharacterPreview.jsx` | Renderer split (§4.1). |
 | `src/components/ArenaStage.jsx` | Context-loss recovery + sprite cleanup (§4.2, §4.3). |
-| `src/engine/spritePlayer.js` | `destroyApp` (§4.4). |
+| `src/engine/spritePlayer.js` | **`destroyApp` — the root-cause fix (§0)** + idempotent teardown (§4.4). |
 | `src/components/Arena.jsx` | `recordStageScale` instrumentation only. |
 | `src/main.jsx` | `initGlDebug`, `?strict=1`. |

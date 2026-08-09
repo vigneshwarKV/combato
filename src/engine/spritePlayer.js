@@ -236,11 +236,28 @@ export function destroyFighterSprite(sprite) {
  * can each reach a destroy. Whichever runs second used to throw, because
  * Application.destroy dereferences a renderer the first call already nulled.
  * The throw landed in the init catch and logged a spurious "init failed".
+ *
+ * The first argument MUST be `{ removeView: true }` and never the bare `true`
+ * that Pixi v7 took here. In v8 `AbstractRenderer.destroy` reads a literal
+ * `true` as `releaseGlobalResources` and calls `GlobalResourceRegistry.release()`,
+ * which wipes state that is MODULE-GLOBAL, not per-renderer: the `Batch` pool in
+ * `rendering/batcher/shared/Batcher.mjs`, plus `BigPool`, `TexturePool`,
+ * `CanvasPool` and the canvas texture cache. Every OTHER Application still alive
+ * on the page (the roster's spine previews, the arena during a rebuild) holds
+ * pooled `Batch` objects that release() has just destroyed — `textures`,
+ * `bindGroup` and `batcher` all nulled. On their next frame the batcher pulls a
+ * destroyed Batch back out of the shared pool and dies in `break()` on
+ * `batch.textures.clear()`, then in `draw()` on a null geometry's `topology` /
+ * `instanceCount`, and the desynced index buffer floods the console with
+ * `glDrawElements: Insufficient buffer size`. Visible symptom: fighters render
+ * as torn garbage or vanish outright while every DOM layer keeps painting.
+ * `{ removeView: true }` still detaches the canvas — it just scopes the teardown
+ * to this renderer.
  */
 export function destroyApp(app, options = { children: true }) {
   if (!app || app.__pkDestroyed) return;
   try {
-    app.destroy(true, options);
+    app.destroy({ removeView: true }, options);
     app.__pkDestroyed = true;
   } catch {
     // Almost always "destroy before init() resolved" — the renderer isn't there
