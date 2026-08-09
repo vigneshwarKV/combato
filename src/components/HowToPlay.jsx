@@ -9,7 +9,7 @@ import Icon from './design/Icons.jsx';
 import { loadProfile, charById } from '../data/designData.js';
 import { resolveSuperMove } from '../engine/prompts.js';
 import { resolveActions } from '../engine/damageEngine.js';
-import { computeAttackTiming } from '../engine/animResolution.js';
+import { computeAttackTiming, impactDelayFor } from '../engine/animResolution.js';
 import { barCommitAt } from '../hooks/useFightRenderer.js';
 import { CHARACTERS, METER } from '../data/characters.js';
 import { startMusic, stopMusic } from '../engine/soundEngine.js';
@@ -79,7 +79,16 @@ function buildMoveTimeline(moves, { start = 400, hold = 1050, gap = 1550 } = {})
 //   timeline — [{ at: ms, patch }] scheduled after enter
 //   note     — in-scene callout { text, x, y, arrow } (design coords)
 //   duration — ms before auto-advancing to the next step
-function buildSteps({ superKey }) {
+function buildSteps({ superKey, heroChar }) {
+  // The tour scripts its own timeline, so a scripted reaction has to wait out
+  // the same travel time the fight engine uses — turtle's spear is a 550ms
+  // release + 600ms flight, so a fixed ~700ms "hurt" fired while the spear was
+  // still in the air. Read it off the engine instead of hardcoding, so a change
+  // to the character's projectileDelay can't desync the tour again.
+  const shootTravel = impactDelayFor('shoot', heroChar);
+  const SHOOT_AT = 600;
+  const LANDS_AT = SHOOT_AT + shootTravel;
+
   const steps = [
     // Establishing shot — the real arena, both fighters idle.
     {
@@ -118,15 +127,17 @@ function buildSteps({ superKey }) {
       camera: 'full',
       delayNote: true,
       enter: { animA: 'idle', animB: 'idle', hpA: 100, hpB: 100, meterA: 0 },
+      // Beats after the hit keep their original spacing — only the reaction
+      // itself moved back to when the spear actually arrives.
       timeline: [
-        { at: 600,  patch: { animA: 'shoot' } },        // you shoot
-        { at: 1300, patch: { animB: 'hurt' } },          // opponent takes the hit (HP still full)
-        { at: 1900, patch: { cam: 'healthB' } },         // zoom into the full health bar
-        { at: 2700, patch: { showNote: true } },         // show the text
-        { at: 3100, patch: { hpB: 58, meterA: 22 } },    // THEN the bar visibly drops — the effect
+        { at: SHOOT_AT,        patch: { animA: 'shoot' } },        // you throw
+        { at: LANDS_AT,        patch: { animB: 'hurt' } },          // the spear lands (HP still full)
+        { at: LANDS_AT + 600,  patch: { cam: 'healthB' } },         // zoom into the full health bar
+        { at: LANDS_AT + 1400, patch: { showNote: true } },         // show the text
+        { at: LANDS_AT + 1800, patch: { hpB: 58, meterA: 22 } },    // THEN the bar visibly drops — the effect
       ],
       note: { text: 'Each hit reduces your opponent’s health bar', x: 845, y: 100, arrow: 'up' },
-      duration: 5400,
+      duration: LANDS_AT + 4100,
     },
     // Super meter — fills, then the note swaps automatically to what a full
     // meter unlocks (no extra Next tap needed).
@@ -265,7 +276,10 @@ export default function HowToPlay({ onClose, onSetup }) {
   const foeId = 'beast';
   const superKey = resolveSuperMove(heroId);
 
-  const steps = useMemo(() => buildSteps({ superKey }), [superKey]);
+  const steps = useMemo(
+    () => buildSteps({ superKey, heroChar: CHARACTERS[heroId] }),
+    [superKey, heroId],
+  );
   const practice = useMemo(() => buildPractice(), []);
 
   const fighterA = { name: profile.handle || 'YOU', character: heroId, color: '#ffd84a' };
@@ -575,29 +589,25 @@ export default function HowToPlay({ onClose, onSetup }) {
 
   return (
     <div className="htp-overlay" role="dialog" aria-label="How to play">
-      {/* Header — progress ticks + title, skip & close. */}
-      <div className="htp-header">
+      {/* Header — the shared game bar (arena / duel room / lobby), with the step
+          ticks riding its bottom edge so the bar itself stays 52px everywhere. */}
+      <header className="game-bar htp-bar">
+        <span className="game-bar-brand">COMBAT<b>O</b></span>
+        <span className="game-bar-div" />
+        <span className="game-bar-mode">HOW TO PLAY</span>
+        <span className="game-bar-spacer" />
+        {/* Skip is the only way out — the X next to it did the same thing. */}
+        <div className="game-bar-rail">
+          <button className="hdr-btn" onClick={onClose}>
+            SKIP TUTORIAL<Icon name="arrow" size={13} />
+          </button>
+        </div>
         <div className="htp-ticks">
           {steps.map((_, idx) => (
             <span key={idx} className={'htp-tick' + ((!inPractice && (ended || idx <= stepIndex)) ? ' on' : '')} />
           ))}
         </div>
-        <div className="htp-header-row">
-          <div className="htp-header-left">
-            <span className="htp-header-dot" />
-            <span className="htp-header-title">HOW TO <span className="kk">PLAY</span></span>
-          </div>
-          <div className="htp-header-right">
-            <button className="btn btn-ghost btn-sm" onClick={onClose}>
-              Skip tutorial
-              <Icon name="arrow" size={13} />
-            </button>
-            <button className="icon-btn" onClick={onClose} aria-label="Close">
-              <Icon name="close" size={15} />
-            </button>
-          </div>
-        </div>
-      </div>
+      </header>
 
       {/* Stage — the live arena, panned/zoomed per step. */}
       <div ref={frameRef} className="htp-stage">

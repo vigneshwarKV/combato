@@ -84,7 +84,7 @@ function splitTitle(name) {
 function LobbyView({
   matchCode, isHost, lobbyState,
   inviteLink, connected, error,
-  myPeerId, profile,
+  myPeerId,
   onStart, onLeave, onToggleReady,
 }) {
   const fighters = lobbyState?.fighters || [];
@@ -95,9 +95,6 @@ function LobbyView({
   const iAmReady = !!myFighter?.ready;
   const allJoinersReady = fighters.filter(f => !f.isHost).every(f => f.ready);
   const { head: titleHead, tail: titleTail } = splitTitle(lobbyState?.tournamentName);
-
-  const hostFighter = fighters.find(f => f.isHost);
-  const hostHandle = hostFighter?.name || (isHost ? profile.handle : '—');
 
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
@@ -157,18 +154,29 @@ function LobbyView({
       <div className="spotlight-right" />
 
       <div className="tour-page">
+        <header className="game-bar">
+          <span className="game-bar-brand">COMBAT<b>O</b></span>
+          <span className="game-bar-div" />
+          <span className="game-bar-mode">TOURNAMENT</span>
+          <span className="game-bar-spacer" />
+          <button className="hdr-btn hdr-btn-danger" onClick={onLeave}>
+            <Icon name="close" size={12} />{isHost ? 'CANCEL LOBBY' : 'LEAVE'}
+          </button>
+        </header>
+
+        {/* The eyebrow that used to carry this is gone (who hosts / who we wait
+            on is redundant with the seats and the timer) — but a dead peer
+            connection isn't, so it keeps a line of its own. */}
+        {!connected && (
+          <div className={`room-conn ${error ? 'is-error' : ''}`} role="status">
+            <span className="dot" />{error || 'Connecting…'}
+          </div>
+        )}
+
         <div className="lobby-wrap">
 
           <div className="lobby-meta">
             <div>
-              <div className="eyebrow">
-                <span className="dot" />
-                {!connected
-                  ? (error || 'Connecting…')
-                  : isHost
-                    ? 'Your lobby · Open for joiners'
-                    : `Joined as ${profile.handle} · Waiting for ${hostHandle}`}
-              </div>
               <h1 className="lobby-title">
                 {titleHead && <>{titleHead} </>}<span className="accent">{titleTail}</span>
               </h1>
@@ -211,30 +219,21 @@ function LobbyView({
                 </span>
               </div>
             </div>
+            {/* Primary action only — leaving the lobby lives in the header bar. */}
             <div className="timer-cta">
               {isHost ? (
-                <>
-                  <button className="btn" onClick={onStart} disabled={!canStart}
-                          style={!canStart ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}>
-                    <Icon name="play" size={14} />&nbsp;{startLabel}
-                  </button>
-                  <button className="btn btn-sm btn-ghost" onClick={onLeave}>
-                    <Icon name="close" size={12} />&nbsp;CANCEL LOBBY
-                  </button>
-                </>
+                <button className="btn" onClick={onStart} disabled={!canStart}
+                        style={!canStart ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}>
+                  <Icon name="play" size={14} />&nbsp;{startLabel}
+                </button>
               ) : (
-                <>
-                  <button
-                    className={iAmReady ? 'btn btn-cyan' : 'btn'}
-                    onClick={() => onToggleReady?.(!iAmReady)}
-                  >
-                    <Icon name={iAmReady ? 'close' : 'play'} size={14} />
-                    &nbsp;{iAmReady ? 'CANCEL READY' : 'CLICK TO READY'}
-                  </button>
-                  <button className="btn btn-sm btn-ghost" onClick={onLeave}>
-                    <Icon name="back" size={12} />&nbsp;LEAVE LOBBY
-                  </button>
-                </>
+                <button
+                  className={iAmReady ? 'btn btn-cyan' : 'btn'}
+                  onClick={() => onToggleReady?.(!iAmReady)}
+                >
+                  <Icon name={iAmReady ? 'close' : 'play'} size={14} />
+                  &nbsp;{iAmReady ? 'CANCEL READY' : 'CLICK TO READY'}
+                </button>
               )}
             </div>
           </div>

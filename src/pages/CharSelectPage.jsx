@@ -6,7 +6,7 @@ import { CharSprite, MovesTable } from '../components/design/DesignKit.jsx';
 import AssetPreloadModal from '../components/AssetPreloadModal.jsx';
 import {
   CHARS,
-  loadProfile, saveProfile, charById,
+  loadProfile, saveProfile, charById, isProfileReady,
   randomSimpleStrategy, makeStrategy, defaultStrategies, strategyLabel,
   MAX_STRATEGIES,
 } from '../data/designData.js';
@@ -105,6 +105,23 @@ export default function CharSelectPage() {
   useEffect(() => {
     document.body.classList.add('pk-design');
     return () => document.body.classList.remove('pk-design');
+  }, []);
+
+  // Visiting setup is enough to count as set up — the gate no longer waits for
+  // SAVE. loadProfile() already hands back three filled plans, and the carousel
+  // opens on a real fighter, so the only thing a never-saved profile is missing
+  // is charId: commit exactly the loadout that's on screen (same fallback as the
+  // `draft` initializer above) on arrival. Before this, a player who browsed
+  // setup and went back still hit "Set up your fighter first" on home.
+  // Mount only — everything after this is the SAVE button's job.
+  useEffect(() => {
+    const p = loadProfile();
+    if (isProfileReady(p)) return;
+    saveProfile({
+      ...p,
+      charId: p.charId || PLAYABLE[0]?.id || null,
+      handle: (p.handle || '').trim(),
+    });
   }, []);
 
   useEffect(() => {
