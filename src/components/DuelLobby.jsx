@@ -199,14 +199,11 @@ export default function DuelLobby({
     }
   }
 
-  // One line, and only when it says something the seats don't already say. The
-  // empty seat reads "WAITING FOR OPPONENT" and carries the code; the ready
-  // chips read READY / NOT READY.
-  const statusText = !connected
-    ? (error || 'Connecting…')
-    : isHost
-      ? (opponent && !opponentReady ? `Waiting for ${opponent.name || 'opponent'}` : '')
-      : iAmReady ? 'Waiting for host to start' : '';
+  // The bar is controls only, so the old status line is gone: the seats already
+  // say who is here, who hosts and who is ready. What the seats CAN'T say is
+  // that the peer connection never came up — that keeps a line, in the room
+  // body rather than the bar.
+  const connText = !connected ? (error || 'Connecting…') : '';
 
   return (
     <div className="bg-arena duel-page duel-page-lobby">
@@ -214,16 +211,21 @@ export default function DuelLobby({
       <div className="spotlight-right" />
 
       <div className="duel-room">
-        <header className="duel-bar">
-          <span className="dot" />
-          <span className="duel-bar-title">1V1 <span className="accent">DUEL</span></span>
-          {statusText && <span className="duel-bar-status">{statusText}</span>}
-          <span className="duel-bar-spacer" />
-          <button className="duel-bar-btn" onClick={onLeave}>
-            <Icon name={isHost ? 'close' : 'back'} size={12} />
-            {isHost ? 'CANCEL DUEL' : 'LEAVE'}
+        <header className="game-bar">
+          <span className="game-bar-brand">COMBAT<b>O</b></span>
+          <span className="game-bar-div" />
+          <span className="game-bar-mode">1V1 DUEL</span>
+          <span className="game-bar-spacer" />
+          <button className="hdr-btn hdr-btn-danger" onClick={onLeave}>
+            <Icon name="close" size={12} />{isHost ? 'CANCEL DUEL' : 'LEAVE'}
           </button>
         </header>
+
+        {connText && (
+          <div className={`room-conn ${error ? 'is-error' : ''}`} role="status">
+            <span className="dot" />{connText}
+          </div>
+        )}
 
         <div className="duel-vs">
           <FighterCard fighter={me} isMe sprite={sprite} />
@@ -240,7 +242,7 @@ export default function DuelLobby({
           {opponent && (
             <span className="duel-room-code">ROOM <b>{matchCode}</b></span>
           )}
-          <span className="duel-bar-spacer" />
+          <span className="game-bar-spacer" />
           {isHost ? (
             // Label stays put — `disabled` already communicates the wait, and a
             // CTA that renames itself three times reads as a bug.

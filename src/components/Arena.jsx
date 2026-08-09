@@ -4,6 +4,7 @@ import StatusBars from './StatusBars.jsx';
 import ArenaBackground from './ArenaBackground.jsx';
 import ActionLabel from './ActionLabel.jsx';
 import { LandscapeLock } from './design/DesignKit.jsx';
+import Icon from './design/Icons.jsx';
 import { useFight } from '../hooks/useFight.js';
 import { useFightRenderer } from '../hooks/useFightRenderer.js';
 import { CHARACTERS } from '../data/characters.js';
@@ -20,11 +21,13 @@ function MusicToggle() {
   return (
     <button
       onClick={toggleMusic}
-      className="btn-arena btn-arena-sm btn-arena-ghost"
+      className="hdr-icon-btn"
       title={playing ? 'Music on — click to mute' : 'Music off — click to play'}
       aria-label={playing ? 'Mute music' : 'Play music'}
+      aria-pressed={playing}
+      data-off={!playing || undefined}
     >
-      {playing ? '🔊' : '🔇'}
+      <Icon name={playing ? 'sound' : 'soundOff'} size={17} />
     </button>
   );
 }
@@ -91,8 +94,9 @@ const DESIGN_H = 760;
 //   • The EFFECTIVE strategy (driving the current moves) is green.
 //   • Tapping another marks it PENDING (orange) with a loader that fills across
 //     the current 3-move batch — while the old one STAYS green (still active).
-//   • When the loader fills, the orange takes over: it turns green and the old
-//     green switches off.
+//   • A full orange loader just means "ready to take over" — it stays orange and
+//     the old one stays green until the NEXT batch's moves actually start. Only
+//     then does the orange turn green and the old green switch off.
 // When nothing is pending, the single green button shows the same loader as a
 // 3-move cycle indicator.
 export function StrategySwitcher({
@@ -268,14 +272,11 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
   const movesPerBatch = movesA.length || 3;
   const movesPlayed = Math.max(0, currentTurnIndex + 1);
   const switchProgress = Math.min(1, movesPlayed / movesPerBatch);   // 0 → 1
-  const movesUntilSwitch = Math.max(0, movesPerBatch - movesPlayed); // 3 → 0
 
-  // Once the loader is full (the last move of the batch has begun), flip a
-  // pending selection to green immediately — don't wait out the gap before the
-  // next batch's moves arrive.
-  useEffect(() => {
-    if (movesUntilSwitch === 0 && strategyPending) setEffectiveIndex(activeStrategyIndex);
-  }, [movesUntilSwitch, strategyPending, activeStrategyIndex]);
+  // NB: no early flip when the loader fills. A full orange bar means "queued and
+  // ready" — the colours only swap when the next batch's moves actually begin
+  // (the batchNumber effect above), so the green button always names the
+  // strategy that produced the move on screen.
 
   const currentActionA = currentTurnIndex >= 0 && movesA[currentTurnIndex] ? movesA[currentTurnIndex] : null;
   const currentActionB = currentTurnIndex >= 0 && movesB[currentTurnIndex] ? movesB[currentTurnIndex] : null;
@@ -354,31 +355,21 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
 
       <LandscapeLock />
 
-      {/* Controls bar — kept intentionally minimal: just Home + sound. The
-          live status text (Calling AI / Round N / win label) and the batch
-          progress bar were removed; fight state already reads off the HUD. */}
-      <div
-        className="flex items-center justify-between px-6 py-2 shrink-0"
-        style={{ background: 'rgba(8,0,13,0.85)', borderBottom: '1px solid var(--arena-panel-border)' }}
-      >
-        <div className="flex items-center gap-2">
+      {/* Header — one rail holds sound + Home. No status text: fight state reads
+          off the HUD. (The live status line, Round N and the batch progress bar
+          were removed earlier; this redesign does not bring them back.) */}
+      <header className="game-bar">
+        <span className="game-bar-brand">COMBAT<b>O</b></span>
+        <span className="game-bar-spacer" />
+        <div className="game-bar-rail">
+          <MusicToggle />
           {onHome && (
-            <button
-              onClick={onHome}
-              className="btn-arena btn-arena-sm btn-arena-ghost"
-              aria-label="Back to home"
-            >
-              ← Home
+            <button className="hdr-btn" onClick={onHome} aria-label="Back to home">
+              <Icon name="home" size={13} />HOME
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <MusicToggle />
-          {mode === 'spectator' && (
-            <span className="section-label">Spectating</span>
-          )}
-        </div>
-      </div>
+      </header>
 
       {/* Stage — the background is a single full-scene image that fills the
           arena (`cover`). It's anchored to the top so the sky/horizon stays in
