@@ -180,11 +180,15 @@ export default function CharSelectPage() {
 
   const fighter = charById(draft.charId) || PLAYABLE[0];
   const fighterReady = !!fighter && !fighter.locked;
-  const canSave = fighterReady && !preload.active;
 
   const draftStrategies = Array.isArray(draft.strategies) && draft.strategies.length > 0
     ? draft.strategies
     : defaultStrategies();
+  // A blank plan is caught here rather than filtered out at fight time: saving
+  // one used to leave a tab in setup with no matching arena button and no
+  // explanation. Either write something in it or delete the tab (✕).
+  const emptyPlanIdx = draftStrategies.findIndex(p => !(p?.text || '').trim());
+  const canSave = fighterReady && !preload.active && emptyPlanIdx < 0;
   const activeIdx = Math.min(draft.activeStrategyIndex ?? 0, draftStrategies.length - 1);
   const activePlan = draftStrategies[activeIdx] || makeStrategy(0);
   const dirty = loadoutSnapshot(draft) !== initialSnapshot;
@@ -263,6 +267,7 @@ export default function CharSelectPage() {
     else navigate('/');
   }
   function saveAndLeave() {
+    if (!canSave) return;
     saveProfile(cleanedProfile());
     navigate('/');
   }
@@ -342,7 +347,7 @@ export default function CharSelectPage() {
 
           <div className="su-plan-tabs">
             {draftStrategies.map((p, i) => (
-              <div key={i} className={`su-tab ${i === activeIdx ? 'is-active' : ''}`}>
+              <div key={i} className={`su-tab ${i === activeIdx ? 'is-active' : ''} ${!(p?.text || '').trim() ? 'is-empty' : ''}`}>
                 <button className="su-tab-btn" onClick={() => setActiveStrategy(i)}>PLAN {i + 1}</button>
                 {/* The last remaining plan can't be deleted — a playbook needs one. */}
                 {draftStrategies.length > 1 && (
@@ -389,8 +394,16 @@ export default function CharSelectPage() {
 
       <div className="su-foot">
         {!canSave && !savedFlash && (
-          <span className="su-foot-hint f-mono">
-            {preload.active ? 'Loading fighters…' : 'Pick a fighter to continue'}
+          <span className={`su-foot-hint f-mono ${!preload.active && fighterReady ? 'is-warn' : ''}`}>
+            {preload.active
+              ? 'Loading fighters…'
+              : !fighterReady
+                ? 'Pick a fighter to continue'
+                // Tapping the hint jumps to the offending tab — the empty plan
+                // isn't necessarily the one on screen.
+                : <button className="su-foot-jump" onClick={() => setActiveStrategy(emptyPlanIdx)}>
+                    PLAN {emptyPlanIdx + 1} needs a strategy
+                  </button>}
           </span>
         )}
         <div className="su-foot-spacer" />
@@ -454,10 +467,18 @@ export default function CharSelectPage() {
         <div className="su-confirm-backdrop" onClick={() => setLeavePrompt(false)}>
           <div className="su-confirm" onClick={e => e.stopPropagation()} role="dialog" aria-label="Unsaved changes">
             <div className="su-confirm-title">Save your changes?</div>
-            <p className="su-confirm-body">You have unsaved changes to your loadout.</p>
+            <p className="su-confirm-body">
+              {canSave
+                ? 'You have unsaved changes to your loadout.'
+                : emptyPlanIdx >= 0
+                  ? `PLAN ${emptyPlanIdx + 1} is empty — write a strategy in it or delete the tab before saving.`
+                  : 'Pick a fighter before saving.'}
+            </p>
             <div className="su-confirm-actions">
-              <button className="btn btn-sm btn-ghost" onClick={discardAndLeave}>CANCEL</button>
-              <button className="btn btn-sm btn-cyan su-save" onClick={saveAndLeave}>
+              <button className="btn btn-sm btn-ghost" onClick={discardAndLeave}>
+                {canSave ? 'CANCEL' : 'LEAVE ANYWAY'}
+              </button>
+              <button className="btn btn-sm btn-cyan su-save" onClick={saveAndLeave} disabled={!canSave}>
                 <Icon name="check" size={13} />&nbsp;SAVE
               </button>
             </div>
