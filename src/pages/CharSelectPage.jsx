@@ -11,11 +11,25 @@ import {
   MAX_STRATEGIES,
 } from '../data/designData.js';
 import { CHARACTERS } from '../data/characters.js';
+import { BASE_ACTIONS } from '../engine/damageEngine.js';
+import { SUPER_MOVE_TOKEN } from '../engine/prompts.js';
 import { preloadAll, isPreloaded } from '../engine/assetPreloader.js';
 
 // Only the unlocked fighters can be stepped through in the carousel; the roster
 // gallery still lists the locked ones (rendered disabled).
 const PLAYABLE = CHARS.filter(c => !c.locked);
+
+// The move vocabulary a plan can name, straight from the engine so the tip can
+// never drift from what the AI actually accepts. 'idle' is dropped — it's the
+// engine's do-nothing fallback, not something a player should plan around.
+// Read in attack → guard → super order rather than BASE_ACTIONS' internal order;
+// anything the engine gains later still shows up, just at the end.
+const MOVE_ORDER = ['hit', 'shoot', 'slide', 'jump', 'defend_high', 'defend_low'];
+const PLAN_MOVES = [
+  ...MOVE_ORDER.filter(a => BASE_ACTIONS.includes(a)),
+  ...BASE_ACTIONS.filter(a => a !== 'idle' && !MOVE_ORDER.includes(a)),
+  SUPER_MOVE_TOKEN,
+];
 
 // Stable fingerprint of the editable loadout (fighter + strategy name/text), so
 // we can tell whether the player actually changed anything before leaving.
@@ -387,6 +401,18 @@ export default function CharSelectPage() {
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 4l3 3-3 3M20 7h-4a3 3 0 0 0-3 3" /><path d="M7 20l-3-3 3-3M4 17h4a3 3 0 0 0 3-3" /></svg>
                 example
               </button>
+              {/* On the floor of the text box: the exact move tokens the engine
+                  accepts, so a plan can name them instead of inventing its own
+                  words for them. */}
+              <div className="su-plan-tip">
+                <span className="su-tip-label">MOVES</span>
+                <span className="su-tip-vals">
+                  {/* Shown without the token underscores — plans are written in
+                      plain English, so "defend high" reads better than the raw
+                      engine key and the model reads it the same. */}
+                  {PLAN_MOVES.map(m => <code key={m}>{m.replace(/_/g, ' ')}</code>)}
+                </span>
+              </div>
             </div>
           </div>
         </div>
