@@ -1504,22 +1504,67 @@ body.needs-landscape .landscape-lock { display: none; }
 }
 .su-plan-name:focus { border-bottom-color: var(--cyan); }
 .su-plan-name::placeholder { color: var(--ink-mute); }
+/* The wrap — not the textarea — draws the box, so the move strip can sit on its
+   floor as a real sibling. Overlaying it instead would have needed the textarea
+   to reserve a matching bottom padding, which breaks the moment the chips wrap
+   to a second line on a narrow column. */
 .su-plan-textwrap {
   position: relative; flex: 1; min-height: 0;
-  display: flex;
-}
-.su-plan-text {
-  flex: 1; min-height: 0; resize: none;
+  display: flex; flex-direction: column;
   background: rgba(7, 5, 13, 0.8);
   border: 1px solid var(--line-2);
+  transition: border-color 0.12s ease;
+}
+.su-plan-textwrap:focus-within { border-color: var(--cyan); }
+.su-plan-text {
+  flex: 1; min-height: 0; resize: none;
+  background: transparent;
+  border: 0;
   color: var(--ink);
   font-family: var(--f-mono); font-size: 12px; line-height: 1.6;
   padding: 9px 100px 9px 11px;
   outline: none;
-  transition: border-color 0.12s ease;
 }
-.su-plan-text:focus { border-color: var(--cyan); }
 .su-plan-text::placeholder { color: var(--ink-dim); }
+/* Move vocabulary on the floor of the plan text box. */
+.su-plan-tip {
+  flex: 0 0 auto;
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 7px 11px 8px;
+  border-top: 1px solid var(--line);
+}
+.su-tip-label {
+  flex: 0 0 auto;
+  font-family: var(--f-mono); font-size: 9.5px; letter-spacing: 0.12em;
+  color: var(--ink-dim); text-transform: uppercase;
+  white-space: nowrap;
+}
+/* Tuned to keep all seven moves on ONE line down to a fairly narrow plan column;
+   it only wraps to two on phone-width screens. */
+.su-tip-vals {
+  display: flex; flex-wrap: wrap; gap: 3px 5px;
+  min-width: 0;
+  font-family: var(--f-mono); font-size: 11px; line-height: 1.5;
+  color: var(--ink-soft);
+}
+.su-tip-vals code {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font-family: inherit; font-size: 10.5px;
+  /* Two-word moves ("defend high") must break as a unit, never mid-label. */
+  white-space: nowrap;
+}
+/* Dot separator instead of a box per move. Sits inside the item (with the flex
+   gap on its other side) so it stays centred between the two labels, and it
+   rides along when the row wraps. */
+.su-tip-vals code:not(:last-child)::after {
+  content: '·';
+  margin-left: 5px;
+  color: var(--ink);
+}
+
 .su-plan-example {
   position: absolute; right: 6px; top: 6px;
   display: flex; align-items: center; gap: 6px;
@@ -1799,6 +1844,7 @@ body.needs-landscape .landscape-lock { display: none; }
   .su-plan-title { padding: 8px 12px 5px; font-size: 12.5px; }
   .su-plan-editor { margin: 0 10px 8px; }
   .su-foot { flex-basis: 46px; }
+  .su-plan-tip { padding: 5px 9px 6px; gap: 7px; }
 }
 
 /* ─── Responsive tweaks ────────────────────────────────────── */

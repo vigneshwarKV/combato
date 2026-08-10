@@ -84,15 +84,15 @@ export function randomSimpleStrategy() { return pickRandom(SAMPLE_SIMPLE_STRATEG
 // arena switch buttons when the player leaves a slot unnamed).
 const DEFAULT_STRATEGY_NAMES = ['Attack', 'Defend', 'Adapt'];
 
-// Starter text for each slot, so all three plans are playable out of the box. A
-// named-but-empty plan is not a plan: usableStrategies() filters it out, so it
-// never reaches the fight and never shows up on the arena switcher. Each line
-// leans into its slot's name and stays in the same plain-English voice as the
-// SAMPLE_SIMPLE_STRATEGIES above.
+// Starter text for each slot, so all three plans are playable out of the box.
+// One idea per slot, in the plain English a player would write themselves —
+// each names its own super-move trigger so the three read as genuinely
+// different plans to switch between mid-fight, not three shades of "attack".
+// Moves are spelled the way setup lists them (no underscores).
 const DEFAULT_STRATEGY_TEXTS = [
-  'Come out swinging — chain hits and slides, stay in their face, and spend super_move the moment the meter fills.',
-  'Hold the line — guard high and low to read their pattern, punish a whiffed swing with a slide, and only swing while they recover.',
-  'Read them and answer — block what they commit to, shoot when they hang back, and save super_move for when their hp is low.',
+  'Attack — keep attacking with hits, shoots and slides, and use the super move when their hp is half.',
+  'Defend — stay on defence the whole fight and pick the guard based on their pattern; once their super meter is full, use defend high.',
+  'Adapt — read their previous moves and answer their pattern, and use the super move when the meter is full.',
 ];
 
 /** Build a fresh strategy slot for the given index (0-based). */
