@@ -49,13 +49,17 @@ export default function PlanEditor({
       </div>
 
       <div className="su-plan-textwrap">
+        {/* readOnly is display-only, not just uneditable: it also drops out of
+            the tab order and stops taking pointer events, because a tap on it
+            opened the phone keyboard over the tutorial. */}
         <textarea
-          className="su-plan-text"
+          className={`su-plan-text${readOnly ? ' is-locked' : ''}`}
           value={text || ''}
           onChange={e => onTextChange(e.target.value.slice(0, 240))}
           placeholder={textPlaceholder}
           aria-label={label}
           readOnly={readOnly}
+          tabIndex={readOnly ? -1 : undefined}
         />
         <button className="su-plan-example" onClick={onExample}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 4l3 3-3 3M20 7h-4a3 3 0 0 0-3 3" /><path d="M7 20l-3-3 3-3M4 17h4a3 3 0 0 0 3-3" /></svg>
