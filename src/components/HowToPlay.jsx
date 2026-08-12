@@ -209,6 +209,9 @@ const TYPED_HINT = 'You need to write a strategy here in plain English. Your cha
 // .htp-plan rise / .htp-switcher lift in design.css — keep these in step) plus
 // a beat to settle. Typing under a moving box reads as two things at once.
 const TYPE_START_MS = 1250;
+// Retyping after the example tap needs no such wait — just a beat to register
+// that the box was cleared.
+const TYPE_RETYPE_MS = 320;
 const TYPE_CHAR_MS = 42;
 // Fixed, not a random sample: it's the plan the fight that follows actually
 // plays (hits, slides, shoots, then the super), so what the player saves and
@@ -217,42 +220,50 @@ const TOUR_EXAMPLE_PLAN = 'Hit, slide and shoot continuously and use super move 
 
 // The game-plan editor, mid-tour — the SAME PlanEditor the setup page renders,
 // not a lookalike, because the step's point is "this is the screen where you
-// write it". Three beats: the hint types itself into the box, then a "Press
-// here" cue on `example`, then one on SAVE & FIGHT.
+// write it". Three beats: the hint types itself into the box, a "Press here"
+// cue on `example`, then one on SAVE & FIGHT once the example has typed itself
+// in too. The box is display-only here (see PlanEditor's readOnly) — tapping it
+// on a phone opened the keyboard over the whole tutorial.
 function HtpPlanPanel({ onSave }) {
   const [text, setText] = useState('');
-  const [typing, setTyping] = useState(true);   // the hint is still typing itself in
+  const [typing, setTyping] = useState(true);   // something is typing itself in
   const [filled, setFilled] = useState(false);  // a REAL plan is in the box now
-  const cancelTypeRef = useRef(false);
+  const timersRef = useRef([]);
+  const cancelRef = useRef(false);
 
-  // Type the hint in. Anything the player does (example / their own typing)
-  // cancels it mid-word rather than fighting them for the box.
-  useEffect(() => {
-    cancelTypeRef.current = false;
-    const timers = [];
+  // Type `full` into the box a character at a time, clearing whatever is there
+  // first. Used for both the hint and the example, so the example arrives the
+  // same way the hint did — written, not pasted.
+  // Nothing here runs synchronously: the box is cleared by the first scheduled
+  // callback, not by the caller, so this is safe to kick off from an effect.
+  function typeInto(full, { startMs, onDone } = {}) {
+    cancelRef.current = false;
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
     let i = 0;
     const tick = () => {
-      if (cancelTypeRef.current) return;
+      if (cancelRef.current) return;
       i += 1;
-      setText(TYPED_HINT.slice(0, i));
-      if (i < TYPED_HINT.length) timers.push(setTimeout(tick, TYPE_CHAR_MS));
-      else setTyping(false);
+      setText(full.slice(0, i));
+      if (i < full.length) timersRef.current.push(setTimeout(tick, TYPE_CHAR_MS));
+      else { setTyping(false); onDone?.(); }
     };
-    timers.push(setTimeout(tick, TYPE_START_MS));
-    return () => { cancelTypeRef.current = true; timers.forEach(clearTimeout); };
+    const begin = () => {
+      if (cancelRef.current) return;
+      setTyping(true);
+      setText('');       // clear whatever is there, then write the new one
+      tick();
+    };
+    timersRef.current.push(setTimeout(begin, startMs ?? TYPE_RETYPE_MS));
+  }
+
+  useEffect(() => {
+    typeInto(TYPED_HINT, { startMs: TYPE_START_MS });
+    return () => { cancelRef.current = true; timersRef.current.forEach(clearTimeout); };
   }, []);
 
-  function stopTyping() { cancelTypeRef.current = true; setTyping(false); }
-  function handleExample() {
-    stopTyping();
-    setText(TOUR_EXAMPLE_PLAN);
-    setFilled(true);
-  }
-  function handleText(v) {
-    stopTyping();
-    setText(v);
-    setFilled(v.trim().length > 0);
-  }
+  // SAVE only lights up once the example has finished landing in the box.
+  const handleExample = () => typeInto(TOUR_EXAMPLE_PLAN, { onDone: () => setFilled(true) });
 
   const ready = filled && text.trim().length > 0;
   return (
@@ -263,10 +274,10 @@ function HtpPlanPanel({ onSave }) {
            its own, and a real character follows the text instead of sitting at
            a fixed offset the way an overlaid one would. */
         text={typing ? `${text}▌` : text}
-        onTextChange={handleText}
+        onTextChange={() => {}}
         onExample={handleExample}
         exampleCue={!typing && !ready}
-        readOnly={typing}
+        readOnly
         textPlaceholder=""
       />
       <div className="htp-plan-foot">

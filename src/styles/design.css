@@ -1423,9 +1423,23 @@ body.needs-landscape .landscape-lock { display: none; }
 .su-plan-title {
   flex: 0 0 auto;
   padding: 0;
+  display: flex; align-items: baseline; gap: 10px;
   font-family: var(--f-display); font-size: 14px; letter-spacing: 0.2em;
   color: var(--cyan);
 }
+.su-plan-title span { flex: 0 0 auto; }
+.su-rules-btn {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 5px;
+  height: 26px; padding: 0 9px;
+  background: transparent;
+  border: 1px solid var(--line-2);
+  color: var(--ink-soft);
+  font-family: var(--f-mono); font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; white-space: nowrap; cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.su-rules-btn:hover { border-color: var(--cyan); color: var(--cyan); }
 /* Plan switcher — deliberately the arena's floating pill bar, not a tab strip:
    the same control, in the same colours (green = the plan the match starts on,
    orange = the rest), so the fight needs no re-learning. */
@@ -1571,6 +1585,9 @@ body.needs-landscape .landscape-lock { display: none; }
   outline: none;
 }
 .su-plan-text::placeholder { color: var(--ink-dim); }
+/* Display-only (the tutorial types into it): no caret, no focus, no taps — a
+   tap on a phone raised the keyboard over the whole tour. */
+.su-plan-text.is-locked { pointer-events: none; caret-color: transparent; user-select: none; }
 /* Move vocabulary on the floor of the plan text box. */
 .su-plan-tip {
   flex: 0 0 auto;
@@ -1856,6 +1873,66 @@ body.needs-landscape .landscape-lock { display: none; }
   white-space: nowrap; color: var(--ink);
 }
 .su-move-dmg.is-guard { color: var(--red); }
+
+/* ─── Game rules popup (from the plan header) ──────────────────────── */
+.su-rules-bd { z-index: 62; }          /* over the fighter-detail modal */
+.su-rules {
+  width: 100%; max-width: 680px; max-height: 100%;
+  display: flex; flex-direction: column;
+  background: linear-gradient(180deg, #0f0a1c, #08050f);
+  border: 1px solid var(--cyan-dim);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+}
+.su-rules-head {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 8px 8px 13px;
+  border-bottom: 1px solid var(--line);
+}
+.su-rules-head h2 {
+  margin: 0;
+  font-family: var(--f-display); font-size: 18px; letter-spacing: 0.16em;
+  color: var(--cyan); text-transform: uppercase;
+}
+.su-rules-x {
+  margin-left: auto;
+  width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 0;
+  color: var(--ink-soft); cursor: pointer;
+}
+.su-rules-x:hover { color: var(--red); }
+
+.su-rules-body { flex: 1; min-height: 0; padding: 13px 15px 15px; overflow: auto; }
+/* Two columns keep six rules short enough to fit a landscape phone without
+   scrolling; the panel hugs its content (max-height, not height). */
+.su-rules-list {
+  margin: 0; padding: 0; list-style: none;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 22px;
+}
+.su-rules-list li { display: flex; gap: 9px; }
+.su-rules-list .n {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px;
+  border: 1px solid var(--cyan-dim);
+  color: var(--cyan);
+  font-family: var(--f-mono); font-size: 10px;
+}
+/* Only the two rules that COST you something carry colour: the super move's
+   name in gold, and the backfire rule's marker in red. */
+.su-rules-list li.is-warn .n { border-color: rgba(255, 58, 79, 0.45); color: var(--red); }
+.su-rules-list p {
+  margin: 0;
+  font-size: 12px; line-height: 1.55; color: var(--ink);
+  text-wrap: pretty;
+}
+.su-rules-list code { font-family: var(--f-mono); color: var(--gold); }
+@media (max-width: 560px) {
+  .su-rules-list { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* Unsaved-changes prompt shown when leaving setup via HOME. */
 .su-confirm-backdrop {
