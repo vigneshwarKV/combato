@@ -19,6 +19,18 @@ const AI_ENDPOINT = `${API_BASE}/api/ai`;
 export const SUPER_MOVE_TOKEN = 'super_move';
 const SUPER_SYNONYMS = new Set(['super_move', 'supermove', 'super move', 'super', 'ultimate']);
 
+// The move vocabulary a player's plan can name — what setup and the tutorial
+// both show. Derived from the engine so the UI can't drift from what's
+// actually accepted: 'idle' is dropped (it's the do-nothing fallback, not a
+// choice), the rest are ordered attack → guard → super for reading, and any
+// action the engine gains later still appears, just at the end.
+const MOVE_DISPLAY_ORDER = ['hit', 'shoot', 'slide', 'jump', 'defend_high', 'defend_low'];
+export const PLAYER_MOVE_TOKENS = [
+  ...MOVE_DISPLAY_ORDER.filter(a => BASE_ACTIONS.includes(a)),
+  ...BASE_ACTIONS.filter(a => a !== 'idle' && !MOVE_DISPLAY_ORDER.includes(a)),
+  SUPER_MOVE_TOKEN,
+];
+
 // Moves requested per turn. Hardcoded for now (the engine's batch size also
 // defaults to 3); every prompt asks for exactly this many moves.
 export const MOVES_PER_TURN = 3;

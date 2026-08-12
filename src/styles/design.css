@@ -1416,106 +1416,151 @@ body.needs-landscape .landscape-lock { display: none; }
 .su-plan-col {
   position: relative;
   min-width: 0;
-  display: flex; flex-direction: column;
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 10px 14px;
   overflow: hidden;
 }
 .su-plan-title {
   flex: 0 0 auto;
-  padding: 12px 14px 7px;
+  padding: 0;
   font-family: var(--f-display); font-size: 14px; letter-spacing: 0.2em;
   color: var(--cyan);
 }
-.su-plan-tabs {
+/* Plan switcher — deliberately the arena's floating pill bar, not a tab strip:
+   the same control, in the same colours (green = the plan the match starts on,
+   orange = the rest), so the fight needs no re-learning. */
+.su-plan-bar {
   flex: 0 0 auto;
-  position: relative; z-index: 2;
-  display: flex; align-items: flex-end; gap: 2px;
-  padding: 0 14px;
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 6px;
+  background: rgba(8, 0, 13, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
 }
-.su-tab {
-  display: flex; align-items: center;
-  border: 1px solid transparent; border-bottom: 0;
-  background: transparent;
-}
-.su-tab.is-active {
-  position: relative; z-index: 1;
-  border-color: var(--cyan-dim);
-  background: var(--panel);
-  margin-bottom: -1px; padding-bottom: 1px;
-}
-.su-tab-btn {
-  height: 44px; padding: 0 2px 0 12px;
-  background: transparent; border: 0;
-  font-family: var(--f-display); font-size: 13.5px; letter-spacing: 0.12em;
+.su-plan-pill {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 7px;
+  min-width: 0; max-width: 170px; height: 40px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-family: var(--f-display); font-size: 13px; letter-spacing: 0.06em;
   white-space: nowrap; cursor: pointer;
-  color: var(--ink-soft);
+  background: rgba(255, 138, 42, 0.1);
+  border: 1px solid rgba(255, 138, 42, 0.42);
+  color: #ffa85c;
+  transition: border-color 0.12s ease, color 0.12s ease;
 }
-.su-tab.is-active .su-tab-btn { color: var(--cyan); }
-/* A plan with no text blocks SAVE, so the tab says which one — the empty plan
-   often isn't the one on screen. Active still wins on colour; the dot carries
-   the warning either way. */
-.su-tab.is-empty .su-tab-btn { color: var(--ink-mute); }
-.su-tab.is-empty .su-tab-btn::after {
-  content: ''; display: inline-block;
-  width: 5px; height: 5px; margin-left: 7px; vertical-align: middle;
-  background: var(--red); box-shadow: 0 0 6px var(--red);
+.su-plan-pill.is-on {
+  background: rgba(34, 214, 122, 0.16);
+  border-color: #22d67a;
+  color: #6bf0a8;
+  box-shadow: 0 0 12px rgba(34, 214, 122, 0.3);
 }
-.su-tab-x {
+.su-plan-pill-n {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto; width: 17px; height: 17px;
+  border-radius: 4px;
+  font-family: var(--f-mono); font-size: 10px; font-weight: 700;
+  background: rgba(255, 138, 42, 0.25); color: inherit;
+}
+.su-plan-pill.is-on .su-plan-pill-n {
+  background: rgba(34, 214, 122, 0.28); color: #b6ffd6;
+}
+.su-plan-pill-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.su-plan-add {
+  flex: 0 0 auto; width: 40px; height: 40px;
   display: flex; align-items: center; justify-content: center;
-  width: 30px; height: 44px; padding: 0;
-  background: transparent; border: 0;
-  color: var(--ink-soft); cursor: pointer;
-  transition: color 0.12s ease;
+  background: rgba(255, 138, 42, 0.06);
+  border: 1px dashed rgba(255, 138, 42, 0.35);
+  border-radius: 7px;
+  color: #ffa85c; cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
 }
-.su-tab-x:hover { color: var(--red); }
-.su-tab-add {
-  width: 44px; height: 44px;
-  display: flex; align-items: center; justify-content: center;
-  background: transparent; border: 0;
-  color: var(--ink-soft); cursor: pointer;
-  transition: color 0.12s ease;
-}
-.su-tab-add:hover { color: var(--cyan); }
+.su-plan-add:hover { border-color: var(--cyan); color: var(--cyan); }
 
 .su-plan-editor {
   flex: 1; min-height: 0;
-  margin: 0 14px 12px;
-  padding: 9px 11px 11px;
+  margin: 0;                      /* the column now owns the padding */
+  padding: 0;
   border: 1px solid var(--cyan-dim);
   background: var(--panel);
-  display: flex; flex-direction: column; gap: 8px;
+  display: flex; flex-direction: column;
 }
-.su-plan-nrow {
-  flex: 0 0 auto;
-  display: flex; align-items: center; gap: 9px;
-  height: 40px;
+/* Editor title bar: the name field sits on the box's top edge, next to the
+   delete for the plan being edited (it used to hang off every tab). */
+.su-plan-head {
+  flex: 0 0 38px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 4px 0 9px;
+  border-bottom: 1px solid var(--cyan-dim);
+  background: rgba(74, 215, 255, 0.06);
 }
 .su-plan-nlabel {
-  font-family: var(--f-display); font-size: 10px; letter-spacing: 0.2em;
-  color: var(--ink-soft); white-space: nowrap;
+  flex: 0 0 auto;
+  font-family: var(--f-mono); font-size: 9.5px; letter-spacing: 0.14em;
+  color: var(--ink-dim);
 }
 .su-plan-name {
-  flex: 1; min-width: 0; height: 100%;
+  flex: 1; min-width: 0; height: 36px;
   background: transparent; border: 0;
-  border-bottom: 1px dashed var(--line-2);
-  color: var(--ink);
-  font-family: var(--f-display); font-size: 15px; letter-spacing: 0.08em;
+  color: var(--cyan);
+  font-family: var(--f-display); font-size: 15px; letter-spacing: 0.1em;
   padding: 0; outline: none;
-  transition: border-color 0.12s ease;
 }
-.su-plan-name:focus { border-bottom-color: var(--cyan); }
 .su-plan-name::placeholder { color: var(--ink-mute); }
-/* The wrap — not the textarea — draws the box, so the move strip can sit on its
-   floor as a real sibling. Overlaying it instead would have needed the textarea
-   to reserve a matching bottom padding, which breaks the moment the chips wrap
-   to a second line on a narrow column. */
+.su-plan-del {
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; padding: 0;
+  background: transparent; border: 0;
+  color: var(--cyan); cursor: pointer;
+  transition: color 0.12s ease;
+}
+.su-plan-del:hover { color: var(--red); }
+/* Name as fixed text (the tutorial pins it) — matches the input's box. */
+.su-plan-name--fixed { display: flex; align-items: center; }
+
+/* "Press here" cue for the plan editor — same white bubble the arena switcher
+   uses (.strategy-cue), so a cue means the same thing everywhere. Two anchors:
+   under the example button, and over the SAVE button. */
+.plan-cue {
+  position: absolute;
+  z-index: 24;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  pointer-events: none;
+  animation: planCueBounce 0.8s ease-in-out infinite;
+}
+.plan-cue-text {
+  background: #fff; color: #17110a;
+  font-family: var(--f-display); font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px; border-radius: 5px; white-space: nowrap;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+.plan-cue-arrow {
+  color: #fff; font-size: 14px; line-height: 1;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+/* Below the example button (which is pinned top-right inside the text box). */
+.plan-cue--example { top: 44px; right: 8px; }
+/* Above the SAVE button. */
+.plan-cue--save { bottom: calc(100% + 6px); right: 8px; }
+@keyframes planCueBounce {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-5px); }
+}
+/* The wrap — not the textarea — holds the move strip as a real sibling on its
+   floor. Overlaying it instead would have needed the textarea to reserve a
+   matching bottom padding, which breaks the moment the chips wrap to a second
+   line on a narrow column. The editor draws the border now, so the wrap has
+   none of its own. */
 .su-plan-textwrap {
   position: relative; flex: 1; min-height: 0;
   display: flex; flex-direction: column;
   background: rgba(7, 5, 13, 0.8);
-  border: 1px solid var(--line-2);
-  transition: border-color 0.12s ease;
+  border: 0;
 }
-.su-plan-textwrap:focus-within { border-color: var(--cyan); }
 .su-plan-text {
   flex: 1; min-height: 0; resize: none;
   background: transparent;
@@ -1536,7 +1581,7 @@ body.needs-landscape .landscape-lock { display: none; }
 .su-tip-label {
   flex: 0 0 auto;
   font-family: var(--f-mono); font-size: 9.5px; letter-spacing: 0.12em;
-  color: var(--ink-dim); text-transform: uppercase;
+  color: var(--cyan); text-transform: uppercase;
   white-space: nowrap;
 }
 /* Tuned to keep all seven moves on ONE line down to a fairly narrow plan column;
@@ -1841,8 +1886,14 @@ body.needs-landscape .landscape-lock { display: none; }
 @media (max-height: 430px) and (orientation: landscape) {
   .su-fighter-col { padding: 8px 9px; gap: 6px; }
   .su-fcard { max-height: none; }
-  .su-plan-title { padding: 8px 12px 5px; font-size: 12.5px; }
-  .su-plan-editor { margin: 0 10px 8px; }
+  .su-plan-col { padding: 7px 10px; gap: 5px; }
+  .su-plan-title { font-size: 12.5px; }
+  .su-plan-bar { padding: 4px 5px; gap: 5px; }
+  .su-plan-pill { height: 32px; padding: 0 9px; font-size: 12px; }
+  .su-plan-add { width: 32px; height: 32px; }
+  .su-plan-head { flex-basis: 32px; }
+  .su-plan-name { height: 30px; font-size: 13.5px; }
+  .su-plan-del { width: 30px; height: 30px; }
   .su-foot { flex-basis: 46px; }
   .su-plan-tip { padding: 5px 9px 6px; gap: 7px; }
 }
@@ -3129,7 +3180,15 @@ body.needs-landscape .landscape-lock { display: none; }
   flex-direction: column;
   align-items: center;
   max-width: 96vw;
+  /* 1.1s: slow enough to read as "the bar is moving up to make room". Kept in
+     step with .htp-plan's rise AND with TYPE_START_MS in HowToPlay.jsx, which
+     waits out this move before typing starts. */
+  transition: bottom 1.1s cubic-bezier(0.4, 0, 0.2, 1);
 }
+/* Plan step: the bar rides up to sit on the game-plan editor, so the control
+   the player just learned becomes that panel's tab bar — the same relationship
+   it has in Settings. */
+.htp-switcher.is-lifted { bottom: calc(3vh + min(52vh, 340px) + 8px); }
 /* Neutralise the switcher's own fixed positioning so it lives in the chrome. */
 .htp-switcher .strategy-switcher {
   position: static;
@@ -3167,6 +3226,50 @@ body.needs-landscape .landscape-lock { display: none; }
   flex-direction: column;
   align-items: center;
   margin-bottom: 10px;
+}
+
+/* ── Write-your-plan step ──────────────────────────────────────────────────
+   The setup page's editor, dropped into the tour under the lifted switcher.
+   The .su-plan-* children are the real thing (see the SETUP page section);
+   only the framing lives here. */
+.htp-plan {
+  position: absolute;
+  left: 50%; bottom: 3vh;
+  transform: translateX(-50%);
+  z-index: 27;
+  width: min(680px, 92vw);
+  height: min(52vh, 340px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  background: rgba(10, 6, 20, 0.96);
+  border: 1px solid var(--cyan-dim);
+  border-radius: 12px;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.6);
+  /* Rises from below on the same curve and duration as the switcher's lift, so
+     bar and editor read as one panel arriving together — a fade in place made
+     the bar look like it moved on its own. Keeps the centring translate. */
+  animation: htpPlanRise 1.1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* Starts fully below the stage floor (its own height + the 3vh it sits above
+   the edge), so it travels in from off-screen rather than nudging into place. */
+@keyframes htpPlanRise {
+  from { opacity: 0; transform: translateX(-50%) translateY(calc(100% + 4vh)); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.htp-plan-foot {
+  position: relative;              /* anchors .plan-cue--save */
+  flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+}
+.htp-plan-save:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Short landscape phones: the panel is the tallest thing on screen, so it
+   gives up its prose line first. */
+@media (max-height: 460px) {
+  .htp-plan { height: min(62vh, 270px); gap: 6px; padding: 8px 10px 10px; }
+  .htp-switcher.is-lifted { bottom: calc(3vh + min(62vh, 270px) + 6px); }
 }
 
 .htp-loading {
@@ -3222,6 +3325,9 @@ body.needs-landscape .landscape-lock { display: none; }
   letter-spacing: 0.02em;
   text-align: center;
   text-wrap: pretty;
+  /* A step's note can force its own line breaks with \n (see buildSteps); the
+     rest still wraps normally. */
+  white-space: pre-line;
 }
 .htp-note-caret {
   width: 0; height: 0;
@@ -3283,7 +3389,6 @@ body.needs-landscape .landscape-lock { display: none; }
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
 }
 
-.htp-cta-panel.no-sub { gap: 22px; }
 
 .htp-cta-title {
   font-family: var(--f-display);
@@ -3416,41 +3521,6 @@ body.needs-landscape .landscape-lock { display: none; }
   max-width: 300px;
 }
 
-/* Moves card — the setup page's per-move DMG/SPM table shown as a floating
-   panel (not a full-screen overlay); the arena stays visible behind it. */
-.htp-movescard {
-  position: absolute;
-  top: 44%;
-  right: 3%;
-  transform: translateY(-50%);
-  z-index: 34;
-  width: min(430px, 46%);
-  /* Sit above the bottom nav so it never covers the Next button. */
-  max-height: calc(100% - 3vh - clamp(46px, 13vh, 60px) - 48px);
-  overflow: hidden;               /* fit, don't scroll — compacted below */
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  background: rgba(10, 6, 20, 0.96);
-  border: 1px solid var(--gold-dim);
-  border-radius: 12px;
-  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.6);
-  animation: htpFade 0.25s ease-out;
-}
-.htp-movescard-title {
-  font-family: var(--f-display);
-  font-size: clamp(13px, 2.6vw, 18px);
-  letter-spacing: 0.03em;
-  color: var(--gold);
-  text-transform: uppercase;
-  text-align: center;
-}
-.htp-movescard-body { width: 100%; }
-/* Compact the shared MovesTable so all rows fit the card without scrolling. */
-.htp-movescard .su-move-head { padding: 3px 10px; }
-.htp-movescard .su-move { padding: 3px 10px; }
-.htp-movescard .su-move-name { font-size: 12px; }
 
 /* Mobile "How to Play" chip in the portrait home topbar. */
 .mh-howto {

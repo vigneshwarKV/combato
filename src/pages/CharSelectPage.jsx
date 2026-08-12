@@ -4,6 +4,7 @@ import Icon from '../components/design/Icons.jsx';
 import CharacterPreview from '../components/CharacterPreview.jsx';
 import { CharSprite, MovesTable } from '../components/design/DesignKit.jsx';
 import AssetPreloadModal from '../components/AssetPreloadModal.jsx';
+import PlanEditor from '../components/design/PlanEditor.jsx';
 import {
   CHARS,
   loadProfile, saveProfile, charById, isProfileReady,
@@ -11,25 +12,11 @@ import {
   MAX_STRATEGIES,
 } from '../data/designData.js';
 import { CHARACTERS } from '../data/characters.js';
-import { BASE_ACTIONS } from '../engine/damageEngine.js';
-import { SUPER_MOVE_TOKEN } from '../engine/prompts.js';
 import { preloadAll, isPreloaded } from '../engine/assetPreloader.js';
 
 // Only the unlocked fighters can be stepped through in the carousel; the roster
 // gallery still lists the locked ones (rendered disabled).
 const PLAYABLE = CHARS.filter(c => !c.locked);
-
-// The move vocabulary a plan can name, straight from the engine so the tip can
-// never drift from what the AI actually accepts. 'idle' is dropped — it's the
-// engine's do-nothing fallback, not something a player should plan around.
-// Read in attack → guard → super order rather than BASE_ACTIONS' internal order;
-// anything the engine gains later still shows up, just at the end.
-const MOVE_ORDER = ['hit', 'shoot', 'slide', 'jump', 'defend_high', 'defend_low'];
-const PLAN_MOVES = [
-  ...MOVE_ORDER.filter(a => BASE_ACTIONS.includes(a)),
-  ...BASE_ACTIONS.filter(a => a !== 'idle' && !MOVE_ORDER.includes(a)),
-  SUPER_MOVE_TOKEN,
-];
 
 // Stable fingerprint of the editable loadout (fighter + strategy name/text), so
 // we can tell whether the player actually changed anything before leaving.
@@ -104,11 +91,16 @@ export default function CharSelectPage() {
   // button below is still there for players who want a random one.
   const [draft, setDraft] = useState(() => {
     const p = loadProfile();
-    return { ...p, charId: p.charId || PLAYABLE[0]?.id || null };
+    // Always open on plan 1 — it's the plan the match starts on, and the green
+    // pill says so. Landing on whichever plan was edited last made the green
+    // move around for no reason the player could see.
+    return { ...p, charId: p.charId || PLAYABLE[0]?.id || null, activeStrategyIndex: 0 };
   });
 
   // null | 'detail' (expanded fighter) | 'switch' (roster gallery)
   const [picker, setPicker] = useState(null);
+  // Plan pill being dragged in the switcher bar (see moveStrategy).
+  const [dragIdx, setDragIdx] = useState(null);
   const touchX = useRef(null);
 
   // Baseline of the loadout as it was loaded, captured once — so `dirty` reflects
@@ -239,6 +231,23 @@ export default function CharSelectPage() {
       return { ...d, strategies: list, activeStrategyIndex: list.length - 1 };
     });
   }
+  // Reorder is a live swap during dragover, so the bar shows the result as you
+  // move. activeStrategyIndex follows the plan, not the slot.
+  function moveStrategy(from, to) {
+    if (from === null || from === to) return;
+    setDraft(d => {
+      const list = (Array.isArray(d.strategies) ? d.strategies : defaultStrategies()).slice();
+      if (from >= list.length || to >= list.length) return d;
+      const [moved] = list.splice(from, 1);
+      list.splice(to, 0, moved);
+      let act = d.activeStrategyIndex ?? 0;
+      if (act === from) act = to;
+      else if (from < act && to >= act) act -= 1;
+      else if (from > act && to <= act) act += 1;
+      return { ...d, strategies: list, activeStrategyIndex: act };
+    });
+    setDragIdx(to);
+  }
   // Deleting a plan drops the slot for good — migrateStrategies() never pads a
   // short playbook back up, and cleanedProfile() persists whatever is left.
   function removeStrategy(index) {
@@ -264,8 +273,11 @@ export default function CharSelectPage() {
   // handle is collected elsewhere now — pass through.
   function cleanedProfile() {
     const strategies = draftStrategies;
-    const activeStrategyIndex = Math.min(draft.activeStrategyIndex ?? 0, strategies.length - 1);
-    return { ...draft, handle: (draft.handle || '').trim(), strategies, activeStrategyIndex };
+    // The match always starts on plan 1. In here activeStrategyIndex only means
+    // "the plan being edited", and persisting THAT quietly changed which plan a
+    // fight opened with (see BotMatchPage / RoomPage, which read it as the
+    // starting strategy). Switching after that is the arena switcher's job.
+    return { ...draft, handle: (draft.handle || '').trim(), strategies, activeStrategyIndex: 0 };
   }
 
   function save() {
@@ -359,62 +371,47 @@ export default function CharSelectPage() {
         <div className="su-plan-col">
           <div className="su-plan-title">YOUR GAME PLAN</div>
 
-          <div className="su-plan-tabs">
+          {/* The same control the player taps mid-fight (see Arena's
+              StrategySwitcher): one pill per plan, named, green for the one the
+              match starts on. Setup is where you fill these in, so nothing has
+              to be re-learned when the fight starts. Drag to reorder — the fight
+              bar shows the same order. */}
+          <div className="su-plan-bar">
             {draftStrategies.map((p, i) => (
-              <div key={i} className={`su-tab ${i === activeIdx ? 'is-active' : ''} ${!(p?.text || '').trim() ? 'is-empty' : ''}`}>
-                <button className="su-tab-btn" onClick={() => setActiveStrategy(i)}>PLAN {i + 1}</button>
-                {/* The last remaining plan can't be deleted — a playbook needs one. */}
-                {draftStrategies.length > 1 && (
-                  <button className="su-tab-x" onClick={() => removeStrategy(i)} aria-label="Delete this plan">
-                    <Icon name="close" size={12} />
-                  </button>
-                )}
-              </div>
+              <button
+                key={i}
+                className={`su-plan-pill ${i === activeIdx ? 'is-on' : ''}`}
+                onClick={() => setActiveStrategy(i)}
+                title={p?.text || ''}
+                aria-pressed={i === activeIdx}
+                draggable
+                onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(i); }}
+                onDragOver={e => { e.preventDefault(); moveStrategy(dragIdx, i); }}
+                onDrop={e => { e.preventDefault(); setDragIdx(null); }}
+                onDragEnd={() => setDragIdx(null)}
+              >
+                <span className="su-plan-pill-n">{i + 1}</span>
+                <span className="su-plan-pill-t">{strategyLabel(p, i)}</span>
+              </button>
             ))}
             {draftStrategies.length < MAX_STRATEGIES && (
-              <button className="su-tab-add" onClick={addStrategy} aria-label="Add another plan">
+              <button className="su-plan-add" onClick={addStrategy} aria-label="Add another plan">
                 <Icon name="plus" size={15} />
               </button>
             )}
           </div>
 
-          <div className="su-plan-editor">
-            <div className="su-plan-nrow">
-              <label className="su-plan-nlabel">STRATEGY NAME</label>
-              <input
-                className="su-plan-name"
-                value={activePlan.name || ''}
-                onChange={e => updateStrategy(activeIdx, { name: e.target.value.slice(0, 20) })}
-                placeholder={strategyLabel(activePlan, activeIdx)}
-                maxLength={20}
-                aria-label={`Strategy ${activeIdx + 1} name`}
-              />
-            </div>
-            <div className="su-plan-textwrap">
-              <textarea
-                className="su-plan-text"
-                value={activePlan.text || ''}
-                onChange={e => updateStrategy(activeIdx, { text: e.target.value.slice(0, 240) })}
-                placeholder="e.g. Defend until my meter is full, then land a super move."
-              />
-              <button className="su-plan-example" onClick={() => fillExample(activeIdx)}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 4l3 3-3 3M20 7h-4a3 3 0 0 0-3 3" /><path d="M7 20l-3-3 3-3M4 17h4a3 3 0 0 0 3-3" /></svg>
-                example
-              </button>
-              {/* On the floor of the text box: the exact move tokens the engine
-                  accepts, so a plan can name them instead of inventing its own
-                  words for them. */}
-              <div className="su-plan-tip">
-                <span className="su-tip-label">MOVES</span>
-                <span className="su-tip-vals">
-                  {/* Shown without the token underscores — plans are written in
-                      plain English, so "defend high" reads better than the raw
-                      engine key and the model reads it the same. */}
-                  {PLAN_MOVES.map(m => <code key={m}>{m.replace(/_/g, ' ')}</code>)}
-                </span>
-              </div>
-            </div>
-          </div>
+          {/* Same editor the tutorial hands the player (see PlanEditor). The
+              last remaining plan can't be deleted — a playbook needs one. */}
+          <PlanEditor
+            name={activePlan.name}
+            onNameChange={v => updateStrategy(activeIdx, { name: v })}
+            text={activePlan.text}
+            onTextChange={v => updateStrategy(activeIdx, { text: v })}
+            onExample={() => fillExample(activeIdx)}
+            onDelete={draftStrategies.length > 1 ? () => removeStrategy(activeIdx) : undefined}
+            label={`Strategy ${activeIdx + 1}`}
+          />
         </div>
       </div>
 
