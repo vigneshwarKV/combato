@@ -12,22 +12,13 @@ import {
   MAX_STRATEGIES,
 } from '../data/designData.js';
 import { CHARACTERS } from '../data/characters.js';
-import { FIGHT_TIME_LIMIT_MS } from '../engine/fightEngine.js';
+import GameRules from '../components/design/GameRules.jsx';
 import { preloadAll, isPreloaded } from '../engine/assetPreloader.js';
 
 // Only the unlocked fighters can be stepped through in the carousel; the roster
 // gallery still lists the locked ones (rendered disabled).
 const PLAYABLE = CHARS.filter(c => !c.locked);
 
-// The match clock, in words, straight from the engine — the rules popup states
-// it, and it's been retuned before (currently 90s, not the round 2 minutes).
-function fightTimeLimitLabel() {
-  const total = Math.round(FIGHT_TIME_LIMIT_MS / 1000);
-  const mins = Math.floor(total / 60);
-  const secs = total % 60;
-  if (!mins) return `${secs} seconds`;
-  return secs ? `${mins} min ${secs} sec` : `${mins} minute${mins > 1 ? 's' : ''}`;
-}
 
 // Stable fingerprint of the editable loadout (fighter + strategy name/text), so
 // we can tell whether the player actually changed anything before leaving.
@@ -146,9 +137,10 @@ export default function CharSelectPage() {
   useEffect(() => {
     const onKey = e => {
       if (e.key !== 'Escape') return;
-      // Rules sit above the fighter modals, so they close first.
-      if (rulesOpen) setRulesOpen(false);
-      else if (picker) setPicker(null);
+      // Rules handle their own Escape (see GameRules); skip while they're open
+      // so one keypress doesn't also close whatever is behind them.
+      if (rulesOpen) return;
+      if (picker) setPicker(null);
       else if (leavePrompt) setLeavePrompt(false);
     };
     window.addEventListener('keydown', onKey);
@@ -335,6 +327,12 @@ export default function CharSelectPage() {
           <span>COMBAT<span className="kk">O</span></span>
         </div>
         <div className="topbar-spacer" />
+        {/* Same link and same modal as the home header — the rules are page
+            chrome, not part of writing a plan. */}
+        <button className="topbar-link" onClick={() => setRulesOpen(true)}>
+          <Icon name="rules" size={16} />
+          Game rules
+        </button>
         <button className="btn btn-ghost btn-sm" onClick={goHome}>
           <Icon name="back" size={12} />&nbsp;HOME
         </button>
@@ -384,19 +382,7 @@ export default function CharSelectPage() {
 
         {/* ── Game plan ─────────────────────────────────────────── */}
         <div className="su-plan-col">
-          <div className="su-plan-title">
-            <span>YOUR GAME PLAN</span>
-            {/* Reference, not an action — quiet until hover, so it never
-                competes with the plan bar under it. */}
-            <button className="su-rules-btn" onClick={() => setRulesOpen(true)}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M9.6 9.2a2.5 2.5 0 1 1 3.2 2.4c-.5.2-.8.7-.8 1.2v.6" />
-                <path d="M12 17h.01" />
-              </svg>
-              game rules
-            </button>
-          </div>
+          <div className="su-plan-title">YOUR GAME PLAN</div>
 
           {/* The same control the player taps mid-fight (see Arena's
               StrategySwitcher): one pill per plan, named, green for the one the
@@ -503,33 +489,7 @@ export default function CharSelectPage() {
         </div>
       )}
 
-      {/* ── Game rules ──────────────────────────────────────────── */}
-      {rulesOpen && (
-        <div className="su-modal-backdrop su-rules-bd" onClick={() => setRulesOpen(false)}>
-          <div className="su-rules" onClick={e => e.stopPropagation()} role="dialog" aria-label="Game rules">
-            <div className="su-rules-head">
-              <h2>Game rules</h2>
-              <button className="su-rules-x" onClick={() => setRulesOpen(false)} aria-label="Close">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              </button>
-            </div>
-            <div className="su-rules-body">
-              <ol className="su-rules-list">
-                <li><span className="n">1</span><p>This is a 1 vs 1 duel fight battle.</p></li>
-                <li><span className="n">2</span><p>Each fighter sets a strategy and your fighter reacts accordingly.</p></li>
-                <li><span className="n">3</span><p>Each hit reduces your opponent’s health bar.</p></li>
-                <li><span className="n">4</span><p>Each hit or block builds your super meter. Fire the <code>super move</code> and the meter drops to zero.</p></li>
-                <li className="is-warn"><span className="n">5</span><p>If your super move gets blocked, your own HP drops.</p></li>
-                {/* Read off the engine's clock rather than typed out — the
-                    limit has moved before, and a wrong rule is worse than none. */}
-                <li><span className="n">6</span><p>{fightTimeLimitLabel()} is the time limit.</p></li>
-              </ol>
-            </div>
-          </div>
-        </div>
-      )}
+      {rulesOpen && <GameRules onClose={() => setRulesOpen(false)} />}
 
       {/* ── Roster gallery ──────────────────────────────────────── */}
       {picker === 'switch' && (

@@ -12,9 +12,10 @@
  *      fire arrow uses Fire_ice_shoot.mp3 instead (see 9).
  *   2. Skater Kid shoot → laserShoot.mp3 (his beam, not a gunshot)
  *   3. landed hit / slam-super that ends in a hit → hammer-hit.mp3 on impact,
- *      EXCEPT for the ranged / rolling fighters (see HAMMER_EXCLUDED). Spear
- *      fighters (monkey/turtle) play it on their melee `hit` only — their
- *      thrown shoot and rolling super stay non-hammer (see HAMMER_HIT_ONLY).
+ *      EXCEPT for the ranged / rolling fighters (see HAMMER_EXCLUDED). Monkey
+ *      King plays it on his melee `hit` only — his thrown shoot and somersault
+ *      super stay non-hammer (see HAMMER_HIT_ONLY). Iron Turtle DOES get it on
+ *      his Shell Cyclone: the shell slams down like his HammerHit melee.
  *   4. ANY attack (hit/rush/projectile/shoot/slide/super) stopped by a guard →
  *      shield-blocked.mp3 (the blow clangs off the raised guard) at the attack's
  *      impact moment. Not gated to hammer fighters — a block is about the
@@ -57,11 +58,13 @@ export const COMBAT_SOUND_FILES = {
 // hammer-hit impact.
 const HAMMER_EXCLUDED = new Set(['womanHero', 'skater']);
 
-// Spear fighters: their thrown `shoot` is a projectile and their ultimate is a
-// roll (see ROLL_SUPER_CHARS), but their melee `hit` is a heavy staff/shell
-// strike that lands with the same impact as a hammer — so ONLY their `hit`
-// plays hammer-hit, never their super.
-const HAMMER_HIT_ONLY = new Set(['monkey', 'turtle']);
+// Monkey King: his thrown `shoot` is a projectile and his ultimate is an
+// airborne somersault (see ROLL_SUPER_CHARS) that never slams down, but his
+// melee `hit` is a heavy staff strike that lands with the same impact as a
+// hammer — so ONLY his `hit` plays hammer-hit, never his super.
+// Iron Turtle is deliberately NOT here: his Shell Cyclone crashes down shell-
+// first, so it lands with the hammer impact just like his HammerHit melee.
+const HAMMER_HIT_ONLY = new Set(['monkey']);
 
 // Fighters whose `slide` action is a roll (their slide animation tumbles) — use
 // roll.mp3 instead of slide.mp3 when they slide.
