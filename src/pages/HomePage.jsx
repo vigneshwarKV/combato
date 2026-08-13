@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import Icon from '../components/design/Icons.jsx';
 import { Modal } from '../components/design/DesignKit.jsx';
 import NeedSetupPrompt from '../components/design/NeedSetupPrompt.jsx';
+import GameRules from '../components/design/GameRules.jsx';
 import HomeArena from '../components/design/HomeArena.jsx';
 import HowToPlay from '../components/HowToPlay.jsx';
 import MobileHome from '../components/mobile/MobileHome.jsx';
@@ -25,6 +26,7 @@ export default function HomePage() {
   const [showTournament, setShowTournament] = useState(() => initialIntent === 'tournament' && isProfileReady(loadProfile()));
   const [showNeedSetup, setShowNeedSetup] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
   // Account dropdown folded into the profile chip (settings / profile live here
   // now that the standalone gear button is gone).
   const [menuOpen, setMenuOpen] = useState(false);
@@ -168,6 +170,8 @@ export default function HomePage() {
           onChoose={() => { setShowNeedSetup(false); navigate(`/setup?returnTo=${encodeURIComponent(needSetupReturn)}`); }}
         />
       </Modal>
+      {/* Same component the setup header opens — one set of rules, two doors. */}
+      {rulesOpen && <GameRules onClose={() => setRulesOpen(false)} />}
     </>
   );
 
@@ -185,6 +189,7 @@ export default function HomePage() {
           onTournament={onTournament}
           onSettings={() => navigate('/setup')}
           onHowTo={openHowTo}
+          onRules={() => setRulesOpen(true)}
           showArena={!showHowTo}
         />
         {modalsEl}
@@ -203,6 +208,15 @@ export default function HomePage() {
           <span>COMBAT<span className="kk">O</span></span>
         </div>
         <div className="topbar-spacer" />
+        {/* Rules first, tutorial second: light reference before the bigger
+            commitment, running into the profile chip. */}
+        <button className="topbar-link" onClick={() => setRulesOpen(true)}>
+          <Icon name="rules" size={16} />
+          Game rules
+        </button>
+
+        <span className="topbar-div" />
+
         <button className="topbar-link" onClick={openHowTo}>
           <Icon name="manual" size={16} />
           How to play

@@ -7,7 +7,7 @@ import HomeArena from '../design/HomeArena.jsx';
 // so it inherits the same compact 3-up colored styling the landscape mobile
 // view already uses (design.css @media max-width: 760px).
 
-function MHTopbar({ onSettings, onHowTo }) {
+function MHTopbar({ onSettings, onHowTo, onRules }) {
   return (
     <div className="mh-topbar">
       <div className="mh-brand">
@@ -19,6 +19,12 @@ function MHTopbar({ onSettings, onHowTo }) {
         <span className="crumb-active">Home</span>
       </div>
       <div style={{ flex: 1 }} />
+      {/* Same pair as the desktop header, in the same order: rules then tour. */}
+      {onRules && (
+        <button className="mh-howto" onClick={onRules}>
+          <Icon name="rules" size={11} />&nbsp;Rules
+        </button>
+      )}
       {onHowTo && (
         <button className="mh-howto" onClick={onHowTo}>
           <Icon name="play" size={11} />&nbsp;How to Play
@@ -53,12 +59,12 @@ function MHAction({ tone, title, icon, desc, cta, onClick }) {
   );
 }
 
-export default function MobileHome({ onQuick, on1v1, onTournament, onSettings, onHowTo, showArena = true }) {
+export default function MobileHome({ onQuick, on1v1, onTournament, onSettings, onHowTo, onRules, showArena = true }) {
   // Fighter loadout lives in /setup (the gear icon in the topbar) so the home
   // page stays focused on the three ways to play.
   return (
     <div className="mh-page mh-var-b">
-      <MHTopbar onSettings={onSettings} onHowTo={onHowTo} />
+      <MHTopbar onSettings={onSettings} onHowTo={onHowTo} onRules={onRules} />
       <div className="mh-body">
         <div className="mh-hero-b">
           {/* One word now, so no <br/> — the lockup is a single 7-letter run. */}

@@ -204,7 +204,7 @@ const INITIAL_SCENE = {
 // What the tour types into the box for the player, one character at a time.
 // It's an instruction, not a plan — so SAVE stays locked until a real plan
 // replaces it (via `example` or by writing over it).
-const TYPED_HINT = 'You need to write a strategy here in plain English. Your character will react accordingly. Click on example for now';
+const TYPED_HINT = 'You need to write a strategy here in plain English. Your character will react accordingly. See Game rules for building strategy. Click on example for now';
 // Nothing types until the panel has finished sliding up: 1.1s of movement (the
 // .htp-plan rise / .htp-switcher lift in design.css — keep these in step) plus
 // a beat to settle. Typing under a moving box reads as two things at once.

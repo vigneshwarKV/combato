@@ -274,6 +274,12 @@ body.pk-design {
   transition: color 0.15s;
 }
 .topbar-link:hover { color: var(--gold); }
+/* Two links now share the bar with the profile chip — tighten the pair before
+   the whole row when it gets cramped, so nothing wraps to a second line. */
+@media (max-width: 900px) {
+  .topbar { gap: 14px; }
+  .topbar-link { letter-spacing: 0.1em; }
+}
 
 .topbar-div {
   width: 1px; height: 24px;
@@ -1428,18 +1434,6 @@ body.needs-landscape .landscape-lock { display: none; }
   color: var(--cyan);
 }
 .su-plan-title span { flex: 0 0 auto; }
-.su-rules-btn {
-  margin-left: auto;
-  display: flex; align-items: center; gap: 5px;
-  height: 26px; padding: 0 9px;
-  background: transparent;
-  border: 1px solid var(--line-2);
-  color: var(--ink-soft);
-  font-family: var(--f-mono); font-size: 10px; letter-spacing: 0.1em;
-  text-transform: uppercase; white-space: nowrap; cursor: pointer;
-  transition: border-color 0.12s ease, color 0.12s ease;
-}
-.su-rules-btn:hover { border-color: var(--cyan); color: var(--cyan); }
 /* Plan switcher — deliberately the arena's floating pill bar, not a tab strip:
    the same control, in the same colours (green = the plan the match starts on,
    orange = the rest), so the fight needs no re-learning. */
@@ -1460,11 +1454,15 @@ body.needs-landscape .landscape-lock { display: none; }
   border-radius: 7px;
   font-family: var(--f-display); font-size: 13px; letter-spacing: 0.06em;
   white-space: nowrap; cursor: pointer;
-  background: rgba(255, 138, 42, 0.1);
-  border: 1px solid rgba(255, 138, 42, 0.42);
-  color: #ffa85c;
+  /* Unselected plans are neutral, not orange: in the arena orange means "queued,
+     taking over next batch", which nothing in setup is doing. Green still marks
+     the plan the match starts on. */
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line-2);
+  color: var(--ink-soft);
   transition: border-color 0.12s ease, color 0.12s ease;
 }
+.su-plan-pill:not(.is-on):hover { border-color: var(--ink-soft); color: var(--ink); }
 .su-plan-pill.is-on {
   background: rgba(34, 214, 122, 0.16);
   border-color: #22d67a;
@@ -1476,7 +1474,7 @@ body.needs-landscape .landscape-lock { display: none; }
   flex: 0 0 auto; width: 17px; height: 17px;
   border-radius: 4px;
   font-family: var(--f-mono); font-size: 10px; font-weight: 700;
-  background: rgba(255, 138, 42, 0.25); color: inherit;
+  background: rgba(255, 255, 255, 0.09); color: inherit;
 }
 .su-plan-pill.is-on .su-plan-pill-n {
   background: rgba(34, 214, 122, 0.28); color: #b6ffd6;
@@ -1485,10 +1483,10 @@ body.needs-landscape .landscape-lock { display: none; }
 .su-plan-add {
   flex: 0 0 auto; width: 40px; height: 40px;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(255, 138, 42, 0.06);
-  border: 1px dashed rgba(255, 138, 42, 0.35);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--line-2);
   border-radius: 7px;
-  color: #ffa85c; cursor: pointer;
+  color: var(--ink-soft); cursor: pointer;
   transition: border-color 0.12s ease, color 0.12s ease;
 }
 .su-plan-add:hover { border-color: var(--cyan); color: var(--cyan); }
@@ -1921,15 +1919,15 @@ body.needs-landscape .landscape-lock { display: none; }
   color: var(--cyan);
   font-family: var(--f-mono); font-size: 10px;
 }
-/* Only the two rules that COST you something carry colour: the super move's
-   name in gold, and the backfire rule's marker in red. */
-.su-rules-list li.is-warn .n { border-color: rgba(255, 58, 79, 0.45); color: var(--red); }
 .su-rules-list p {
   margin: 0;
   font-size: 12px; line-height: 1.55; color: var(--ink);
   text-wrap: pretty;
 }
 .su-rules-list code { font-family: var(--f-mono); color: var(--gold); }
+/* Names a control the player can go and open, so it reads as a pointer rather
+   than emphasis. */
+.su-rules-list b { font-weight: inherit; color: var(--cyan); }
 @media (max-width: 560px) {
   .su-rules-list { grid-template-columns: minmax(0, 1fr); }
 }
