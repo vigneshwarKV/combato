@@ -259,8 +259,10 @@ export default function HomePage() {
 
       <div className="home-hero">
         <div style={{ textAlign: 'center' }}>
-          <h1 className="wordmark">COMBAT<span className="kk">O</span></h1>
+          {/* Tagline sits ABOVE the wordmark — it reads as a kicker leading into
+              the lockup rather than a caption hanging off it. */}
           <p className="wordmark-sub">The AI wrestling arena. Write the strategy. Watch the bots fight.</p>
+          <h1 className="wordmark">COMBAT<span className="kk">O</span></h1>
         </div>
 
         {/* Only one heavy PIXI stage at a time — pause the home fight while the

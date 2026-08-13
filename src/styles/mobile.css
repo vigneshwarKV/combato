@@ -1341,10 +1341,13 @@
   font-family: var(--f-mono);
   font-size: 11px;
   letter-spacing: 0.14em;
-  color: var(--ink-mute);
+  /* Matches desktop .wordmark-sub — lighter than --ink-mute so the kicker
+     leading the lockup carries more presence than muted body copy. */
+  color: #ac98d2;
   text-align: center;
   text-transform: uppercase;
-  margin: 10px 16px 0;
+  /* Sits ABOVE the wordmark, so the breathing room goes underneath it. */
+  margin: 0 16px 4px;
   line-height: 1.5;
   max-width: 32ch;
 }

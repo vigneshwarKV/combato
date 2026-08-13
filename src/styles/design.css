@@ -126,9 +126,12 @@ body.pk-design {
   font-family: var(--f-body);
   font-size: 13px;
   letter-spacing: 0.18em;
-  color: var(--ink-mute);
+  /* Lighter than --ink-mute (#7a6a98) — as a kicker leading the lockup it needs
+     to carry more presence than ordinary muted body copy. */
+  color: #ac98d2;
   text-transform: uppercase;
-  margin: 10px 0 0;
+  /* Sits ABOVE the wordmark, so the breathing room goes underneath it. */
+  margin: 0 0 10px;
 }
 
 /* ─── Buttons ────────────────────────────────────────────────────── */
@@ -283,7 +286,9 @@ body.pk-design {
 
 .topbar-div {
   width: 1px; height: 24px;
-  background: var(--line);
+  /* Matches the hero tagline (.wordmark-sub) — brighter than --line so the
+     Game rules / How to play / profile separators actually read. */
+  background: #ac98d2;
   flex: 0 0 auto;
 }
 
@@ -1890,7 +1895,12 @@ body.needs-landscape .landscape-lock { display: none; }
 }
 .su-rules-head h2 {
   margin: 0;
-  font-family: var(--f-display); font-size: 18px; letter-spacing: 0.16em;
+  /* Barlow Condensed 800 rather than the Bebas display face — the rule text
+     below is condensed caps, and the heading matches it. Already loaded by
+     index.css, so no extra webfont request. */
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 800;
+  font-size: 19px; letter-spacing: 0.16em;
   color: var(--cyan); text-transform: uppercase;
 }
 .su-rules-x {
@@ -1902,13 +1912,23 @@ body.needs-landscape .landscape-lock { display: none; }
 }
 .su-rules-x:hover { color: var(--red); }
 
-.su-rules-body { flex: 1; min-height: 0; padding: 13px 15px 15px; overflow: auto; }
-/* Two columns keep six rules short enough to fit a landscape phone without
-   scrolling; the panel hugs its content (max-height, not height). */
+/* The panel hugs its content (max-height, not height) and this body is the one
+   scroller: flex:1 + min-height:0 lets it shrink below its content height, and
+   overscroll-behavior keeps a rules scroll from chaining to the page behind. */
+.su-rules-body {
+  flex: 1; min-height: 0;
+  padding: 13px 15px 15px;
+  overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+/* Two columns halve the run of rules, so the list only scrolls on genuinely
+   short viewports (landscape phones) rather than as a matter of course. */
 .su-rules-list {
   margin: 0; padding: 0; list-style: none;
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px 22px;
+  /* Caps need slightly more air between rows than the old body copy did. */
+  gap: 11px 22px;
 }
 .su-rules-list li { display: flex; gap: 9px; }
 .su-rules-list .n {
@@ -1921,10 +1941,26 @@ body.needs-landscape .landscape-lock { display: none; }
 }
 .su-rules-list p {
   margin: 0;
-  font-size: 12px; line-height: 1.55; color: var(--ink);
+  /* Condensed caps run shorter than the old 12px body text at the same nominal
+     size, so 14px keeps the columns' measure while reading larger. Uppercase
+     comes from here — the strings in GameRules.jsx stay sentence case so
+     they're still readable in source. */
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+  font-size: 14px; line-height: 1.3; letter-spacing: 0.05em;
+  color: var(--ink);
+  text-transform: uppercase;
   text-wrap: pretty;
 }
-.su-rules-list code { font-family: var(--f-mono); color: var(--gold); }
+/* Move names / `super move` stay gold, but drop the mono face: JetBrains Mono's
+   wide fixed advance made the move list sprawl next to the condensed caps around
+   it. Inheriting the family and tracking keeps them on the same rhythm — the
+   gold is what marks them as tokens, not the typeface. */
+.su-rules-list code {
+  font-family: inherit;
+  letter-spacing: inherit;
+  color: var(--gold);
+}
 /* Names a control the player can go and open, so it reads as a pointer rather
    than emphasis. */
 .su-rules-list b { font-weight: inherit; color: var(--cyan); }
