@@ -1,131 +1,137 @@
 # Combato — Release Plan
 
-_Last updated: 2026-08-08_
+_Last updated: 2026-08-19_
 
-## Current state
-
-- **Frontend only.** React 19 + Pixi.js renderer, PeerJS P2P multiplayer (room codes), serverless `/api/ai` proxy.
-- **No backend, no database, no auth, no metering.** The `/api/ai` endpoint is open — anyone can call it and burn your LLM budget.
-- The proxy already has a placeholder: `// FUTURE: credit check + decrement here` — this is where the credit system plugs in.
-- **Multiplayer is broken for most real-world networks** — no TURN relay. Diagnosed and verified; see P0 #7. Deferred on purpose, since the backend work may remove P2P entirely.
-
-The two features you named (login, watch-ad credits) both depend on infrastructure that doesn't exist yet: a backend with user accounts and a credits ledger. So the work below is sequenced around that.
+Goal: ship an **Android** release with a real backend (leaderboard + accounts) and
+working online play. **Ads and the credit/metering system are out of scope** — the
+earlier version of this plan was built around them; that direction was dropped.
 
 ---
 
-## P0 — Blockers (must ship before any public release)
+## Architecture (current)
 
-### 1. Backend + database
-Stand up a backend (Supabase / Firebase / a small Node API) with: `users`, `credits_ledger`, `match_history` tables. Everything else depends on this.
+**Frontend** — React 19 + Vite + Pixi.js, deployed on **Vercel**; wrapped in
+**Capacitor** for native (Android committed under `android/`, iOS not scaffolded).
+App ID `com.combato.game`. Landscape-locked (OS + runtime + `<LandscapeGate>`).
 
-### 2. Lock down the AI proxy
-Today `/api/ai` is unauthenticated and uncapped — a single bad actor can run up an unbounded bill.
-- Require an auth token (session/JWT) on every call.
-- Per-user rate limit + the credit check/decrement at the existing FUTURE marker.
-- Global daily spend cap + alerting as a safety net.
+**Backend** — **Supabase** (Postgres + Auth + Realtime) + **Vercel serverless
+functions**. No separate server, no ads, no credits.
 
-### 3. Login / accounts
-- Email + Google/Apple OAuth (Apple required if you ever wrap as an iOS app).
-- Persistent identity so credits, history, and rank survive sessions.
-- Guest/anonymous play with later account linking (lowers signup friction).
+- **Auth** (`src/lib/supabase.js`, `src/lib/auth.js`): guest (anonymous), Google
+  (web redirect), guest→Google linking, sign-out. Every user (guest or Google)
+  gets a Supabase JWT.
+- **DB** (`supabase/migrations/0001_init.sql`): `profiles` (display handle) +
+  `match_results` (append-only scoring ledger). RLS locks `match_results` to the
+  service role; clients read the board only via the `get_leaderboard(period)` RPC.
+- **Serverless functions** (`api/`):
+  - `ai.js` — LLM proxy, now **requires a valid Supabase JWT** (no more open proxy).
+  - `match-start.js` — issues a signed, single-use **match token** when a match begins.
+  - `score.js` — validated leaderboard write: verifies the token, **recomputes
+    points server-side**, dedups by nonce, rate-limits, inserts via service role.
+  - `delete-account.js` — deletes a guest (anonymous) account (used by guest→Google
+    when the Google account already exists).
+  - `ping.js` — daily keep-warm cron (`vercel.json` `crons`) so the free Supabase
+    project never pauses.
+  - shared cores: `_handler.js`, `_scoreHandler.js`, `_matchToken.js`, `_supabaseAuth.js`.
+- **Leaderboard** — points-based, **daily + weekly**. Points formula is the shared
+  `src/engine/scoring.js` (used by client preview AND server recompute). UI in
+  `src/components/Leaderboard.jsx`. Bot points are weighted low (×0.5) but uncapped.
+- **Multiplayer** — **Supabase Realtime** (Broadcast + Presence), keyed `room:<code>`,
+  replacing PeerJS/STUN (`peerjs` removed). Works on every network, no TURN. Host is
+  authoritative; `src/hooks/useMatchClient.js` has a connection watchdog. PvP results
+  post to the board from each fighter (`src/pages/RoomPage.jsx`).
+- **Entry flow** — `SignInScreen` (Google / guest) → fighter-name step
+  (`FighterNamePrompt`, name shown everywhere) → home. Dungeon background image on
+  the sign-in gate and home.
 
-### 4. Credit system
-- Each AI move (LLM call) costs N credits; decrement server-side, never trust the client.
-- Starting balance for new users + a free daily top-up.
-- Clear "out of credits" UX with paths to earn/buy more.
-
-### 5. Earn credits — watch ad
-- Rewarded video ads (Google AdMob for app, or a web ad-network / AdSense rewarded for PWA).
-- Server-verified ad-completion callback before crediting (clients lie).
-- Cooldown + daily cap to prevent farming.
-
-### 6. Legal / compliance (gated by login + ads)
-- Privacy policy + Terms of Service (required by OAuth providers and ad networks).
-- Cookie/consent banner, GDPR/CCPA basics.
-- Age gate / content rating.
-
-### 7. Multiplayer connectivity — no TURN relay
-
-`PEER_CONFIG` in `src/engine/peerEngine.js` is STUN-only. STUN gets peers through
-cooperative routers but never symmetric NAT / CGNAT (mobile carriers, corporate
-wifi, VPNs) — those joiners hang on "Connecting…" forever. Passing `config` also
-replaces PeerJS's bundled TURN servers, which are dead anyway
-(`eu-0/us-0.turn.peerjs.com` no longer resolve); `stun:global.stun.twilio.com` is
-dead too (ICE error 701).
-
-Not a regression — the config is unchanged since `0d8cc27`. What changed is reach:
-alpha users on their own networks, and the native build on carrier networks.
-Verified by driving two browsers through the duel flow — baseline hung, adding a
-local coturn TURN server (nothing else changed) connected cleanly.
-
-**Deferred** — the backend may remove P2P entirely. Decide first: keep P2P and buy
-TURN (no free anonymous relay exists; `VITE_*` vars are build-time), or go
-server-authoritative and relay moves over WebSocket, which also closes the
-host-is-authoritative trust hole.
-
-Ship the connection watchdog either way — PeerJS ignores the `disconnected` ICE
-state and there's no timeout on `conn.on('open')`, so failures surface no error.
-
-**VPN breaks local testing.** Chrome picks the tunnel interface for ICE, so two
-tabs on one machine both advertise the tunnel address and packets exit via the VPN
-instead of hairpinning back. Confirmed working with the VPN off.
+### Anti-cheat model (accepted trade-off)
+Combat is client-side / host-authoritative (not server-reproducible). We stop
+casual cheating cheaply, not a determined reverse-engineer:
+- **A** — auth required, server **recomputes** points (client value ignored),
+  input bounds, **dedup** by match nonce, per-user **rate limit**.
+- **B** — **match-token handshake**: every score must present a signed token from
+  `/api/match-start`, redeemable once, only after a realistic elapsed time.
 
 ---
 
-## P1 — Monetization & retention (ship shortly after launch)
+## Status — done
 
-### 7. Paid credits (IAP)
-- Stripe (web/PWA) or store IAP (App Store / Play) for credit packs.
-- Optional subscription tier (e.g. unlimited or large monthly allotment).
-
-### 8. Progression & retention
-- Leaderboard + ELO/rank from match history.
-- Daily login rewards, win streaks, simple achievements.
-- Match history / replays screen.
-
-### 9. Onboarding / tutorial
-The prompt-writing mechanic is non-obvious. A guided first match (pre-written strategy → explain actions/meter → first win) is critical for conversion.
-
----
-
-## P2 — Polish & growth
-
-### 10. Public matchmaking
-Current multiplayer is room-code only. A "Quick Match" needs a lightweight lobby/signaling service to pair strangers (PeerJS still handles the actual connection).
-
-### 11. Production hardening
-- Remove debug `console.log`s in `api/_handler.js`.
-- P2P disconnect/reconnect handling and graceful match recovery. See P0 #7 — a
-  joiner also hangs on `peer-unavailable` (bad code, host left) with no retry.
-- Error tracking (Sentry) + analytics funnel (signup → first match → purchase).
-- LLM cost dashboard.
-
-### 12. Distribution
-- Finish PWA (a `sw.js` exists) — installable, offline shell, app icons, social share/OG cards.
-- **Native app (Capacitor) — scaffolded.** iOS + Android wrap the same web build.
-  App ID `com.combato.game`. Build runbook in [`MOBILE_BUILD.md`](MOBILE_BUILD.md).
-  - Landscape-locked everywhere: OS-level (Info.plist / AndroidManifest via
-    `scripts/cap-landscape.mjs`) + runtime `ScreenOrientation.lock` + a web
-    `<LandscapeGate>` portrait overlay.
-  - **Before store release** the native build needs the P0 items above — the app
-    calls `/api/ai` at `VITE_API_BASE` (your deployed backend), which is still
-    open/uncapped (#2). Also generate real store icons/splash (`@capacitor/assets`).
-  - Remaining last-mile is machine-specific: `npx cap add ios/android` on a Mac
-    with Xcode + Android Studio, then build/sign from the IDE.
-
-### 13. Content & moderation
-- Moderate/sanitize user-written prompts (injection + abuse) before they hit the LLM.
-- Roadmap for new characters / unlockables to keep players returning.
+- Supabase schema + RLS + `get_leaderboard` RPC.
+- Auth: guest + Google (web) + guest→Google linking + sign-out.
+- Scoring module + `/api/match-start` + `/api/score` (A + B) + client submit hooks
+  (bot, 1v1, tournament).
+- Leaderboard UI (daily/weekly).
+- `/api/ai` gated behind auth; debug logs removed.
+- Realtime PvP transport + watchdog (verified: fights sync cross-window via the
+  Supabase channel).
+- Keep-warm cron + privacy/terms template pages.
+- Sign-in screen + name-step redesign; background image.
+- Android prep: `versionName 1.0.0`, conditional release `signingConfig`
+  (`android/keystore.properties`), `@capacitor/assets` installed, gitignored keys.
 
 ---
 
-## Suggested build order
+## ⚠️ Issues to fix BEFORE the Android release
 
-1. Backend + DB → 2. Auth → 3. Secure proxy + credits ledger → 4. Watch-ad earning → 5. Legal pages → **soft launch** → 6. Paid credits → 7. Onboarding + leaderboards → 8. Matchmaking + polish.
+These are the real blockers/gaps. Detailed runbook in
+[`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md).
 
-## Open questions (decide before building)
-- **Platform:** web/PWA only, or also native app stores? (Changes auth, ads, and payment choices.)
-- **Monetization model:** ads-only, credits + IAP, or subscription?
-- **Backend choice:** managed (Supabase/Firebase) for speed, or custom Node API?
-- **Match transport:** keep PeerJS P2P (TURN mandatory — P0 #7), or move match
-  hosting to the backend? Decide before paying for a relay.
+1. **Native Google sign-in (functional blocker).** The web OAuth **redirect** flow
+   does NOT run inside the Capacitor WebView (`capacitor://localhost`). Wire a native
+   Google Sign-In plugin → get an ID token → `supabase.auth.signInWithIdToken`.
+   Until then, in the packaged app **only "Play as guest" works**.
+2. **Enable Manual Linking in Supabase** — required for guest→Google `linkIdentity`.
+3. **Google Cloud OAuth for the app** — add an **Android client** with the release
+   **SHA-1** (from Play App Signing), and **publish the OAuth consent screen to
+   Production** (Testing caps at 100 users).
+4. **Android signing** — generate the upload keystore, create
+   `android/keystore.properties`, enrol in **Play App Signing**.
+5. **Real icons + splash** — replace the Capacitor placeholders: add
+   `resources/icon.png` (1024²) and run `npx capacitor-assets generate`.
+6. **Production env** — set `VITE_API_BASE`, `VITE_SUPABASE_URL/ANON_KEY`,
+   `MATCH_TOKEN_SECRET`, `COMBATO_SUPABASE_*` in Vercel and in the native build's
+   `.env.production` (native has no local server — `VITE_API_BASE` is mandatory).
+7. **Legal pages** — fill the `[bracketed]` placeholders in `public/privacy.html` +
+   `public/terms.html` (contact email, entity) and confirm the hosted URLs.
+8. **Verify the keep-warm cron** actually runs on Vercel (Supabase free-tier pause).
+9. **End-to-end verification still pending:** PvP scoring rows (1v1/tournament) and
+   guest→Google linking (both convert + existing-account cases).
+10. **Play Console** — Data safety form, content rating, store listing assets
+    (512² icon, 1024×500 feature graphic, landscape screenshots).
+
+**Known, non-blocking** (ship-safe, note for later): pre-existing lint warnings
+(`react-hooks/refs`/`purity`); Realtime channels are public (room code is the shared
+secret — could add Realtime Authorization RLS later); host-authoritative PvP trust
+(accepted); >500 kB JS bundle (code-split later); portrait sign-in undesigned
+(landscape-locked, so `<LandscapeGate>` covers it).
+
+---
+
+## Android release steps (summary)
+
+Full detail in [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md); build mechanics in
+[`MOBILE_BUILD.md`](MOBILE_BUILD.md).
+
+1. Fix the blockers above (native Google sign-in, signing, icons, env, legal, OAuth).
+2. Set `.env.production` (`VITE_API_BASE` + `VITE_SUPABASE_*`) and Vercel env.
+3. `npm run native:android` → build a **signed `.aab`** in Android Studio
+   (bump `versionCode` each upload).
+4. Play Console: create app → **Play App Signing** → upload to **Internal testing**
+   → store listing + Data safety + content rating → promote to production.
+
+**Accounts:** Google account → Play Console ($25 one-time); Google Cloud (OAuth);
+Supabase + Vercel (free). iOS later would add Apple Developer ($99/yr) + Sign in with
+Apple + `cap add ios` on a Mac.
+
+---
+
+## Deferred / future
+
+- **iOS** — `cap add ios` on a Mac; add Sign in with Apple (App Store guideline 4.8).
+- **Guest→Google linking hardening** and native Google sign-in polish.
+- **Public matchmaking** — a `matchmaking_queue` table + presence to pair strangers
+  (natural Supabase extension; today is room-code only).
+- **Server-authoritative PvP** — both peers submit → server referees, closing the
+  host-can-lie hole (only if abuse appears).
+- **Retention** — onboarding tutorial, win streaks / achievements, match history.
+- **Monetization** — intentionally not planned right now (no ads, no credits).

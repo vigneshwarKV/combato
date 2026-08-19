@@ -30,10 +30,16 @@ export function useMatchClient(matchCode) {
   myConfigRef.current = myConfig;
   const matchRoleRef = useRef(matchRole);
   matchRoleRef.current = matchRole;
+  // Watchdog: Realtime "joins" an empty/non-existent room silently (no error),
+  // so we detect a bad code / offline host by the absence of a JOIN_ACK.
+  const ackedRef = useRef(false);
+  const watchdogRef = useRef(null);
 
   const handleHostMessage = useCallback((msg) => {
     switch (msg.type) {
       case 'JOIN_ACK':
+        ackedRef.current = true;
+        clearTimeout(watchdogRef.current);
         setLobbyState(msg.lobbyState);
         setIsSpectator(!!msg.spectator);
         break;
@@ -139,6 +145,10 @@ export function useMatchClient(matchCode) {
             color: myConfigRef.current.color,
           },
         });
+        // If the host never acks, the code is wrong or the host is offline.
+        watchdogRef.current = setTimeout(() => {
+          if (!cancelled && !ackedRef.current) setError('Room not found or the host is offline.');
+        }, 8000);
       });
 
       conn.on('close', () => setConnected(false));
@@ -150,6 +160,7 @@ export function useMatchClient(matchCode) {
 
     return () => {
       cancelled = true;
+      clearTimeout(watchdogRef.current);
       peerRef.current?.destroy();
     };
   }, [matchCode, handleHostMessage]);

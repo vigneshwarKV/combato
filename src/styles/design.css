@@ -62,9 +62,9 @@ body.pk-design {
   display: flex;
   flex-direction: column;
   background:
-    radial-gradient(ellipse 70% 50% at 50% -10%, rgba(255, 216, 74, 0.06) 0%, transparent 60%),
-    radial-gradient(ellipse 80% 40% at 50% 105%, rgba(255, 58, 79, 0.05) 0%, transparent 70%),
-    linear-gradient(180deg, #0a0610 0%, #07050d 60%, #050309 100%);
+    linear-gradient(180deg, rgba(7, 5, 13, 0.72) 0%, rgba(7, 5, 13, 0.42) 38%, rgba(7, 5, 13, 0.9) 100%),
+    url('/assets/backgrounds/PNG/game_background_1.png') center / cover no-repeat;
+  background-color: #050309;
   overflow: hidden;
 }
 
@@ -1133,13 +1133,175 @@ body.pk-design {
 /* width:100% on an inline-flex .btn still left-aligns its label — centre it. */
 .fname-submit.btn { width: 100%; justify-content: center; font-size: 20px; padding: 14px 26px; }
 
+/* "OR" divider between the guest and Google sign-in options. */
+.fname-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  color: var(--ink-mute);
+}
+.fname-or::before, .fname-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+/* Secondary outline button for Google — distinct from the gold guest button. */
+.fname-google.btn {
+  width: 100%;
+  justify-content: center;
+  gap: 10px;
+  font-size: 18px;
+  padding: 12px 26px;
+  background: transparent;
+  border: 1px solid var(--line);
+}
+.fname-google.btn:hover { border-color: var(--gold); }
+.fname-google .g-logo { width: 18px; height: 18px; flex: none; }
+
 /* Short landscape phones: the card is the only thing on screen, but 44px Bebas
    plus 34px padding crowds a ~300px-tall viewport. Tighten, don't reflow. */
 @media (max-height: 500px) and (orientation: landscape) {
   .fname-card { gap: 16px; padding: 20px 26px 18px; }
   .fname-input { font-size: 34px; }
   .fname-submit.btn { font-size: 16px; padding: 10px 20px; }
+  .fname-google.btn { font-size: 14px; padding: 8px 20px; }
+  .fname-or { font-size: 9px; }
 }
+
+/* ─── Sign-in screen (entry gate) ───────────────────────── */
+
+.gate-root { position: fixed; inset: 0; overflow: hidden; background: #07050d; display: flex; }
+/* Dimmed arena background behind the sign-in gate (below the scrim + content). */
+.gate-root::before {
+  content: '';
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: url('/assets/backgrounds/PNG/game_background_1.png') center / cover no-repeat;
+  opacity: 1;
+  filter: saturate(0.7) brightness(0.8);
+}
+.gate-scrim {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(7, 5, 13, 0.72) 0%, rgba(7, 5, 13, 0.42) 38%, rgba(7, 5, 13, 0.93) 100%);
+}
+
+.signin-stack {
+  position: relative; z-index: 2; flex: 1; min-height: 0;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 44px 32px 40px; text-align: center;
+}
+.signin-brand { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+/* Characters fill the middle band; flex-start keeps them high (desktop ask). */
+.signin-arena {
+  position: relative; z-index: 1; flex: 1; min-height: 0; width: 100%;
+  display: flex; align-items: flex-start; justify-content: center;
+}
+.signin-arena .home-arena { display: block; width: min(760px, 64vw); margin: 0; }
+.signin-wordmark {
+  margin: 0;
+  font-family: var(--f-display);
+  font-size: 104px; line-height: 0.86; letter-spacing: 0.04em;
+  color: var(--ink);
+}
+.signin-wordmark .kk { color: var(--gold); }
+.signin-tagline {
+  margin: 0; max-width: 460px;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600; font-size: 19px; line-height: 1.45; letter-spacing: 0.06em;
+  color: var(--ink-mute);
+}
+
+.signin-controls {
+  position: relative; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+}
+.signin-buttons { display: flex; flex-direction: column; gap: 16px; width: 440px; max-width: 100%; }
+.signin-eyebrow {
+  font-family: var(--f-display); font-size: 18px; letter-spacing: 0.2em; color: var(--ink-mute);
+}
+.signin-btn {
+  width: 100%; height: 60px;
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  border-radius: 0; cursor: pointer;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700; font-size: 22px; line-height: 1; text-transform: uppercase;
+  transition: transform 0.12s, background 0.12s, border-color 0.12s;
+}
+.signin-google {
+  background: #ffffff; color: #1f1b26; border: 0;
+  letter-spacing: 0.1em;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.signin-google:hover { transform: translateY(-1px); }
+.signin-google .g-logo { width: 22px; height: 22px; flex: none; }
+.signin-guest {
+  background: rgba(10, 6, 16, 0.5);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 216, 74, 0.55);
+  color: var(--gold);
+  letter-spacing: 0.14em;
+}
+.signin-guest:hover { background: rgba(255, 216, 74, 0.1); border-color: var(--gold); }
+.signin-legal {
+  margin: 0; max-width: 440px;
+  font-family: var(--f-mono); font-size: 11px; line-height: 1.9; color: var(--ink-mute);
+}
+.signin-legal a { color: var(--ink-mute); text-decoration: underline; }
+.signin-legal a:hover { color: var(--gold); }
+
+/* Mobile landscape: mirror the home page's mobile-landscape arena — a
+   bottom-anchored full-hero BACKDROP behind the buttons (feet lifted above the
+   button row, shrunk from the ground line), brand on top, buttons pinned to the
+   bottom. Same recipe as the .home-arena block for this breakpoint. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .signin-stack { padding: 30px 24px 34px; }
+  .signin-brand { gap: 4px; z-index: 2; text-shadow: 0 2px 12px rgba(7, 5, 13, 0.85); }
+  .signin-wordmark { font-size: 46px; }
+  .signin-tagline { font-size: 12px; max-width: 400px; line-height: 1.3; }
+  .signin-eyebrow { display: none; }
+
+  .signin-arena { display: contents; }
+  .signin-arena .home-arena {
+    display: block; position: absolute; left: 0; right: 0; bottom: 104px;
+    height: 100%; width: auto; margin: 0; z-index: 0; opacity: 0.9;
+    pointer-events: none; transform: scale(0.62); transform-origin: 50% 100%;
+  }
+
+  .signin-controls { margin-top: auto; z-index: 2; gap: 8px; }
+  .signin-buttons { flex-direction: row; width: min(560px, 92vw); gap: 12px; }
+  .signin-btn { width: auto; flex: 1; height: 44px; font-size: 17px; }
+  .signin-guest { letter-spacing: 0.12em; }
+  .signin-google .g-logo { width: 17px; height: 17px; }
+  .signin-legal { font-size: 9px; line-height: 1.3; white-space: nowrap; }
+}
+
+/* ─── Leaderboard ───────────────────────────────────────── */
+
+.lb { display: flex; flex-direction: column; gap: 14px; }
+.lb h2 { display: flex; align-items: center; }
+.lb-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: 52vh; overflow-y: auto;
+}
+.lb-row {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  background: rgba(13, 9, 23, 0.6);
+}
+.lb-row.me { border-color: var(--gold); background: rgba(255, 216, 74, 0.08); }
+.lb-rank { font-family: var(--f-mono); font-size: 13px; color: var(--ink-mute); text-align: center; }
+.lb-handle {
+  font-family: var(--f-display); letter-spacing: 0.04em; font-size: 17px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lb-score { font-family: var(--f-display); font-size: 18px; color: var(--gold); letter-spacing: 0.04em; }
+.lb-empty { padding: 28px 14px; text-align: center; color: var(--ink-mute); font-family: var(--f-mono); font-size: 13px; }
 
 /* ─── Landscape lock ────────────────────────────────────── */
 

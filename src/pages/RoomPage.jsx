@@ -16,6 +16,8 @@ import MobileLobby from '../components/mobile/MobileLobby.jsx';
 import MobileBracket from '../components/mobile/MobileBracket.jsx';
 import { useIsPortrait } from '../hooks/useIsPortrait.js';
 import { unlockAudio } from '../engine/soundEngine.js';
+import { startScoredMatch, submitScore } from '../lib/leaderboard.js';
+import { buildMatchSummary } from '../engine/scoring.js';
 
 const TOTAL_SEATS = 16;
 const AUTO_START_SECONDS = 15 * 60; // 15:00 fallback until the host's shared deadline arrives
@@ -349,9 +351,48 @@ export default function RoomPage() {
     }
   }, [isHost, is1v1, phase, bracket]); // eslint-disable-line
 
+  // ── PvP leaderboard scoring ─────────────────────────────────────────────────
+  // Each FIGHTER (not spectators) submits their OWN result. When a match I'm in
+  // starts, fetch a signed match token; on fight end, submit. Host and joiner
+  // both run this; only the host also advances the bracket.
+  const scoreMode = is1v1 ? '1v1' : 'tournament';
+  const matchTokenRef = useRef(null);
+  const matchStartAtRef = useRef(0);
+  const matchSideRef = useRef(null);
+  const scoredKeyRef = useRef(null);
+
+  useEffect(() => {
+    if (phase !== 'fighting') { scoredKeyRef.current = null; matchSideRef.current = null; return; }
+    const a = isHost ? host.currentMatch?.fA : client.matchFighters?.find(f => f.role === 'A');
+    const b = isHost ? host.currentMatch?.fB : client.matchFighters?.find(f => f.role === 'B');
+    const side = isHost
+      ? (a?.peerId === myPeerId ? 'A' : b?.peerId === myPeerId ? 'B' : null)
+      : (client.matchRole === 'A' || client.matchRole === 'B' ? client.matchRole : null);
+    if (!side || !a || !b) return;
+    const key = `${a.peerId}|${b.peerId}`;
+    if (scoredKeyRef.current === key) return; // already armed for this match
+    scoredKeyRef.current = key;
+    matchSideRef.current = side;
+    matchTokenRef.current = null;
+    matchStartAtRef.current = Date.now();
+    startScoredMatch(scoreMode).then((t) => { matchTokenRef.current = t; });
+  }, [phase, isHost, host.currentMatch, client.matchFighters, client.matchRole, myPeerId, scoreMode]);
+
   function handleFightEnd(result) {
-    if (!isHost) return;
-    setTimeout(() => host.advanceMatch(result?.winner || null), 2000);
+    // Submit my own score if I fought in this match (best-effort).
+    const token = matchTokenRef.current;
+    const side = matchSideRef.current;
+    if (token && side && result) {
+      const summary = buildMatchSummary(result, {
+        mode: scoreMode,
+        playerSide: side,
+        durationMs: Date.now() - matchStartAtRef.current,
+      });
+      submitScore(token, summary);
+      matchTokenRef.current = null; // one submission per match
+    }
+    // Only the host drives the bracket forward.
+    if (isHost) setTimeout(() => host.advanceMatch(result?.winner || null), 2000);
   }
 
   function handleCloseRoom() {

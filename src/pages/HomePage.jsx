@@ -7,10 +7,12 @@ import GameRules from '../components/design/GameRules.jsx';
 import HomeArena from '../components/design/HomeArena.jsx';
 import HowToPlay from '../components/HowToPlay.jsx';
 import MobileHome from '../components/mobile/MobileHome.jsx';
+import Leaderboard from '../components/Leaderboard.jsx';
 import { useIsPortrait } from '../hooks/useIsPortrait.js';
-import { PUBLIC_TOURNAMENTS, loadProfile, isProfileReady } from '../data/designData.js';
+import { PUBLIC_TOURNAMENTS, loadProfile, saveProfile, isProfileReady } from '../data/designData.js';
 import { generateMatchCode } from '../engine/peerEngine.js';
 import { unlockAudio } from '../engine/soundEngine.js';
+import { getCurrentUser, onAuthChange, signInWithGoogle, signOut } from '../lib/auth.js';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -27,6 +29,7 @@ export default function HomePage() {
   const [showNeedSetup, setShowNeedSetup] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   // Account dropdown folded into the profile chip (settings / profile live here
   // now that the standalone gear button is gone).
   const [menuOpen, setMenuOpen] = useState(false);
@@ -81,6 +84,14 @@ export default function HomePage() {
     };
   }, [menuOpen]);
 
+  // Track whether the signed-in user is a guest (anonymous) — guests get an
+  // "upgrade to Google" option in the account menu.
+  const [isGuest, setIsGuest] = useState(false);
+  useEffect(() => {
+    getCurrentUser().then((u) => setIsGuest(!!u?.is_anonymous));
+    return onAuthChange((u) => setIsGuest(!!u?.is_anonymous));
+  }, []);
+
   const ready = isProfileReady(profile);
 
   function gate(action, returnTo = '/') {
@@ -90,6 +101,15 @@ export default function HomePage() {
     } else {
       action();
     }
+  }
+
+  // Sign out: end the Supabase session, clear the stored handle so the entry gate
+  // returns, and hard-reload so all app state resets cleanly.
+  async function handleSignOut() {
+    setMenuOpen(false);
+    try { await signOut(); } catch { /* ignore */ }
+    try { saveProfile({ ...loadProfile(), handle: '' }); } catch { /* ignore */ }
+    window.location.href = '/';
   }
 
   function doHost(tournamentName) {
@@ -170,6 +190,9 @@ export default function HomePage() {
           onChoose={() => { setShowNeedSetup(false); navigate(`/setup?returnTo=${encodeURIComponent(needSetupReturn)}`); }}
         />
       </Modal>
+      <Modal open={showLeaderboard} onClose={() => setShowLeaderboard(false)} width={520}>
+        <Leaderboard />
+      </Modal>
       {/* Same component the setup header opens — one set of rules, two doors. */}
       {rulesOpen && <GameRules onClose={() => setRulesOpen(false)} />}
     </>
@@ -190,6 +213,7 @@ export default function HomePage() {
           onSettings={() => navigate('/setup')}
           onHowTo={openHowTo}
           onRules={() => setRulesOpen(true)}
+          onLeaderboard={() => setShowLeaderboard(true)}
           showArena={!showHowTo}
         />
         {modalsEl}
@@ -200,9 +224,6 @@ export default function HomePage() {
 
   return (
     <div className="bg-arena">
-      <div className="spotlight-left" />
-      <div className="spotlight-right" />
-
       <div className="topbar">
         <div className="topbar-brand" onClick={() => navigate('/')}>
           <span>COMBAT<span className="kk">O</span></span>
@@ -224,6 +245,13 @@ export default function HomePage() {
 
         <span className="topbar-div" />
 
+        <button className="topbar-link" onClick={() => setShowLeaderboard(true)}>
+          <Icon name="trophy" size={16} />
+          Leaderboard
+        </button>
+
+        <span className="topbar-div" />
+
         <div ref={menuRef}>
           <button
             className={`topbar-user${menuOpen ? ' is-open' : ''}`}
@@ -239,6 +267,11 @@ export default function HomePage() {
           {menuOpen && (
             <div className="topbar-menu" role="menu">
               <div className="topbar-menu-list">
+                {isGuest && (
+                  <button className="topbar-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); signInWithGoogle(); }}>
+                    <Icon name="user" size={16} /> Sign in with Google
+                  </button>
+                )}
                 <button className="topbar-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); navigate('/setup'); }}>
                   <Icon name="user" size={16} /> Profile
                 </button>
@@ -248,7 +281,7 @@ export default function HomePage() {
                 <button className="topbar-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); navigate('/setup'); }}>
                   <Icon name="gear" size={16} /> Settings
                 </button>
-                <button className="topbar-menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
+                <button className="topbar-menu-item" role="menuitem" onClick={handleSignOut}>
                   <Icon name="enter" size={16} /> Sign out
                 </button>
               </div>

@@ -9,6 +9,8 @@ import {
   usableStrategies, makeStrategy, defaultStrategies, strategyLabel, MAX_STRATEGIES,
 } from '../data/designData.js';
 import { unlockAudio } from '../engine/soundEngine.js';
+import { startScoredMatch, submitScore } from '../lib/leaderboard.js';
+import { buildMatchSummary } from '../engine/scoring.js';
 
 const ARCHETYPE_GLYPH = { tank: 'T', striker: 'S', mage: 'M', acrobat: 'A', ranger: 'R' };
 
@@ -340,7 +342,33 @@ export default function BotMatchPage() {
   // player taps Home first) so we never navigate twice.
   const homeTimerRef = useRef(null);
   useEffect(() => () => clearTimeout(homeTimerRef.current), []);
-  const handleFightEnd = useCallback(() => {
+
+  // Scored-match handshake (Layer B). When the fight screen mounts, ask the
+  // server for a signed match token; it's presented when submitting the score so
+  // the server knows this maps to a real, timed match. Best-effort — a null token
+  // just means the score won't record (signed out / offline).
+  const matchTokenRef = useRef(null);
+  const matchStartAtRef = useRef(0);
+  useEffect(() => {
+    if (!playerFighter) return;
+    matchStartAtRef.current = Date.now();
+    let cancelled = false;
+    startScoredMatch('bot').then((t) => { if (!cancelled) matchTokenRef.current = t; });
+    return () => { cancelled = true; };
+  }, [playerFighter]);
+
+  const handleFightEnd = useCallback((result) => {
+    // Submit for leaderboard points (best-effort; the player is side A vs the bot).
+    const token = matchTokenRef.current;
+    if (token && result) {
+      const summary = buildMatchSummary(result, {
+        mode: 'bot',
+        playerSide: 'A',
+        durationMs: Date.now() - matchStartAtRef.current,
+      });
+      submitScore(token, summary);
+      matchTokenRef.current = null; // one submission per match
+    }
     clearTimeout(homeTimerRef.current);
     homeTimerRef.current = setTimeout(() => navigate('/'), POST_FIGHT_CELEBRATION_MS);
   }, [navigate]);

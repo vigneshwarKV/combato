@@ -3,6 +3,7 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { handleAi } from './api/_handler.js'
+import { handleMatchStart, handleSubmitScore, handleDeleteAccount } from './api/_scoreHandler.js'
 
 // Dev-only middleware that mounts the same /api/ai handler used in production,
 // so `npm run dev` works without deploying. Keys are read from .env (server-side).
@@ -15,7 +16,7 @@ function aiDevServer(env) {
         // LAN dev server (VITE_API_BASE=http://<mac-ip>:5173) on a real device.
         res.setHeader('Access-Control-Allow-Origin', '*')
         res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         if (req.method === 'OPTIONS') {
           res.statusCode = 204
           res.end()
@@ -31,7 +32,9 @@ function aiDevServer(env) {
         req.on('end', async () => {
           try {
             const body = raw ? JSON.parse(raw) : {}
-            const result = await handleAi(body, env)
+            const authHeader = req.headers['authorization']
+            const authToken = typeof authHeader === 'string' && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : undefined
+            const result = await handleAi(body, env, authToken)
             res.setHeader('Content-Type', 'application/json')
             res.statusCode = 200
             res.end(JSON.stringify(result))
@@ -42,6 +45,44 @@ function aiDevServer(env) {
           }
         })
       })
+    },
+  }
+}
+
+// Dev-only middleware for the leaderboard write endpoints (/api/match-start,
+// /api/score), mirroring aiDevServer so `npm run dev` runs the same handlers as
+// production. Reads the Supabase Bearer token from the Authorization header.
+function scoreDevServer(env) {
+  const bearer = (h) => (typeof h === 'string' && h.startsWith('Bearer ') ? h.slice(7) : undefined)
+  const routes = { '/api/match-start': handleMatchStart, '/api/score': handleSubmitScore, '/api/delete-account': handleDeleteAccount }
+  return {
+    name: 'score-dev-server',
+    configureServer(server) {
+      for (const [path, fn] of Object.entries(routes)) {
+        server.middlewares.use(path, (req, res) => {
+          res.setHeader('Access-Control-Allow-Origin', '*')
+          res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+          if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return }
+          if (req.method !== 'POST') { res.statusCode = 405; res.end(JSON.stringify({ error: 'Method not allowed' })); return }
+          const authToken = bearer(req.headers['authorization'])
+          let raw = ''
+          req.on('data', (chunk) => { raw += chunk })
+          req.on('end', async () => {
+            try {
+              const body = raw ? JSON.parse(raw) : {}
+              const result = await fn({ authToken, body }, env)
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 200
+              res.end(JSON.stringify(result))
+            } catch (e) {
+              res.statusCode = e.status || 500
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: e.message || 'score proxy error' }))
+            }
+          })
+        })
+      }
     },
   }
 }
@@ -83,7 +124,7 @@ export default defineConfig(({ mode }) => {
   // Expose all env vars (not just VITE_*) to the dev middleware.
   const env = { ...process.env, ...loadEnv(mode, process.cwd(), '') }
   return {
-    plugins: [react(), tailwindcss(), aiDevServer(env), staticAssetCache()],
+    plugins: [react(), tailwindcss(), aiDevServer(env), scoreDevServer(env), staticAssetCache()],
     server: {
       allowedHosts: true,
     },

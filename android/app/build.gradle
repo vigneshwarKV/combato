@@ -7,8 +7,10 @@ android {
         applicationId "com.combato.game"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
+        // Bump versionCode (integer) on EVERY Play upload; versionName is the
+        // human-facing string. See RELEASE_CHECKLIST.md.
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +18,28 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            // Reads android/keystore.properties (gitignored) when present, so debug
+            // builds work without a keystore. Create it for release signing — see
+            // RELEASE_CHECKLIST.md. With Play App Signing this is your UPLOAD key.
+            def propsFile = rootProject.file("keystore.properties")
+            if (propsFile.exists()) {
+                def props = new Properties()
+                propsFile.withInputStream { props.load(it) }
+                storeFile file(props['storeFile'])
+                storePassword props['storePassword']
+                keyAlias props['keyAlias']
+                keyPassword props['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Sign with the release config only when keystore.properties exists.
+            signingConfig (rootProject.file("keystore.properties").exists() ? signingConfigs.release : null)
         }
     }
 }
