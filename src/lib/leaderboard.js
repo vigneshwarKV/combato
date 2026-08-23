@@ -11,15 +11,17 @@ const MATCH_START_ENDPOINT = `${API_BASE}/api/match-start`;
 const SCORE_ENDPOINT = `${API_BASE}/api/score`;
 
 // Begin a scored match → returns a signed match token to present at submit time,
-// or null when not signed in / offline (scoring simply won't record).
-export async function startScoredMatch(mode) {
+// or null when not signed in / offline (scoring simply won't record). Pass a
+// stable `matchId` for PvP so a re-run of the SAME match (host refresh, etc.)
+// dedups server-side instead of double-posting; omit it for bot matches.
+export async function startScoredMatch(mode, matchId) {
   const token = await getAccessToken();
   if (!token) return null;
   try {
     const res = await fetch(MATCH_START_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ mode }),
+      body: JSON.stringify(matchId ? { mode, matchId } : { mode }),
     });
     if (!res.ok) return null;
     const data = await res.json();

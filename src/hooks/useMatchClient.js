@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createPeer, sendMessage, onMessage } from '../engine/peerEngine.js';
+import { createPeer, sendMessage, onMessage, stableJoinerId } from '../engine/peerEngine.js';
 import { callAI, buildFighterPrompt, getFallback } from '../engine/prompts.js';
+
+// How long the host may be gone before we treat it as a real departure (vs a
+// reload/blip) and elect a successor to take over hosting.
+const HOST_GRACE_MS = 5000;
 
 export function useMatchClient(matchCode) {
   const peerRef = useRef(null);
@@ -21,10 +25,19 @@ export function useMatchClient(matchCode) {
   const [fightEvents, setFightEvents] = useState([]);
   const [matchRole, setMatchRole] = useState(null); // 'A' | 'B' | 'spectator'
   const [matchFighters, setMatchFighters] = useState(null);
+  const [matchId, setMatchId] = useState(null); // stable dedup id for the live match
+  const [matchResume, setMatchResume] = useState(null); // mid-fight snapshot when rejoining a live match
   const [roomClosed, setRoomClosed] = useState(false);
   // True when we connected after the tournament had already started: we watch
   // as a spectator and may opt into the roster once it ends (see joinAsFighter).
   const [isSpectator, setIsSpectator] = useState(false);
+  // Host-departure / failover: hostGone flips true if the host stays gone past
+  // the grace window; successorId is the peer elected to take over (smallest
+  // remaining peerId — every client computes the same). RoomPage promotes the
+  // successor to host so the tournament continues.
+  const [hostGone, setHostGone] = useState(false);
+  const [successorId, setSuccessorId] = useState(null);
+  const hostGraceRef = useRef(null);
 
   const myConfigRef = useRef(myConfig);
   myConfigRef.current = myConfig;
@@ -34,6 +47,9 @@ export function useMatchClient(matchCode) {
   // so we detect a bad code / offline host by the absence of a JOIN_ACK.
   const ackedRef = useRef(false);
   const watchdogRef = useRef(null);
+  // Set when this peer is handed to the host hook (failover) so unmount doesn't
+  // destroy the channel out from under the new host.
+  const releasedRef = useRef(false);
 
   const handleHostMessage = useCallback((msg) => {
     switch (msg.type) {
@@ -64,6 +80,9 @@ export function useMatchClient(matchCode) {
         setMatchRole(myFighter?.role || 'spectator');
         matchRoleRef.current = myFighter?.role || 'spectator';
         setMatchFighters(msg.matchFighters);
+        setMatchId(msg.matchId || null);
+        // Present only on a mid-fight rejoin — seeds the Arena to the live state.
+        setMatchResume(msg.resumeState || null);
         setFightEvents([]);
         break;
       }
@@ -127,7 +146,10 @@ export function useMatchClient(matchCode) {
     if (!matchCode) return;
     let cancelled = false;
 
-    createPeer().then(peer => {
+    // Stable per-room identity → a refresh or a second tab rejoins the SAME seat
+    // (the host recognizes the peerId already on its roster) instead of appearing
+    // as a duplicate fighter.
+    createPeer(null, { peerId: stableJoinerId(matchCode) }).then(peer => {
       if (cancelled) { peer.destroy(); return; }
       peerRef.current = peer;
 
@@ -136,6 +158,11 @@ export function useMatchClient(matchCode) {
 
       conn.on('open', () => {
         if (cancelled) return;
+        // Host is here (initial connect OR it came back) — cancel any pending
+        // failover and clear the gone flag.
+        clearTimeout(hostGraceRef.current);
+        setHostGone(false);
+        setSuccessorId(null);
         setConnected(true);
         onMessage(conn, handleHostMessage);
         sendMessage(conn, 'JOIN', {
@@ -154,6 +181,23 @@ export function useMatchClient(matchCode) {
       conn.on('close', () => setConnected(false));
       conn.on('error', (e) => setError(e.message));
       peer.on('error', (e) => setError(e.message));
+
+      // Host liveness rides an explicit heartbeat (reliable across a handoff,
+      // unlike presence-key reuse). Every beat clears the gone flag and resets a
+      // watchdog; if beats stop for the grace window the host is gone for real →
+      // elect a successor (smallest remaining peerId; every client agrees).
+      peer.on('hostBeat', () => {
+        if (cancelled) return;
+        clearTimeout(hostGraceRef.current);
+        setHostGone(false);
+        setSuccessorId(null);
+        hostGraceRef.current = setTimeout(() => {
+          if (cancelled) return;
+          const others = (peerRef.current?.presentPeerIds?.() || []).filter(id => id && id !== matchCode);
+          setSuccessorId(others.sort()[0] || null);
+          setHostGone(true);
+        }, HOST_GRACE_MS);
+      });
     }).catch(e => {
       if (!cancelled) setError(e.message);
     });
@@ -161,9 +205,17 @@ export function useMatchClient(matchCode) {
     return () => {
       cancelled = true;
       clearTimeout(watchdogRef.current);
-      peerRef.current?.destroy();
+      clearTimeout(hostGraceRef.current);
+      if (!releasedRef.current) peerRef.current?.destroy(); // keep it alive if handed to the host hook
     };
   }, [matchCode, handleHostMessage]);
+
+  // Hand our peer to the host hook on failover promotion, WITHOUT tearing it down —
+  // it keeps its already-working channel (a recreated one strands other joiners).
+  const releasePeer = useCallback(() => {
+    releasedRef.current = true;
+    return peerRef.current;
+  }, []);
 
   const updateMyConfig = useCallback((updates) => {
     setMyConfig(prev => {
@@ -197,8 +249,13 @@ export function useMatchClient(matchCode) {
     fightEvents,
     matchRole,
     matchFighters,
+    matchId,
+    matchResume,
     roomClosed,
     isSpectator,
+    hostGone,
+    successorId,
+    releasePeer,
     joinAsFighter,
     myPeerId: peerRef.current?.id,
   };

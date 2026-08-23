@@ -66,7 +66,15 @@ export async function handleMatchStart({ authToken, body }, env = process.env) {
   const mode = body?.mode;
   if (!isScoredMode(mode)) throw httpError(400, 'invalid mode');
 
-  const payload = { uid: user.id, mode, iat: Date.now(), nonce: randomNonce() };
+  // Optional client-supplied dedup id makes the nonce DETERMINISTIC for a logical
+  // match, so a reconnect or a host mid-fight re-run can't post the same match
+  // twice — UNIQUE(user_id, match_nonce) collapses the retry. It's scoped per
+  // user (the token carries uid), so it can't be used to block another player.
+  // Bot matches omit it and fall back to a random nonce (each is genuinely new).
+  const dedupId = typeof body?.matchId === 'string' ? body.matchId.trim().slice(0, 128) : '';
+  const nonce = dedupId || randomNonce();
+
+  const payload = { uid: user.id, mode, iat: Date.now(), nonce };
   return { matchToken: signMatchToken(payload, tokenSecret) };
 }
 

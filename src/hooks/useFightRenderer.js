@@ -144,6 +144,24 @@ function reducer(state, action) {
     case 'API_ERROR':
       return { ...state, feedEntries: [...state.feedEntries,
         { id: `err-${Date.now()}`, fighter: 'system', text: `⚠ Fighter ${action.fighter} API error — fallback moves`, isBatchSeparator: false, highlight: false }] };
+    case 'SEEK':
+      // Jump straight to a mid-fight state for a spectator rejoining a live match.
+      // Bars/status land at their current values and both fighters idle; live
+      // events then animate forward from here (we deliberately don't replay the
+      // whole fight's animations from the start).
+      return {
+        ...state,
+        status: 'calling',
+        batchNumber: action.batchNumber ?? state.batchNumber,
+        hpA: action.hpA ?? state.hpA,
+        hpB: action.hpB ?? state.hpB,
+        meterA: action.meterA ?? state.meterA,
+        meterB: action.meterB ?? state.meterB,
+        statusA: action.statusA ?? state.statusA,
+        statusB: action.statusB ?? state.statusB,
+        animClassA: 'anim-idle', animClassB: 'anim-idle',
+        animKeyA: state.animKeyA + 1, animKeyB: state.animKeyB + 1,
+      };
     case 'TOGGLE_PAUSE': return { ...state, isPaused: !state.isPaused };
     case 'SET_SPEED': return { ...state, speedMultiplier: action.value };
     case 'RESET': return { ...initialState };
@@ -243,7 +261,12 @@ export function useFightRenderer() {
 
   const resetFight = useCallback(() => dispatch({ type: 'RESET' }), []);
 
-  return { fightState, handleFightEvent, resetFight };
+  // Seed the renderer to a mid-fight snapshot (rejoining spectator catch-up).
+  const seekTo = useCallback((snap) => {
+    if (snap) dispatch({ type: 'SEEK', ...snap });
+  }, []);
+
+  return { fightState, handleFightEvent, resetFight, seekTo };
 }
 
 export { reducer, initialState, barCommitAt };

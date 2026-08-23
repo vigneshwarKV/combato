@@ -2447,6 +2447,40 @@ body.needs-landscape .landscape-lock { display: none; }
 .room-conn.is-error { color: var(--red); }
 .room-conn.is-error .dot { background: var(--red); box-shadow: 0 0 6px var(--red); animation: none; }
 
+/* Room connecting loader — a joiner sees this until the host's first lobbyState
+   resolves the room mode (1v1 vs tournament), so the tournament layout never
+   flashes before the duel room. Also the failure screen on a connect timeout. */
+.room-loading {
+  position: relative; z-index: 2;
+  min-height: 100vh; min-height: 100dvh;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; text-align: center; padding: 24px;
+}
+.room-loading-spinner {
+  width: 42px; height: 42px; border-radius: 50%;
+  border: 3px solid var(--line-2);
+  border-top-color: var(--cyan);
+  animation: roomSpin 0.8s linear infinite;
+}
+@keyframes roomSpin { to { transform: rotate(360deg); } }
+.room-loading-icon {
+  display: grid; place-items: center;
+  width: 46px; height: 46px; border-radius: 50%;
+  border: 1px solid var(--red-dim); color: var(--red);
+}
+.room-loading-title {
+  font-family: var(--f-display); font-size: 22px; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink);
+}
+.room-loading-sub {
+  font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.08em;
+  color: var(--ink-mute); max-width: 320px;
+}
+.room-loading .btn { margin-top: 10px; }
+@media (prefers-reduced-motion: reduce) {
+  .room-loading-spinner { animation: none; }
+}
+
 /* ────────────────────────────────────────────────────────────────────────────
    TOURNAMENT — Lobby (host + join)
    ──────────────────────────────────────────────────────────────────────── */
@@ -4001,6 +4035,17 @@ body.needs-landscape .landscape-lock { display: none; }
 @media (max-height: 500px) and (orientation: landscape) {
   .duel-page { height: 100vh; height: 100dvh; min-height: 0; }
   .duel-page .tour-page { min-height: 0; }
+  /* Short landscape phones: the seat cards fill the full height and 300px width,
+     which dwarfs the small viewport. Cap them tighter so both fighters read as a
+     compact face-off rather than two oversized panels. */
+  .duel-page-lobby .duel-vs { padding: 8px 12px; }
+  .duel-page-lobby .duel-seat { max-width: 216px; max-height: 232px; }
+  .duel-page-lobby .duel-seat-head { padding: 5px 9px; }
+  .duel-page-lobby .duel-seat-foot { padding: 5px 9px 6px; }
+  .duel-page-lobby .duel-name { font-size: 18px; }
+  /* Shrink the PNG fighter within the (kept) portrait box — Spine fighters shrink
+     via the smaller JS sprite box; PNG fighters key off this height. */
+  .duel-page-lobby .duel-portrait .char-sprite { height: 74%; }
 }
 
 /* ─── 1v1 duel result (replaces tournament champion screen) ────────── */
@@ -4091,3 +4136,9 @@ body.needs-landscape .landscape-lock { display: none; }
   .duel-page .duel-result-actions .btn { flex: 0 0 auto; min-width: 0; font-size: 13px; padding: 9px 16px; gap: 6px; }
   .duel-page .duel-result-hint { font-size: 9px; margin-top: 6px; }
 }
+
+/* Duplicate-tab guard — shown when a room is already open in another tab. */
+.dup-tab { padding: 26px 24px; max-width: 380px; text-align: center; }
+.dup-tab-title { font-family: var(--f-display, inherit); font-size: 18px; margin: 0 0 10px; color: var(--ink, #fff); }
+.dup-tab-body { font-size: 14px; line-height: 1.5; color: var(--ink-mute, #9aa); margin: 0 0 20px; }
+.dup-tab-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
