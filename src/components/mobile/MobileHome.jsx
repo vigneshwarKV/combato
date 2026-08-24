@@ -35,8 +35,8 @@ function MHTopbar({ onSettings, onHowTo, onRules, onLeaderboard }) {
           <Icon name="trophy" size={11} />&nbsp;Board
         </button>
       )}
-      <button className="mh-iconbtn" aria-label="Settings" onClick={onSettings}>
-        <Icon name="gear" size={14} />
+      <button className="mh-iconbtn" aria-label="Loadout" onClick={onSettings}>
+        <Icon name="loadout" size={14} />
       </button>
     </div>
   );
@@ -65,7 +65,7 @@ function MHAction({ tone, title, icon, desc, cta, onClick }) {
 }
 
 export default function MobileHome({ onQuick, on1v1, onTournament, onSettings, onHowTo, onRules, onLeaderboard, showArena = true }) {
-  // Fighter loadout lives in /setup (the gear icon in the topbar) so the home
+  // Fighter loadout lives in /setup (the loadout icon in the topbar) so the home
   // page stays focused on the three ways to play.
   return (
     <div className="mh-page mh-var-b">
@@ -74,7 +74,7 @@ export default function MobileHome({ onQuick, on1v1, onTournament, onSettings, o
         <div className="mh-hero-b">
           {/* Tagline leads, wordmark follows — matches desktop HomePage. */}
           <p className="mh-wordmark-sub">
-            The AI wrestling arena. Write the strategy. Watch the bots fight.
+            The AI wrestling arena. Build strategy and unleash your bot.
           </p>
           {/* One word now, so no <br/> — the lockup is a single 7-letter run. */}
           <h1 className="mh-wordmark-b">

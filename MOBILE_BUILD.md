@@ -26,7 +26,7 @@ already a dependency — no global install needed.
 
 ## The one required config: `VITE_API_BASE`
 
-The app calls the managed AI proxy at `/api/ai`. On the web that's a same-origin
+The app calls the managed AI proxy at `/api/moves`. On the web that's a same-origin
 relative call. **Inside a native app there is no local server** — the WebView
 origin is `capacitor://localhost` (iOS) / `https://localhost` (Android) — so the
 bundle must point at your **deployed** backend.
@@ -34,14 +34,14 @@ bundle must point at your **deployed** backend.
 Set it in `.env` (or `.env.production`) before building for native:
 
 ```sh
-VITE_API_BASE=https://your-deployed-app.vercel.app   # no trailing slash, no /api/ai
+VITE_API_BASE=https://your-deployed-app.vercel.app   # no trailing slash, no /api/moves
 ```
 
 Leave it **empty** for web/PWA builds. The proxy already sends permissive CORS
-headers (`api/ai.js`) so the cross-origin call from the app is allowed.
+headers (`api/moves.js`) so the cross-origin call from the app is allowed.
 
 > When the credit system lands (see `RELEASE_PLAN.md`), tighten the wildcard CORS
-> in `api/ai.js` to the known app origins and add the auth token to this call.
+> in `api/moves.js` to the known app origins and add the auth token to this call.
 
 ---
 
@@ -130,5 +130,5 @@ This generates every required icon/splash size for both platforms.
 - Privacy policy + Terms URLs (required by both stores — RELEASE_PLAN #6).
 - Apple: sign in with a paid Apple Developer account; Apple OAuth required if you
   add "Sign in with Google" (RELEASE_PLAN #3).
-- Point `VITE_API_BASE` at production, and lock down `/api/ai` (auth + credits)
+- Point `VITE_API_BASE` at production, and lock down `/api/moves` (auth + credits)
   before public release — today it is open (RELEASE_PLAN #2).

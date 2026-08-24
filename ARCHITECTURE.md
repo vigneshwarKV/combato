@@ -28,7 +28,7 @@ There is **no dedicated game server**. Combat runs client-side; online play is
    └───────────┬──────────────────────────────┘                                        │
                │ JWT                                                                    │
      ┌─────────▼──────── Vercel functions (api/*) ───────┐                             │
-     │  /api/ai          LLM proxy (JWT-gated)            │                             │
+     │  /api/moves          LLM proxy (JWT-gated)            │                             │
      │  /api/match-start issues signed match token        │──service-role──► Postgres  │
      │  /api/score       recompute + dedup + insert score │                             │
      │  /api/ping        daily keep-warm cron             │                             │
@@ -103,7 +103,7 @@ not a determined reverse-engineer. Two layers:
 on `UNIQUE(user_id, match_nonce)` — one row per fighter per match. Bot matches omit the
 id (random nonce; each is genuinely new).
 
-`/api/ai` is **JWT-gated** (guests count) so the LLM proxy isn't an open bill.
+`/api/moves` is **JWT-gated** (guests count) so the LLM proxy isn't an open bill.
 
 ---
 
@@ -234,7 +234,7 @@ Host leaves ─► beats stop ─► (5s) every joiner elects smallest peerId
 | Auth / client | `src/lib/supabase.js`, `src/lib/auth.js`, `src/lib/profiles.js` |
 | Leaderboard | `src/lib/leaderboard.js`, `src/components/Leaderboard.jsx`, `supabase/migrations/0001_init.sql` |
 | Scoring / anti-cheat | `src/engine/scoring.js`, `api/match-start.js`, `api/score.js`, `api/_scoreHandler.js`, `api/_matchToken.js` |
-| LLM proxy | `api/ai.js`, `api/_handler.js`, `src/engine/prompts.js` |
+| LLM proxy | `api/moves.js`, `api/_handler.js`, `src/engine/prompts.js` |
 | Combat | `src/engine/fightEngine.js`, `src/hooks/useFightRenderer.js`, `src/components/Arena.jsx` |
 | Transport | `src/engine/peerEngine.js` |
 | Multiplayer logic | `src/hooks/useMatchHost.js`, `src/hooks/useMatchClient.js`, `src/pages/RoomPage.jsx` |

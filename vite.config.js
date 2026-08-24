@@ -5,13 +5,13 @@ import tailwindcss from '@tailwindcss/vite'
 import { handleAi } from './api/_handler.js'
 import { handleMatchStart, handleSubmitScore, handleDeleteAccount } from './api/_scoreHandler.js'
 
-// Dev-only middleware that mounts the same /api/ai handler used in production,
+// Dev-only middleware that mounts the same /api/moves handler used in production,
 // so `npm run dev` works without deploying. Keys are read from .env (server-side).
 function aiDevServer(env) {
   return {
     name: 'ai-dev-server',
     configureServer(server) {
-      server.middlewares.use('/api/ai', (req, res) => {
+      server.middlewares.use('/api/moves', (req, res) => {
         // Mirror the production CORS headers so the app can be tested against a
         // LAN dev server (VITE_API_BASE=http://<mac-ip>:5173) on a real device.
         res.setHeader('Access-Control-Allow-Origin', '*')

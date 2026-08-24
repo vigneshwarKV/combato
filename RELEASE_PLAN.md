@@ -61,7 +61,7 @@ casual cheating cheaply, not a determined reverse-engineer:
 - Scoring module + `/api/match-start` + `/api/score` (A + B) + client submit hooks
   (bot, 1v1, tournament).
 - Leaderboard UI (daily/weekly).
-- `/api/ai` gated behind auth; debug logs removed.
+- `/api/moves` gated behind auth; debug logs removed.
 - Realtime PvP transport + watchdog (verified: fights sync cross-window via the
   Supabase channel).
 - Keep-warm cron + privacy/terms template pages.

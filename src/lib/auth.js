@@ -107,7 +107,7 @@ export async function getCurrentUser() {
 }
 
 // The current session's access token (JWT), or null. Sent as a Bearer header on
-// calls to our own API (/api/ai, /api/match-start, /api/score) so the server can
+// calls to our own API (/api/moves, /api/match-start, /api/score) so the server can
 // verify who is calling.
 export async function getAccessToken() {
   if (!isSupabaseConfigured) return null;

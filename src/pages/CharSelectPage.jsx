@@ -326,6 +326,11 @@ export default function CharSelectPage() {
         <div className="topbar-brand" onClick={goHome}>
           <span>COMBAT<span className="kk">O</span></span>
         </div>
+        <span className="topbar-div" />
+        <span className="su-topbar-title">
+          <Icon name="loadout" size={16} />
+          Loadout
+        </span>
         <div className="topbar-spacer" />
         {/* Same link and same modal as the home header — the rules are page
             chrome, not part of writing a plan. */}

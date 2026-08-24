@@ -30,6 +30,9 @@ export default function HomePage() {
   const [showHowTo, setShowHowTo] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  // The four page-chrome links (rules / how-to / leaderboard / loadout) sit
+  // collapsed to icons by default; the leading chevron expands them to labels.
+  const [navOpen, setNavOpen] = useState(false);
   // Account dropdown folded into the profile chip (settings / profile live here
   // now that the standalone gear button is gone).
   const [menuOpen, setMenuOpen] = useState(false);
@@ -224,31 +227,54 @@ export default function HomePage() {
 
   return (
     <div className="bg-arena">
-      <div className="topbar">
+      <div className={`topbar${navOpen ? ' nav-open' : ''}`}>
         <div className="topbar-brand" onClick={() => navigate('/')}>
           <span>COMBAT<span className="kk">O</span></span>
         </div>
         <div className="topbar-spacer" />
-        {/* Rules first, tutorial second: light reference before the bigger
-            commitment, running into the profile chip. */}
-        <button className="topbar-link" onClick={() => setRulesOpen(true)}>
-          <Icon name="rules" size={16} />
-          Game rules
-        </button>
+        {/* Four page-chrome links collapse to icon-only to keep the bar compact;
+            the leading chevron expands them to show their labels. */}
+        <div className={`topbar-nav${navOpen ? ' is-open' : ''}`}>
+          <button
+            className="topbar-navtoggle"
+            onClick={() => setNavOpen(o => !o)}
+            aria-label={navOpen ? 'Collapse menu labels' : 'Expand menu labels'}
+            aria-expanded={navOpen}
+            title={navOpen ? 'Collapse' : 'Expand'}
+          >
+            <Icon name="caret" size={14} />
+          </button>
 
-        <span className="topbar-div" />
+          {/* Rules first, tutorial second: light reference before the bigger
+              commitment, running into the profile chip. */}
+          <button className="topbar-link" onClick={() => setRulesOpen(true)} title="Game rules">
+            <Icon name="rules" size={16} />
+            <span className="topbar-link-label">Game rules</span>
+          </button>
 
-        <button className="topbar-link" onClick={openHowTo}>
-          <Icon name="manual" size={16} />
-          How to play
-        </button>
+          <span className="topbar-div" />
 
-        <span className="topbar-div" />
+          <button className="topbar-link" onClick={openHowTo} title="How to play">
+            <Icon name="manual" size={16} />
+            <span className="topbar-link-label">How to play</span>
+          </button>
 
-        <button className="topbar-link" onClick={() => setShowLeaderboard(true)}>
-          <Icon name="trophy" size={16} />
-          Leaderboard
-        </button>
+          <span className="topbar-div" />
+
+          <button className="topbar-link" onClick={() => setShowLeaderboard(true)} title="Leaderboard">
+            <Icon name="trophy" size={16} />
+            <span className="topbar-link-label">Leaderboard</span>
+          </button>
+
+          <span className="topbar-div" />
+
+          {/* Fighter loadout (character + game plan) — lives here alongside the
+              other page chrome instead of buried in the profile dropdown. */}
+          <button className="topbar-link" onClick={() => navigate('/setup')} title="Loadout">
+            <Icon name="loadout" size={16} />
+            <span className="topbar-link-label">Loadout</span>
+          </button>
+        </div>
 
         <span className="topbar-div" />
 
@@ -272,15 +298,13 @@ export default function HomePage() {
                     <Icon name="user" size={16} /> Sign in with Google
                   </button>
                 )}
-                <button className="topbar-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); navigate('/setup'); }}>
+                <button className="topbar-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); navigate('/profile'); }}>
                   <Icon name="user" size={16} /> Profile
                 </button>
-                <button className="topbar-menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
+                {/* "My record" is not wired up yet — hidden until it does something. */}
+                {/* <button className="topbar-menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
                   <Icon name="trophy" size={16} /> My record
-                </button>
-                <button className="topbar-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); navigate('/setup'); }}>
-                  <Icon name="gear" size={16} /> Settings
-                </button>
+                </button> */}
                 <button className="topbar-menu-item" role="menuitem" onClick={handleSignOut}>
                   <Icon name="enter" size={16} /> Sign out
                 </button>
@@ -294,7 +318,7 @@ export default function HomePage() {
         <div style={{ textAlign: 'center' }}>
           {/* Tagline sits ABOVE the wordmark — it reads as a kicker leading into
               the lockup rather than a caption hanging off it. */}
-          <p className="wordmark-sub">The AI wrestling arena. Write the strategy. Watch the bots fight.</p>
+          <p className="wordmark-sub">The AI wrestling arena. Build strategy and unleash your bot.</p>
           <h1 className="wordmark">COMBAT<span className="kk">O</span></h1>
         </div>
 

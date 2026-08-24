@@ -28,6 +28,6 @@ export default async function handler(req, res) {
     const result = await handleAi(body, process.env, authToken);
     res.status(200).json(result);
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message || 'AI proxy error' });
+    res.status(e.status || 500).json({ error: e.message || 'Move service error' });
   }
 }

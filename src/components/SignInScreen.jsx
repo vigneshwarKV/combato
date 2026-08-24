@@ -12,7 +12,7 @@ export default function SignInScreen({ onGoogle, onGuest }) {
     <div className="signin-stack">
       <div className="signin-brand">
         <h1 className="signin-wordmark">COMBAT<span className="kk">O</span></h1>
-        <p className="signin-tagline">The AI wrestling arena. Write the strategy. Watch the bots fight.</p>
+        <p className="signin-tagline">The AI wrestling arena. Build strategy and unleash your bot.</p>
       </div>
 
       <div className="signin-arena"><HomeArena /></div>

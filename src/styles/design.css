@@ -123,13 +123,14 @@ body.pk-design {
 }
 .wordmark .kk { color: var(--gold); }
 .wordmark-sub {
-  font-family: var(--f-body);
-  font-size: 13px;
-  letter-spacing: 0.18em;
-  /* Lighter than --ink-mute (#7a6a98) — as a kicker leading the lockup it needs
-     to carry more presence than ordinary muted body copy. */
+  /* Same tagline treatment as the sign-in screen (.signin-tagline): Barlow
+     Condensed, semibold, sentence case — not the old uppercase kicker. */
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: 19px;
+  line-height: 1.45;
+  letter-spacing: 0.06em;
   color: #ac98d2;
-  text-transform: uppercase;
   /* Sits ABOVE the wordmark, so the breathing room goes underneath it. */
   margin: 0 0 10px;
 }
@@ -283,6 +284,38 @@ body.pk-design {
   .topbar { gap: 14px; }
   .topbar-link { letter-spacing: 0.1em; }
 }
+
+/* ── Collapsible page-chrome links ──────────────────────────────────────────
+   Four links (rules / how-to / leaderboard / loadout) would crowd the bar, so
+   they sit icon-only by default and expand to labels via the leading chevron. */
+.topbar-nav { display: inline-flex; align-items: center; gap: 12px; flex: 0 0 auto; }
+/* Links keep their natural width (never shrink) and their labels never break
+   mid-phrase — otherwise a tight row squeezes them into "GAME / RULES". Slightly
+   tighter type than a standalone link so all four fit one row when expanded. */
+.topbar-nav .topbar-link { flex: 0 0 auto; font-size: 14px; letter-spacing: 0.08em; }
+.topbar-link-label { white-space: nowrap; }
+.topbar-navtoggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 30px; flex: 0 0 auto;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.topbar-navtoggle:hover { color: var(--gold); }
+/* `caret` is a down-chevron: rotate it to point left (collapsed) / right (open). */
+.topbar-navtoggle svg { transition: transform 0.2s ease; transform: rotate(90deg); }
+.topbar-nav.is-open .topbar-navtoggle svg { transform: rotate(-90deg); }
+/* Collapsed: hide labels + inter-link dividers, tighten the icon buttons. */
+.topbar-nav:not(.is-open) .topbar-link-label { display: none; }
+.topbar-nav:not(.is-open) .topbar-div { display: none; }
+.topbar-nav:not(.is-open) .topbar-link { gap: 0; padding: 8px 4px; }
+/* When expanded, the four labels are the priority — drop the profile name so the
+   chip shrinks to its icon (+caret) and everything still fits one row on small
+   landscape phones (e.g. iPhone SE). */
+.topbar.nav-open .topbar-user .name { display: none; }
+.topbar.nav-open .topbar-user { gap: 6px; padding: 9px 10px; }
 
 .topbar-div {
   width: 1px; height: 24px;
@@ -1459,6 +1492,100 @@ body.needs-landscape .landscape-lock { display: none; }
 
 .su-page { height: 100vh; overflow: hidden; }
 .su-topbar { flex-wrap: nowrap; }
+/* Page label in the setup/loadout header — names the screen next to the brand. */
+.su-topbar-title {
+  display: inline-flex; align-items: center; gap: 8px;
+  flex: 0 0 auto;
+  font-family: var(--f-display);
+  font-size: 16px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.su-topbar-title svg { color: var(--ink-soft); }
+
+/* ─── My Profile ───────────────────────────────────────────────────── */
+.profile-page { min-height: 100vh; }
+/* .bg-arena is a flex column with overflow:hidden, so the card area takes the
+   space below the topbar and scrolls itself rather than being clipped when the
+   viewport is short (landscape phones). */
+.profile-main {
+  position: relative; z-index: 2;
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 48px 24px;
+}
+.profile-fields { width: 100%; display: flex; flex-direction: column; gap: 12px; }
+.profile-card {
+  width: 100%; max-width: 440px;
+  display: flex; flex-direction: column; align-items: center; gap: 22px;
+  padding: 34px 28px 30px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(22, 14, 40, 0.55), rgba(11, 7, 22, 0.55));
+  clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+}
+.profile-avatar {
+  display: grid; place-items: center;
+  width: 76px; height: 76px; border-radius: 50%;
+  border: 1px solid var(--line-2);
+  color: var(--cyan);
+  background: radial-gradient(circle, rgba(74, 215, 255, 0.14), transparent 70%);
+}
+/* Each field is a row: label on the left, value (+controls) filling the rest —
+   uses the horizontal space and keeps the card short. */
+.profile-field { width: 100%; display: flex; flex-direction: row; align-items: center; gap: 14px; }
+.profile-field-label {
+  flex: 0 0 104px;
+  font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--ink-mute);
+}
+.profile-value-row {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: rgba(9, 6, 17, 0.5);
+}
+.profile-value-row.is-editing { border-color: var(--cyan-dim); }
+.profile-value {
+  flex: 1; min-width: 0;
+  font-family: var(--f-display); font-size: 22px; letter-spacing: 0.04em;
+  color: var(--ink); text-transform: uppercase;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.profile-value-muted {
+  font-family: var(--f-body); font-size: 15px; letter-spacing: 0.02em;
+  text-transform: none; color: var(--ink-soft);
+}
+.profile-input {
+  flex: 1; min-width: 0;
+  background: none; border: 0; outline: none;
+  font-family: var(--f-display); font-size: 22px; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--ink);
+}
+.profile-iconbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; flex: 0 0 auto;
+  border: 1px solid var(--line);
+  background: rgba(34, 22, 69, 0.4);
+  color: var(--ink-soft); cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.profile-iconbtn:hover { border-color: var(--cyan); color: var(--cyan); }
+.profile-iconbtn.is-save { border-color: var(--cyan-dim); color: var(--cyan); }
+.profile-iconbtn.is-save:hover { background: rgba(74, 215, 255, 0.12); }
+.profile-iconbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+.profile-iconbtn:disabled:hover { border-color: var(--line); color: var(--ink-soft); background: rgba(34, 22, 69, 0.4); }
+
+/* Short landscape phones: little vertical room — tighten spacing and shrink the
+   avatar. The row-per-field layout already keeps the card short. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .profile-main { padding: 16px 20px; }
+  .profile-card { max-width: 520px; padding: 16px 20px; gap: 14px; }
+  .profile-avatar { width: 50px; height: 50px; }
+  .profile-avatar svg { width: 22px; height: 22px; }
+  .profile-value, .profile-input { font-size: 18px; }
+}
 
 .su-main {
   position: relative;
@@ -2196,7 +2323,7 @@ body.needs-landscape .landscape-lock { display: none; }
   .topbar-user .lvl { font-size: 9px; }
   .home-hero { padding: 14px 14px 14px; gap: 6px; }
   .wordmark { font-size: 40px !important; }
-  .wordmark-sub { font-size: 11px; letter-spacing: 0.14em; }
+  .wordmark-sub { font-size: 15px; letter-spacing: 0.06em; }
 
   /* Mobile: 3 buttons in a row, colored */
   .action-row { grid-template-columns: repeat(3, 1fr) !important; gap: 8px; margin-top: 14px !important; }
@@ -2320,7 +2447,7 @@ body.needs-landscape .landscape-lock { display: none; }
   .topbar .tag { display: none; }
   .topbar-user .lvl { display: none; }
   .wordmark { font-size: 32px !important; letter-spacing: 0 !important; }
-  .wordmark-sub { font-size: 10px; letter-spacing: 0.12em; }
+  .wordmark-sub { font-size: 13px; letter-spacing: 0.06em; }
   .action-title { font-size: 12px !important; }
   .action-icon { width: 28px; height: 28px; }
   .home-hero { padding: 10px 10px 12px; gap: 4px; }

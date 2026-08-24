@@ -5,6 +5,7 @@ import RoomPage from './pages/RoomPage.jsx';
 import DevPage from './pages/DevPage.jsx';
 import BotMatchPage from './pages/BotMatchPage.jsx';
 import CharSelectPage from './pages/CharSelectPage.jsx';
+import ProfilePage from './pages/ProfilePage.jsx';
 import { LandscapeGate } from './components/LandscapeGate.jsx';
 import GlDebugOverlay from './components/GlDebugOverlay.jsx';
 import FighterNamePrompt from './components/FighterNamePrompt.jsx';
@@ -112,6 +113,7 @@ export default function App() {
       <Routes key={handle ? 'named' : 'anon'}>
         <Route path="/" element={<HomePage />} />
         <Route path="/setup" element={<CharSelectPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
         <Route path="/room/:code" element={<RoomPage />} />
         <Route path="/bot" element={<BotMatchPage />} />
         <Route path="/dev" element={<DevPage />} />
