@@ -41,6 +41,7 @@ export default function ArenaStage({
   // to tell that the defender is GOING to slide so the bullet can fade out
   // before reaching the slider's resting base.
   plannedActionA, plannedActionB,
+  // eslint-disable-next-line no-unused-vars -- documented API props (see header), reserved for HP-driven visuals
   hpA = 100, hpB = 100,
   width = 1100,
   height = 600,
@@ -654,6 +655,7 @@ function cancelActiveProjectiles(fighter) {
 // start). Used for predictive aim — slide and the opposing shoot start in the
 // same dispatch tick, so `t` is also the time elapsed since the bullet's
 // turn began. Falls back to base if numbers are missing.
+// eslint-disable-next-line no-unused-vars -- retained for predictive-aim; not currently wired
 function predictSliderX(sliderSprite, attackerSprite, t) {
   const sliderChar = sliderSprite._character;
   const sliderBaseX = sliderSprite._baseX;

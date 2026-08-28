@@ -94,13 +94,18 @@ export default function MobileBracket({ bracket, nextMatchStartsAt, isHost, onSt
     return () => clearInterval(id);
   }, [nextMatchStartsAt, isHost, onStartNow]);
 
+  // Computed defensively (bracket may be null before it loads) so these hooks run
+  // unconditionally — the early return below only guards RENDERING, never the hook
+  // order. (Previously these two hooks sat after `if (!bracket) return null`, so a
+  // null→loaded transition changed the hook count and crashed with "rendered more
+  // hooks than during the previous render".)
+  const currentRoundIdx = bracket?.pointer?.roundIndex ?? 0;
+  const [roundIdx, setRoundIdx] = useState(currentRoundIdx);
+  useEffect(() => { setRoundIdx(currentRoundIdx); }, [currentRoundIdx]);
+
   if (!bracket) return null;
 
   const { rounds, pointer } = bracket;
-  const currentRoundIdx = pointer?.roundIndex ?? 0;
-
-  const [roundIdx, setRoundIdx] = useState(currentRoundIdx);
-  useEffect(() => { setRoundIdx(currentRoundIdx); }, [currentRoundIdx]);
 
   const currentRound = rounds[roundIdx] || rounds[0];
   const isLiveRound = roundIdx === currentRoundIdx;

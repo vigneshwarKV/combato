@@ -317,6 +317,21 @@ body.pk-design {
 .topbar.nav-open .topbar-user .name { display: none; }
 .topbar.nav-open .topbar-user { gap: 6px; padding: 9px 10px; }
 
+/* Desktop: the bar has plenty of room, so keep the nav fully expanded (labels +
+   dividers) and the profile name visible at ALL times, and drop the collapse
+   toggle — there's nothing to collapse. These re-assert the expanded values over
+   both the collapsed (:not(.is-open)) and the small-screen .nav-open rules above,
+   using the same selectors so the state of the (now-hidden) toggle can't matter.
+   1024px sits above the widest landscape phone, so native stays collapsible. */
+@media (min-width: 1024px) {
+  .topbar-navtoggle { display: none; }
+  .topbar-nav:not(.is-open) .topbar-link-label { display: inline; }
+  .topbar-nav:not(.is-open) .topbar-div { display: block; }
+  .topbar-nav:not(.is-open) .topbar-link { gap: 8px; padding: 8px 2px; }
+  .topbar.nav-open .topbar-user .name { display: block; }
+  .topbar.nav-open .topbar-user { gap: 9px; padding: 9px 12px; }
+}
+
 .topbar-div {
   width: 1px; height: 24px;
   /* Matches the hero tagline (.wordmark-sub) — brighter than --line so the

@@ -10,20 +10,26 @@ Code is done; the items below are your account/config/manual steps.
 |---|---|---|
 | `VITE_SUPABASE_URL` | your `https://<ref>.supabase.co` | client, public |
 | `VITE_SUPABASE_ANON_KEY` | anon key | client, public |
+| `VITE_GOOGLE_WEB_CLIENT_ID` | OAuth **Web** client ID (`…apps.googleusercontent.com`) | client, public; **required for native Google sign-in** |
 | `VITE_API_BASE` | your deployed URL, e.g. `https://combato.vercel.app` | **required for native** (no trailing slash, no `/api`) |
 | `MATCH_TOKEN_SECRET` | random 32-byte hex | server-only |
 | `COMBATO_SUPABASE_URL`, `COMBATO_SUPABASE_SERVICE_ROLE_KEY` | (from the Vercel Supabase integration) | server-only, auto-added |
 
 **Native `.env.production`** (used by `npm run native:android`): set `VITE_API_BASE`,
-`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. The native app has no local server, so
-`VITE_API_BASE` MUST point at the deployed backend.
+`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_GOOGLE_WEB_CLIENT_ID`. The native app
+has no local server, so `VITE_API_BASE` MUST point at the deployed backend.
 
 ## 2. Supabase + Google OAuth for production
 
 - **Supabase → Auth → URL Configuration → Redirect URLs:** add your production web origin
-  (`https://combato.vercel.app`). Native Google sign-in uses the native flow (Step 9 below).
-- **Google Cloud OAuth client → Authorised JavaScript origins:** add the production origin.
-  The redirect URI stays `https://<ref>.supabase.co/auth/v1/callback`.
+  (`https://combato.vercel.app`). Native Google sign-in uses the ID-token flow (no redirect).
+- **Google Cloud OAuth client (Web) → Authorised JavaScript origins:** add the production
+  origin. The redirect URI stays `https://<ref>.supabase.co/auth/v1/callback`. This Web client
+  ID is also the value of `VITE_GOOGLE_WEB_CLIENT_ID` and must be set as the Google provider's
+  client ID in Supabase.
+- **Google Cloud OAuth client (Android):** create one bound to package `com.combato.game` +
+  your release **SHA-1** (Step 4). Native Google sign-in (Credential Manager) won't work
+  without it. No client secret is used on Android.
 - **OAuth consent screen:** basic scopes (email, profile) are non-sensitive. In "Testing"
   you're capped at 100 named test users; publish the consent screen to "Production" to allow
   anyone (no Google verification needed for these basic scopes).
@@ -83,7 +89,13 @@ In Android Studio: Build → Generate Signed Bundle → AAB (or `./gradlew bundl
 - Android Studio (build) on your Mac.
 
 ## Still open (tracked separately)
-- **Realtime PvP transport (Part F)** — 1v1/tournament connectivity + their scoring hooks.
-- **Guest→Google account linking.**
-- Wire native Google sign-in (ID-token flow) for the packaged app — the web redirect flow
-  won't run inside the Capacitor WebView.
+- **On-device testing** of the native Google + guest sign-in flows (deferred).
+
+### Done: native Google sign-in
+Wired via `@capgo/capacitor-social-login` (ID-token flow) in `src/lib/auth.js` —
+`signInWithGoogle()` branches on `Capacitor.isNativePlatform()`: native opens the platform
+account picker → Google ID token → `supabase.auth.signInWithIdToken()`; web keeps the redirect
+flow. Requires `VITE_GOOGLE_WEB_CLIENT_ID` + the Android OAuth client (Step 2), then a
+`npm run cap:sync` (run automatically by `npm run native:android`) to install the plugin's
+native code. **Guest→Google on native switches accounts — guest points are NOT migrated**
+(accepted v1 behaviour; the web flow still links in place and keeps them).

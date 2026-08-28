@@ -267,14 +267,6 @@ export function useMatchHost(matchCode, opts = {}) {
     broadcastAll(peerRef.current, 'LOBBY_UPDATE', { lobbyState: state });
   }, []);
 
-  const updateLobby = useCallback((updater) => {
-    setLobbyState(prev => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      broadcastLobby(next);
-      return next;
-    });
-  }, [broadcastLobby]);
-
   // ── Incoming connection handler ────────────────────────────────────────────
 
   const handleConnection = useCallback((conn) => {
