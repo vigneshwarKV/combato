@@ -5,6 +5,7 @@
 //
 // Both providers speak the OpenAI chat-completions format.
 import process from 'node:process';
+import { verifyUser } from './_supabaseAuth.js';
 
 const PROVIDERS = {
   'deepseek-flash': {
@@ -38,7 +39,11 @@ const DEFAULT_PROVIDER = 'deepseek-flash';
  * @throws  {Error} when the env key is missing or the upstream call fails,
  *          so the client falls back to random moves.
  */
-export async function handleAi(body, env = process.env) {
+export async function handleAi(body, env = process.env, authToken) {
+  // Require a valid Supabase session (guest or Google). Closes the previously
+  // open proxy so only signed-in players can spend the managed LLM budget.
+  await verifyUser(authToken, env);
+
   // Default high: a reasoning model (e.g. deepseek-v4-flash) spends most of the
   // budget on chain-of-thought before the answer, so a low cap returns empty
   // content (finish_reason "length"). The client sends its own maxTokens too.
@@ -54,8 +59,7 @@ export async function handleAi(body, env = process.env) {
     throw err;
   }
 
-  // FUTURE: credit check + decrement here (per-user metering) before forwarding.
-console.log("***** api calling*****")
+  // FUTURE: per-user metering/credits could hook in here before forwarding.
   const res = await fetch(provider.url, {
     method: 'POST',
     headers: {
@@ -74,16 +78,13 @@ console.log("***** api calling*****")
   });
 
   if (!res.ok) {
-    const detail = await res.text().catch(() => {console.log("error")});
+    const detail = await res.text().catch(() => '');
     const err = new Error(`Upstream ${providerKey} HTTP ${res.status}: ${detail.slice(0, 200)}`);
     err.status = 502;
     throw err;
   }
 
   const data = await res.json();
-console.log(JSON.stringify(data));
-    
   const text = data.choices?.[0]?.message?.content ?? '';
-    console.log("***** api calling end*****", text)
   return { text };
 }

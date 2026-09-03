@@ -7,10 +7,12 @@ import GameRules from '../components/design/GameRules.jsx';
 import HomeArena from '../components/design/HomeArena.jsx';
 import HowToPlay from '../components/HowToPlay.jsx';
 import MobileHome from '../components/mobile/MobileHome.jsx';
+import Leaderboard from '../components/Leaderboard.jsx';
 import { useIsPortrait } from '../hooks/useIsPortrait.js';
-import { PUBLIC_TOURNAMENTS, loadProfile, isProfileReady } from '../data/designData.js';
+import { loadProfile, saveProfile, isProfileReady } from '../data/designData.js';
 import { generateMatchCode } from '../engine/peerEngine.js';
 import { unlockAudio } from '../engine/soundEngine.js';
+import { getCurrentUser, onAuthChange, signInWithGoogle, signOut } from '../lib/auth.js';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -27,6 +29,10 @@ export default function HomePage() {
   const [showNeedSetup, setShowNeedSetup] = useState(false);
   const [showHowTo, setShowHowTo] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  // The four page-chrome links (rules / how-to / leaderboard / loadout) sit
+  // collapsed to icons by default; the leading chevron expands them to labels.
+  const [navOpen, setNavOpen] = useState(false);
   // Account dropdown folded into the profile chip (settings / profile live here
   // now that the standalone gear button is gone).
   const [menuOpen, setMenuOpen] = useState(false);
@@ -81,6 +87,14 @@ export default function HomePage() {
     };
   }, [menuOpen]);
 
+  // Track whether the signed-in user is a guest (anonymous) — guests get an
+  // "upgrade to Google" option in the account menu.
+  const [isGuest, setIsGuest] = useState(false);
+  useEffect(() => {
+    getCurrentUser().then((u) => setIsGuest(!!u?.is_anonymous));
+    return onAuthChange((u) => setIsGuest(!!u?.is_anonymous));
+  }, []);
+
   const ready = isProfileReady(profile);
 
   function gate(action, returnTo = '/') {
@@ -90,6 +104,15 @@ export default function HomePage() {
     } else {
       action();
     }
+  }
+
+  // Sign out: end the Supabase session, clear the stored handle so the entry gate
+  // returns, and hard-reload so all app state resets cleanly.
+  async function handleSignOut() {
+    setMenuOpen(false);
+    try { await signOut(); } catch { /* ignore */ }
+    try { saveProfile({ ...loadProfile(), handle: '' }); } catch { /* ignore */ }
+    window.location.href = '/';
   }
 
   function doHost(tournamentName) {
@@ -170,6 +193,9 @@ export default function HomePage() {
           onChoose={() => { setShowNeedSetup(false); navigate(`/setup?returnTo=${encodeURIComponent(needSetupReturn)}`); }}
         />
       </Modal>
+      <Modal open={showLeaderboard} onClose={() => setShowLeaderboard(false)} width={520}>
+        <Leaderboard />
+      </Modal>
       {/* Same component the setup header opens — one set of rules, two doors. */}
       {rulesOpen && <GameRules onClose={() => setRulesOpen(false)} />}
     </>
@@ -190,6 +216,7 @@ export default function HomePage() {
           onSettings={() => navigate('/setup')}
           onHowTo={openHowTo}
           onRules={() => setRulesOpen(true)}
+          onLeaderboard={() => setShowLeaderboard(true)}
           showArena={!showHowTo}
         />
         {modalsEl}
@@ -200,27 +227,54 @@ export default function HomePage() {
 
   return (
     <div className="bg-arena">
-      <div className="spotlight-left" />
-      <div className="spotlight-right" />
-
-      <div className="topbar">
+      <div className={`topbar${navOpen ? ' nav-open' : ''}`}>
         <div className="topbar-brand" onClick={() => navigate('/')}>
           <span>COMBAT<span className="kk">O</span></span>
         </div>
         <div className="topbar-spacer" />
-        {/* Rules first, tutorial second: light reference before the bigger
-            commitment, running into the profile chip. */}
-        <button className="topbar-link" onClick={() => setRulesOpen(true)}>
-          <Icon name="rules" size={16} />
-          Game rules
-        </button>
+        {/* Four page-chrome links collapse to icon-only to keep the bar compact;
+            the leading chevron expands them to show their labels. */}
+        <div className={`topbar-nav${navOpen ? ' is-open' : ''}`}>
+          <button
+            className="topbar-navtoggle"
+            onClick={() => setNavOpen(o => !o)}
+            aria-label={navOpen ? 'Collapse menu labels' : 'Expand menu labels'}
+            aria-expanded={navOpen}
+            title={navOpen ? 'Collapse' : 'Expand'}
+          >
+            <Icon name="caret" size={14} />
+          </button>
 
-        <span className="topbar-div" />
+          {/* Rules first, tutorial second: light reference before the bigger
+              commitment, running into the profile chip. */}
+          <button className="topbar-link" onClick={() => setRulesOpen(true)} title="Game rules">
+            <Icon name="rules" size={16} />
+            <span className="topbar-link-label">Game rules</span>
+          </button>
 
-        <button className="topbar-link" onClick={openHowTo}>
-          <Icon name="manual" size={16} />
-          How to play
-        </button>
+          <span className="topbar-div" />
+
+          <button className="topbar-link" onClick={openHowTo} title="How to play">
+            <Icon name="manual" size={16} />
+            <span className="topbar-link-label">How to play</span>
+          </button>
+
+          <span className="topbar-div" />
+
+          <button className="topbar-link" onClick={() => setShowLeaderboard(true)} title="Leaderboard">
+            <Icon name="trophy" size={16} />
+            <span className="topbar-link-label">Leaderboard</span>
+          </button>
+
+          <span className="topbar-div" />
+
+          {/* Fighter loadout (character + game plan) — lives here alongside the
+              other page chrome instead of buried in the profile dropdown. */}
+          <button className="topbar-link" onClick={() => navigate('/setup')} title="Loadout">
+            <Icon name="loadout" size={16} />
+            <span className="topbar-link-label">Loadout</span>
+          </button>
+        </div>
 
         <span className="topbar-div" />
 
@@ -239,16 +293,19 @@ export default function HomePage() {
           {menuOpen && (
             <div className="topbar-menu" role="menu">
               <div className="topbar-menu-list">
-                <button className="topbar-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); navigate('/setup'); }}>
+                {isGuest && (
+                  <button className="topbar-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); signInWithGoogle(); }}>
+                    <Icon name="user" size={16} /> Sign in with Google
+                  </button>
+                )}
+                <button className="topbar-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); navigate('/profile'); }}>
                   <Icon name="user" size={16} /> Profile
                 </button>
-                <button className="topbar-menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
+                {/* "My record" is not wired up yet — hidden until it does something. */}
+                {/* <button className="topbar-menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
                   <Icon name="trophy" size={16} /> My record
-                </button>
-                <button className="topbar-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); navigate('/setup'); }}>
-                  <Icon name="gear" size={16} /> Settings
-                </button>
-                <button className="topbar-menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
+                </button> */}
+                <button className="topbar-menu-item" role="menuitem" onClick={handleSignOut}>
                   <Icon name="enter" size={16} /> Sign out
                 </button>
               </div>
@@ -261,7 +318,7 @@ export default function HomePage() {
         <div style={{ textAlign: 'center' }}>
           {/* Tagline sits ABOVE the wordmark — it reads as a kicker leading into
               the lockup rather than a caption hanging off it. */}
-          <p className="wordmark-sub">The AI wrestling arena. Write the strategy. Watch the bots fight.</p>
+          <p className="wordmark-sub">The AI wrestling arena. Build strategy and unleash your bot.</p>
           <h1 className="wordmark">COMBAT<span className="kk">O</span></h1>
         </div>
 
@@ -393,20 +450,9 @@ function TournamentModal({ onHost, onJoin }) {
   );
 }
 
+// Tournaments are always private — you join with the host's room code. (The
+// public tournament board was removed; there's no visibility toggle anymore.)
 function JoinPanel({ onJoin }) {
-  const [tab, setTab] = useState('private');
-  return (
-    <div>
-      <div className="tabs" style={{ marginTop: 0 }}>
-        <button className={`tab ${tab === 'private' ? 'active' : ''}`} onClick={() => setTab('private')}>Private</button>
-        <button className={`tab ${tab === 'public' ? 'active' : ''}`} onClick={() => setTab('public')}>Public</button>
-      </div>
-      {tab === 'private' ? <JoinPrivateTab onJoin={onJoin} /> : <JoinPublicTab onJoin={onJoin} />}
-    </div>
-  );
-}
-
-function JoinPrivateTab({ onJoin }) {
   const [code, setCode] = useState('');
   const disabled = code.length < 3;
   return (
@@ -433,41 +479,8 @@ function JoinPrivateTab({ onJoin }) {
   );
 }
 
-function JoinPublicTab({ onJoin }) {
-  return (
-    <div className="tour-public-list" style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
-      {PUBLIC_TOURNAMENTS.map(t => (
-        <div key={t.id} style={{
-          display: 'grid', gridTemplateColumns: '12px 1fr auto auto', gap: 12, alignItems: 'center',
-          padding: '12px 14px', border: '1px solid var(--line)', background: 'rgba(13,9,23,0.6)',
-          cursor: 'pointer', transition: 'border-color 0.15s',
-        }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--gold)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--line)'}
-          onClick={() => onJoin(t.id.toUpperCase())}
-        >
-          <span style={{
-            width: 8, height: 8, borderRadius: '50%',
-            background: t.live ? 'var(--red)' : 'var(--ink-dim)',
-            boxShadow: t.live ? '0 0 6px var(--red)' : 'none',
-          }} />
-          <div>
-            <div className="f-display" style={{ fontSize: 17, color: 'var(--ink)', letterSpacing: '0.04em' }}>{t.name}</div>
-            <div className="f-mono" style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 2 }}>{t.mode}</div>
-          </div>
-          <span className="f-mono" style={{ fontSize: 13, color: 'var(--ink)', letterSpacing: '0.06em' }}>
-            {t.players}/{t.max}
-          </span>
-          <span className="tag gold">JOIN&nbsp;<Icon name="arrow" size={10} /></span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function HostPanel({ onHost }) {
   const [size, setSize] = useState(8);
-  const [visibility, setVisibility] = useState('private');
   const [tournamentName, setTournamentName] = useState('Friday Night Smackdown');
   const clamp = n => Math.max(2, Math.min(16, Math.round(n || 0)));
   const trimmedName = tournamentName.trim();
@@ -511,23 +524,9 @@ function HostPanel({ onHost }) {
           </div>
         </Field>
 
-        <Field label="Visibility">
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              className={`mode-tab ${visibility === 'private' ? 'active' : ''}`}
-              style={{ borderLeft: '1px solid var(--line)', flex: 1 }}
-              onClick={() => setVisibility('private')}>PRIVATE</button>
-            <button
-              className={`mode-tab ${visibility === 'public' ? 'active' : ''}`}
-              style={{ borderLeft: '1px solid var(--line)', flex: 1 }}
-              onClick={() => setVisibility('public')}>PUBLIC</button>
-          </div>
-          <div className="host-vis-note" style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 6, lineHeight: 1.5 }}>
-            {visibility === 'private'
-              ? 'Only players with the room code can join.'
-              : 'Listed on the public tournament board. Anyone can join.'}
-          </div>
-        </Field>
+        <div className="host-vis-note" style={{ fontSize: 11, color: 'var(--ink-mute)', lineHeight: 1.5 }}>
+          Private tournament — only players with the room code can join.
+        </div>
       </div>
 
       <button

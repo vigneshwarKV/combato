@@ -1,5 +1,6 @@
 import { BASE_ACTIONS, validActionsForCharacter, isUltimateKey, attackLine } from './damageEngine.js';
 import { CHARACTERS, METER, BASE_DAMAGE, BLOCKED_SUPER_DAMAGE_MULTIPLIER, getMeterGain, throwbackDmgFor } from '../data/characters.js';
+import { getAccessToken } from '../lib/auth.js';
 
 const MOCK_AI = false;
 
@@ -12,7 +13,7 @@ const MOCK_AI = false;
 // VITE_API_BASE (e.g. https://combato.example.com) at build time; the proxy
 // sends permissive CORS headers so the cross-origin call from the app is allowed.
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/$/, '');
-const AI_ENDPOINT = `${API_BASE}/api/ai`;
+const MOVES_ENDPOINT = `${API_BASE}/api/moves`;
 
 // The single move token the model uses for any character's special. Internally
 // it maps to that character's primary ultimate (see resolveSuperMove).
@@ -309,16 +310,23 @@ export async function callAI(fighter, { system, messages, maxTokens = 2048 }) {
 
   const t0 = Date.now();
   try {
-    const res = await fetch(AI_ENDPOINT, {
+    // Attach the Supabase session token so the proxy can verify the caller
+    // (guest or Google). Without a valid session the proxy returns 401 and the
+    // engine falls back to random moves.
+    const authToken = await getAccessToken();
+    const res = await fetch(MOVES_ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
       body: JSON.stringify({ system, messages, maxTokens }),
     });
 
     const elapsed = Date.now() - t0;
     if (!res.ok) {
       const err = await res.text().catch(() => '');
-      console.warn(`${tag} /api/ai HTTP ${res.status} after ${elapsed}ms — random fallback:`, err.slice(0, 200));
+      console.warn(`${tag} /api/moves HTTP ${res.status} after ${elapsed}ms — random fallback:`, err.slice(0, 200));
       return 'FAIL';
     }
 

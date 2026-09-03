@@ -36,12 +36,15 @@ function MusicToggle() {
 // time limit (armed by the `fight_start` event → status 'calling'), pauses while
 // the fight is paused, and freezes when the match ends. Display-only — the engine
 // clock in fightEngine is authoritative for the actual cutoff.
-function FightTimer({ status, isPaused, timeLimitMs = FIGHT_TIME_LIMIT_MS }) {
+function FightTimer({ status, isPaused, timeLimitMs = FIGHT_TIME_LIMIT_MS, resumeRemainingMs }) {
   const active = status === 'calling' || status === 'animating';
   const ended = status === 'ko' || status === 'decision' || status === 'draw';
 
-  const [remainingMs, setRemainingMs] = useState(timeLimitMs);
-  const remainingRef = useRef(timeLimitMs);   // authoritative value across re-runs
+  // On a spectator rejoin the fight is already partway through, so start from the
+  // host-reported remaining time rather than the full limit.
+  const startMs = resumeRemainingMs ?? timeLimitMs;
+  const [remainingMs, setRemainingMs] = useState(startMs);
+  const remainingRef = useRef(startMs);       // authoritative value across re-runs
   const lastTickRef = useRef(0);
   const wasActiveRef = useRef(false);
 
@@ -50,10 +53,12 @@ function FightTimer({ status, isPaused, timeLimitMs = FIGHT_TIME_LIMIT_MS }) {
   // callback — never synchronously in the effect body — so it stays lint-clean.
   useEffect(() => {
     if (!active) { wasActiveRef.current = false; return; }
-    // Rising edge = a fresh fight just went live → re-arm to the full limit.
+    // Rising edge = the fight just went live → arm the clock. A fresh fight starts
+    // at the full limit; a spectator rejoining mid-fight starts at the remaining
+    // time the host reported.
     if (!wasActiveRef.current) {
       wasActiveRef.current = true;
-      remainingRef.current = timeLimitMs;
+      remainingRef.current = resumeRemainingMs ?? timeLimitMs;
     }
     lastTickRef.current = Date.now();
     const id = setInterval(() => {
@@ -65,7 +70,7 @@ function FightTimer({ status, isPaused, timeLimitMs = FIGHT_TIME_LIMIT_MS }) {
       setRemainingMs(remainingRef.current);
     }, 200);
     return () => clearInterval(id);
-  }, [active, isPaused, timeLimitMs]);
+  }, [active, isPaused, timeLimitMs, resumeRemainingMs]);
 
   const totalSec = Math.max(0, Math.ceil(remainingMs / 1000));
   const mm = Math.floor(totalSec / 60);
@@ -150,7 +155,7 @@ export function StrategySwitcher({
 // mode="spectator" → renders fight events from fightEvents prop via useFightRenderer
 // strategies / activeStrategyIndex / onSelectStrategy → live strategy switcher for
 //   the local player (both bot matches and P2P rooms). Omitted → switcher hidden.
-export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd, onForceNext, mode = 'host', fightEvents = [], randomBackground = false, onHome, strategies, activeStrategyIndex = 0, onSelectStrategy }) {
+export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd, onForceNext, mode = 'host', fightEvents = [], resumeState = null, randomBackground = false, onHome, strategies, activeStrategyIndex = 0, onSelectStrategy }) {
   // Keep a ref to the broadcast function so the fight loop always uses the latest
   // value without needing it in useCallback deps (avoids stale-closure issues).
   const broadcastRef = useRef(null);
@@ -246,6 +251,12 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
     shakeScreen, isPaused, timeLimitMs, batchNumber,
   } = activeFightState;
 
+  // Spectator rejoining mid-fight: how much round time is left, per the host's
+  // snapshot (undefined for a fresh fight → timer starts at the full limit).
+  const resumeRemainingMs = (mode === 'spectator' && resumeState && Number.isFinite(resumeState.elapsedMs))
+    ? Math.max(0, timeLimitMs - resumeState.elapsedMs)
+    : undefined;
+
   // ── Live strategy tracking ────────────────────────────────────────────────
   // `activeStrategyIndex` is what the player SELECTED (read by the engine for the
   // NEXT batch). `effectiveIndex` is what's actually driving the CURRENT batch —
@@ -319,6 +330,16 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
     lastProcessedEventRef.current = fightEvents.length;
   }, [fightEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Spectator rejoining a LIVE match: seed current HP / meter / status once so we
+  // drop back into the fight at "now" (not full HP), then live events animate
+  // forward from here. Only present on a mid-fight reconnect (see useMatchHost).
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (mode !== 'spectator' || seededRef.current || !resumeState) return;
+    spectator.seekTo(resumeState);
+    seededRef.current = true;
+  }, [resumeState]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Spectator: fire onFightEnd when fight concludes (host result arrives via events)
   const spectatorEndFiredRef = useRef(false);
   useEffect(() => {
@@ -388,7 +409,7 @@ export default function Arena({ fighterA, fighterB, fightConfig = {}, onFightEnd
           }}>
             <StatusBars fighter={fighterA} hp={hpA} meter={meterA} status={statusA} side="A" />
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '4px 12px' }}>
-              <FightTimer status={status} isPaused={isPaused} timeLimitMs={timeLimitMs} />
+              <FightTimer status={status} isPaused={isPaused} timeLimitMs={timeLimitMs} resumeRemainingMs={resumeRemainingMs} />
               <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-arena)', fontSize: 14, letterSpacing: 2 }}>
                 VS
               </div>

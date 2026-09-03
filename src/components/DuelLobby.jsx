@@ -96,8 +96,6 @@ export function DuelResult({ champion, myPeerId, isHost, onRematch, onLeave }) {
 
   return (
     <div className="bg-arena duel-page">
-      <div className="spotlight-left" />
-      <div className="spotlight-right" />
       <div className="tour-page" style={{ alignItems: 'center', justifyContent: 'center' }}>
         <div className={`duel-result ${outcome}`}>
           <div className="duel-result-eyebrow">1v1 Duel</div>
@@ -139,8 +137,6 @@ export function DuelResult({ champion, myPeerId, isHost, onRematch, onLeave }) {
 export function DuelStarting() {
   return (
     <div className="bg-arena duel-page">
-      <div className="spotlight-left" />
-      <div className="spotlight-right" />
       <div className="tour-page" style={{ alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center' }}>
           <div className="eyebrow" style={{ justifyContent: 'center', display: 'flex' }}>Get ready</div>
@@ -170,7 +166,7 @@ export default function DuelLobby({
   // Spine fighters render into a fixed-size Pixi canvas, so CSS can't shrink
   // them with the rest of the card — pick the box here instead.
   const shortLandscape = useShortLandscape();
-  const sprite = shortLandscape ? { w: 104, h: 130 } : { w: 120, h: 150 };
+  const sprite = shortLandscape ? { w: 72, h: 92 } : { w: 120, h: 150 };
 
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
@@ -207,9 +203,6 @@ export default function DuelLobby({
 
   return (
     <div className="bg-arena duel-page duel-page-lobby">
-      <div className="spotlight-left" />
-      <div className="spotlight-right" />
-
       <div className="duel-room">
         <header className="game-bar">
           <span className="game-bar-brand">COMBAT<b>O</b></span>

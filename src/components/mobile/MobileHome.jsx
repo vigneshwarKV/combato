@@ -7,7 +7,7 @@ import HomeArena from '../design/HomeArena.jsx';
 // so it inherits the same compact 3-up colored styling the landscape mobile
 // view already uses (design.css @media max-width: 760px).
 
-function MHTopbar({ onSettings, onHowTo, onRules }) {
+function MHTopbar({ onSettings, onHowTo, onRules, onLeaderboard }) {
   return (
     <div className="mh-topbar">
       <div className="mh-brand">
@@ -30,8 +30,13 @@ function MHTopbar({ onSettings, onHowTo, onRules }) {
           <Icon name="play" size={11} />&nbsp;How to Play
         </button>
       )}
-      <button className="mh-iconbtn" aria-label="Settings" onClick={onSettings}>
-        <Icon name="gear" size={14} />
+      {onLeaderboard && (
+        <button className="mh-howto" onClick={onLeaderboard}>
+          <Icon name="trophy" size={11} />&nbsp;Board
+        </button>
+      )}
+      <button className="mh-iconbtn" aria-label="Loadout" onClick={onSettings}>
+        <Icon name="loadout" size={14} />
       </button>
     </div>
   );
@@ -59,17 +64,17 @@ function MHAction({ tone, title, icon, desc, cta, onClick }) {
   );
 }
 
-export default function MobileHome({ onQuick, on1v1, onTournament, onSettings, onHowTo, onRules, showArena = true }) {
-  // Fighter loadout lives in /setup (the gear icon in the topbar) so the home
+export default function MobileHome({ onQuick, on1v1, onTournament, onSettings, onHowTo, onRules, onLeaderboard, showArena = true }) {
+  // Fighter loadout lives in /setup (the loadout icon in the topbar) so the home
   // page stays focused on the three ways to play.
   return (
     <div className="mh-page mh-var-b">
-      <MHTopbar onSettings={onSettings} onHowTo={onHowTo} onRules={onRules} />
+      <MHTopbar onSettings={onSettings} onHowTo={onHowTo} onRules={onRules} onLeaderboard={onLeaderboard} />
       <div className="mh-body">
         <div className="mh-hero-b">
           {/* Tagline leads, wordmark follows — matches desktop HomePage. */}
           <p className="mh-wordmark-sub">
-            The AI wrestling arena. Write the strategy. Watch the bots fight.
+            The AI wrestling arena. Build strategy and unleash your bot.
           </p>
           {/* One word now, so no <br/> — the lockup is a single 7-letter run. */}
           <h1 className="mh-wordmark-b">

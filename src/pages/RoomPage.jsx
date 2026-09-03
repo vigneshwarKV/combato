@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
-import { useMatchHost } from '../hooks/useMatchHost.js';
+import { useMatchHost, clearHostSnapshot, saveHostSnapshot, removeFighterFromBracket, rekeyFighterInBracket } from '../hooks/useMatchHost.js';
 import { useMatchClient } from '../hooks/useMatchClient.js';
+import { useSingleRoomTab } from '../hooks/useSingleRoomTab.js';
 import { CHARACTERS } from '../data/characters.js';
 import { DEFAULT_SIMPLE_STRATEGY } from '../data/promptTemplates.js';
 import { charById, loadProfile, isProfileReady, usableStrategies, makeStrategy } from '../data/designData.js';
@@ -16,9 +17,42 @@ import MobileLobby from '../components/mobile/MobileLobby.jsx';
 import MobileBracket from '../components/mobile/MobileBracket.jsx';
 import { useIsPortrait } from '../hooks/useIsPortrait.js';
 import { unlockAudio } from '../engine/soundEngine.js';
+import { forgetJoinerId } from '../engine/peerEngine.js';
+import { startScoredMatch, submitScore } from '../lib/leaderboard.js';
+import { buildMatchSummary } from '../engine/scoring.js';
 
 const TOTAL_SEATS = 16;
 const AUTO_START_SECONDS = 15 * 60; // 15:00 fallback until the host's shared deadline arrives
+
+// Router state (isHost / mode / tournamentName) is set when navigating in from the
+// home page — but a full page REFRESH drops it, and a second tab opened from a
+// pasted link never had it. We stash it per-room in sessionStorage on first entry
+// and restore it on a reload, so a refresh doesn't silently turn the host into a
+// joiner (or lose the 1v1-vs-tournament mode). sessionStorage is per-tab on
+// purpose: a refresh restores your role, while a brand-new tab resolves fresh
+// (defaulting to joiner), which avoids two tabs both claiming to be the host.
+const roomKey = (code) => `pk.room.${code}`;
+
+function readRoomEntry(code, state) {
+  const norm = (s) => ({
+    isHost: s?.isHost === true,
+    mode: s?.mode ?? null,
+    tournamentName: s?.tournamentName ?? null,
+  });
+  if (state && (state.isHost !== undefined || state.mode !== undefined)) return norm(state);
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(roomKey(code)) || 'null');
+    if (saved) return norm(saved);
+  } catch { /* ignore */ }
+  return { isHost: false, mode: null, tournamentName: null };
+}
+
+// Forget a room on deliberate leave / close so a later re-entry starts clean.
+function clearRoomSession(code) {
+  try { sessionStorage.removeItem(roomKey(code)); } catch { /* ignore */ }
+  forgetJoinerId(code);
+  clearHostSnapshot(code);
+}
 
 // ── Player slot ───────────────────────────────────────────────────────────────
 
@@ -271,13 +305,35 @@ export default function RoomPage() {
   const code = (rawCode || '').match(/[A-Za-z0-9]+/)?.[0] ?? '';
   const location = useLocation();
   const navigate = useNavigate();
-  const isHost = location.state?.isHost === true;
-  const tournamentName = location.state?.tournamentName;
+
+  // Resolve role/mode once, preferring live router state and falling back to the
+  // per-room sessionStorage snapshot after a refresh (see readRoomEntry).
+  const [roomEntry] = useState(() => readRoomEntry(code, location.state));
+  // A joiner can be PROMOTED to host if the original host leaves (failover), and
+  // a host can be STEPPED DOWN if a better host exists (split-brain). So the
+  // effective host role is dynamic — not just the role we entered with.
+  //
+  // Migration is two-phase: 'detach' first tears our client channel down, THEN
+  // 'host' subscribes as host — never two channels on the same room topic at once
+  // (Supabase can't handle that, and it strands the other joiners).
+  const [migration, setMigration] = useState('none'); // 'none' | 'host'
+  const [steppedDown, setSteppedDown] = useState(false);
+  const migratingRef = useRef(false);
+  const adoptedPeerRef = useRef(null); // the client peer promoted in place to host
+  const isHost = (roomEntry.isHost || migration === 'host') && !steppedDown;
+  const tournamentName = roomEntry.tournamentName;
   // '1v1' duels get a lighter lobby + auto-skip the bracket preview. A joiner
   // arriving via a shared link has no state, so fall back to the mode the host
   // broadcasts in the lobby state (resolved below once lobbyState is available).
-  const stateMode = location.state?.mode;
+  const stateMode = roomEntry.mode;
   const isPortrait = useIsPortrait();
+
+  // Persist authoritative router state so a later refresh can restore it.
+  useEffect(() => {
+    if (location.state && (location.state.isHost !== undefined || location.state.mode !== undefined)) {
+      try { sessionStorage.setItem(roomKey(code), JSON.stringify(roomEntry)); } catch { /* ignore */ }
+    }
+  }, [code, roomEntry, location.state]);
 
   // Snapshot the profile on first render so the lobby header is stable.
   const [profile] = useState(() => loadProfile());
@@ -286,8 +342,17 @@ export default function RoomPage() {
   // strategy yet. Gate them with a setup prompt before connecting to the room.
   const needsSetup = !isProfileReady(profile);
 
-  const host   = useMatchHost(isHost && !needsSetup ? code : null, { tournamentName, mode: stateMode });
-  const client = useMatchClient(!isHost && !needsSetup ? code : null);
+  // One active tab per room, per browser. A second tab resolves to 'duplicate'
+  // and never connects (avoids a ghost host member / double joiner). 'checking'
+  // for ~350ms on mount, then 'active' | 'duplicate' | 'released'. A duplicate
+  // may 'Continue here' to seize the room, but only when the holder is a joiner
+  // (peerRole) — taking over a host would orphan the room.
+  const { status: tabStatus, peerRole: tabPeerRole, takeOver } = useSingleRoomTab(code, isHost ? 'host' : 'joiner');
+  const canConnect = !needsSetup && tabStatus === 'active';
+
+  // On promotion the host ADOPTS the client's peer (reuses its working channel).
+  const host   = useMatchHost(isHost && canConnect ? code : null, { tournamentName, mode: stateMode, adoptPeer: adoptedPeerRef.current });
+  const client = useMatchClient(!isHost && canConnect ? code : null);
 
   const lobby           = isHost ? host : client;
   const myConfig        = lobby.myConfig;
@@ -329,6 +394,59 @@ export default function RoomPage() {
     }
   }, [myConfig, profile, updateMyConfig]);
 
+  // ── Host failover ────────────────────────────────────────────────────────────
+  // If the original host leaves for good, the elected successor (smallest
+  // remaining peerId — every client agrees) promotes ITSELF: seed the host
+  // snapshot from our last lobby state (forfeiting the departed host and adopting
+  // the host id == room code), then flip our role. useMatchHost then rehydrates
+  // from that seed and re-broadcasts; the other joiners reconnect to us.
+  useEffect(() => {
+    if (roomEntry.isHost || steppedDown || migratingRef.current) return;    // already host / stepped down / migrating
+    if (!client.hostGone || client.successorId !== client.myPeerId) return;  // not the elected successor
+    const last = client.lobbyState;
+    const myId = client.myPeerId;
+    if (!last || !myId) return;
+    migratingRef.current = true;
+
+    let bracket = last.bracket || null;
+    if (bracket) {
+      bracket = removeFighterFromBracket(bracket, code);    // departed host forfeits
+      bracket = rekeyFighterInBracket(bracket, myId, code); // I adopt the host id
+    }
+    // If the forfeit finished the tournament (e.g. a 1v1 the host abandoned), land
+    // on the champion screen rather than an empty bracket-preview.
+    const phase = bracket && !bracket.pointer && bracket.champion ? 'champion' : last.phase;
+    const seed = {
+      ...last,
+      matchCode: code,
+      phase,
+      bracket,
+      champion: bracket?.champion ?? last.champion ?? null,
+      fighters: (last.fighters || [])
+        .filter(f => f.peerId !== code)                                            // drop old host
+        .map(f => (f.peerId === myId ? { ...f, peerId: code, isHost: true } : f)), // I take its seat
+      hostEpoch: (last.hostEpoch || 0) + 1,
+    };
+    saveHostSnapshot(code, seed);
+    seededRef.current = false; // re-seed my (host) fighter config after the role flip
+    adoptedPeerRef.current = client.releasePeer(); // hand our peer to the host hook
+    setMigration('host');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomEntry.isHost, steppedDown, client.hostGone, client.successorId, client.myPeerId, client.lobbyState, code]);
+
+  // Split-brain resolution: our host peer detected a BETTER host (we returned
+  // after being replaced, or a rare double-promotion). Step down — stop hosting,
+  // forget the host role so a refresh won't reclaim it, and rejoin as a client.
+  useEffect(() => {
+    if (!host.hostConflict || steppedDown) return;
+    clearHostSnapshot(code);
+    try { sessionStorage.setItem(roomKey(code), JSON.stringify({ ...roomEntry, isHost: false })); } catch { /* ignore */ }
+    migratingRef.current = false;
+    seededRef.current = false; // re-seed my fighter config now that I'm a client again
+    setMigration('none');
+    setSteppedDown(true);
+  }, [host.hostConflict]); // eslint-disable-line
+
   // Style hook for design tokens (matches HomePage/CharSelectPage).
   useEffect(() => {
     document.body.classList.add('pk-design');
@@ -337,26 +455,125 @@ export default function RoomPage() {
 
   // Joiner: navigate home when host closes the room
   useEffect(() => {
-    if (!isHost && client.roomClosed) navigate('/');
+    if (!isHost && client.roomClosed) { clearRoomSession(code); navigate('/'); }
   }, [client.roomClosed]); // eslint-disable-line
 
   // 1v1 has a single match, so the 20s bracket-preview countdown is just dead
   // time — the host fires the match the instant the bracket is built. The
   // START DUEL click already unlocked audio, so the Arena mounts with sound.
+  // Exception: when RESUMING after a host refresh, wait out `resumeGraceUntil`
+  // so the opponent has time to reconnect and catch the re-run's FIGHT_START.
   useEffect(() => {
     if (isHost && is1v1 && phase === 'bracket-preview' && bracket) {
+      const grace = lobbyState?.resumeGraceUntil;
+      const wait = grace ? grace - Date.now() : 0;
+      if (wait > 0) {
+        const t = setTimeout(() => host.startNextMatch(), wait);
+        return () => clearTimeout(t);
+      }
       host.startNextMatch();
     }
   }, [isHost, is1v1, phase, bracket]); // eslint-disable-line
 
+  // ── PvP leaderboard scoring ─────────────────────────────────────────────────
+  // Each FIGHTER (not spectators) submits their OWN result. When a match I'm in
+  // starts, fetch a signed match token; on fight end, submit. Host and joiner
+  // both run this; only the host also advances the bracket.
+  const scoreMode = is1v1 ? '1v1' : 'tournament';
+  const matchTokenRef = useRef(null);
+  const matchStartAtRef = useRef(0);
+  const matchSideRef = useRef(null);
+  const scoredKeyRef = useRef(null);
+
+  useEffect(() => {
+    if (phase !== 'fighting') { scoredKeyRef.current = null; matchSideRef.current = null; return; }
+    const a = isHost ? host.currentMatch?.fA : client.matchFighters?.find(f => f.role === 'A');
+    const b = isHost ? host.currentMatch?.fB : client.matchFighters?.find(f => f.role === 'B');
+    const side = isHost
+      ? (a?.peerId === myPeerId ? 'A' : b?.peerId === myPeerId ? 'B' : null)
+      : (client.matchRole === 'A' || client.matchRole === 'B' ? client.matchRole : null);
+    if (!side || !a || !b) return;
+    // Stable per-match dedup id (same on host + joiner, survives a re-run) so a
+    // reconnect / host refresh can't double-post this match to the leaderboard.
+    const dedupId = (isHost ? host.currentMatch?.matchId : client.matchId) || `${a.peerId}|${b.peerId}`;
+    const key = `${a.peerId}|${b.peerId}`;
+    if (scoredKeyRef.current === key) return; // already armed for this match
+    scoredKeyRef.current = key;
+    matchSideRef.current = side;
+    matchTokenRef.current = null;
+    matchStartAtRef.current = Date.now();
+    startScoredMatch(scoreMode, dedupId).then((t) => { matchTokenRef.current = t; });
+  }, [phase, isHost, host.currentMatch, client.matchFighters, client.matchId, client.matchRole, myPeerId, scoreMode]);
+
   function handleFightEnd(result) {
-    if (!isHost) return;
-    setTimeout(() => host.advanceMatch(result?.winner || null), 2000);
+    // Submit my own score if I fought in this match (best-effort).
+    const token = matchTokenRef.current;
+    const side = matchSideRef.current;
+    if (token && side && result) {
+      const summary = buildMatchSummary(result, {
+        mode: scoreMode,
+        playerSide: side,
+        durationMs: Date.now() - matchStartAtRef.current,
+      });
+      submitScore(token, summary);
+      matchTokenRef.current = null; // one submission per match
+    }
+    // Only the host drives the bracket forward.
+    if (isHost) setTimeout(() => host.advanceMatch(result?.winner || null), 2000);
   }
 
   function handleCloseRoom() {
+    clearRoomSession(code);
     host.closeRoom();
     navigate('/');
+  }
+
+  // ── Duplicate-tab gate ─────────────────────────────────────────────────────
+  // This room is already open in another tab/window of this browser. Don't
+  // connect (would create a ghost host member / double joiner). Offer to move the
+  // session here, but ONLY when the holder is a joiner — seizing a host would
+  // orphan the room (its live bracket lives in that tab's sessionStorage).
+  if (tabStatus === 'duplicate') {
+    const canTakeOver = tabPeerRole === 'joiner' && !isHost;
+    return (
+      <div className="bg-arena">
+        <Modal open onClose={() => navigate('/')}>
+          <div className="dup-tab">
+            <h3 className="dup-tab-title">Already open in another tab</h3>
+            <p className="dup-tab-body">
+              This room is open in another tab or window of this browser.
+              {canTakeOver
+                ? ' Continue here to move your session to this tab.'
+                : ' Continue there — opening it twice would join you to the match twice.'}
+            </p>
+            <div className="dup-tab-actions">
+              {canTakeOver && <button className="btn" onClick={takeOver}>Continue here</button>}
+              <button className={canTakeOver ? 'btn btn-ghost' : 'btn'} onClick={() => navigate('/')}>
+                Back to home
+              </button>
+            </div>
+          </div>
+        </Modal>
+      </div>
+    );
+  }
+
+  // Superseded: another tab took over this room (see takeOver). We've stopped
+  // participating; point the player at the tab that now holds the session.
+  if (tabStatus === 'released') {
+    return (
+      <div className="bg-arena">
+        <Modal open onClose={() => navigate('/')}>
+          <div className="dup-tab">
+            <h3 className="dup-tab-title">Moved to another tab</h3>
+            <p className="dup-tab-body">
+              You continued this room in another tab, so this one has left the match.
+            </p>
+            <button className="btn" onClick={() => navigate('/')}>Back to home</button>
+          </div>
+        </Modal>
+      </div>
+    );
   }
 
   // ── Setup gate ─────────────────────────────────────────────────────────────
@@ -433,6 +650,7 @@ export default function RoomPage() {
           onFightEnd={handleFightEnd}
           mode={isHost ? 'host' : 'spectator'}
           fightEvents={!isHost ? client.fightEvents : undefined}
+          resumeState={!isHost ? client.matchResume : undefined}
           strategies={myStrategies}
           activeStrategyIndex={myConfig?.activeStrategyIndex ?? 0}
           onSelectStrategy={(i) => updateMyConfig({ activeStrategyIndex: i })}
@@ -483,7 +701,7 @@ export default function RoomPage() {
             myPeerId={myPeerId}
             isHost={isHost}
             onRematch={isHost ? host.closeTournament : undefined}
-            onLeave={isHost ? handleCloseRoom : () => navigate('/')}
+            onLeave={isHost ? handleCloseRoom : () => { clearRoomSession(code); navigate('/'); }}
           />
           {spectatorBar}
         </>
@@ -502,6 +720,21 @@ export default function RoomPage() {
     );
   }
 
+  // ── Connecting loader ──────────────────────────────────────────────────────
+  // A joiner arriving via a pasted /room/:code link carries no router state, so
+  // the room's mode (1v1 vs tournament) is unknown until the host's first
+  // lobbyState lands. Rendering the lobby now would flash the tournament layout
+  // and then swap to the duel room once mode:'1v1' arrives. Show a loader instead
+  // until the mode resolves (or the connection errors out).
+  if (!isHost && !stateMode && !lobbyState) {
+    return (
+      <RoomLoading
+        error={lobby.error}
+        onBack={() => { clearRoomSession(code); navigate('/'); }}
+      />
+    );
+  }
+
   // ── Lobby phase ──────────────────────────────────────────────────────────
   const lobbyProps = {
     matchCode: code,
@@ -513,7 +746,7 @@ export default function RoomPage() {
     myPeerId,
     profile,
     onStart: () => { unlockAudio(); host.startTournament(fightConfig); },
-    onLeave: isHost ? handleCloseRoom : () => navigate('/'),
+    onLeave: isHost ? handleCloseRoom : () => { clearRoomSession(code); navigate('/'); },
     onToggleReady: isHost ? undefined : (next) => { unlockAudio(); client.updateMyConfig({ ready: next }); },
   };
 
@@ -523,6 +756,34 @@ export default function RoomPage() {
     ? <DuelLobby {...lobbyProps} />
     : isPortrait ? <MobileLobby {...lobbyProps} /> : <LobbyView {...lobbyProps} />;
   return <>{lobbyEl}{spectatorBar}</>;
+}
+
+// ── Connecting loader ───────────────────────────────────────────────────────
+// Shown to a joiner while the room mode is still unknown (see the render gate).
+// Doubles as the failure screen once the connection watchdog reports an error.
+function RoomLoading({ error, onBack }) {
+  return (
+    <div className="bg-arena">
+      <div className="room-loading">
+        {error ? (
+          <>
+            <div className="room-loading-icon"><Icon name="close" size={22} /></div>
+            <div className="room-loading-title">Couldn’t join the room</div>
+            <div className="room-loading-sub">{error}</div>
+            <button className="btn" onClick={onBack}>
+              <Icon name="back" size={13} />&nbsp;BACK TO HOME
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="room-loading-spinner" aria-hidden="true" />
+            <div className="room-loading-title">Entering the room</div>
+            <div className="room-loading-sub">Connecting to the match…</div>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ── Spectator overlay ─────────────────────────────────────────────────────────

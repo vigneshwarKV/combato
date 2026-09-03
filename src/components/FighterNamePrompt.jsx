@@ -1,10 +1,9 @@
 import { useState } from 'react';
 
-// The entry gate. Shown when no fighter name is stored — /setup no longer
-// collects one, so this is the only place a name gets created.
-//
-// One ask, two controls: a name field and SIGN IN. There is deliberately no
-// close button and no dismiss — there is nothing to dismiss to.
+// Second step of the entry flow: collect the fighter name. Sign-in (guest or
+// Google) already happened on the previous screen, so this card only asks for a
+// name — no Google button here. The name entered is the handle shown everywhere;
+// it can be changed later in the profile.
 export default function FighterNamePrompt({ onSignIn }) {
   const [name, setName] = useState('');
   const clean = name.trim();
@@ -35,7 +34,7 @@ export default function FighterNamePrompt({ onSignIn }) {
           <span className="fname-rule" />
         </div>
         <button type="submit" className="btn fname-submit" disabled={!clean}>
-          Sign in
+          Continue
         </button>
       </form>
     </div>
